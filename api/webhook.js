@@ -43,7 +43,23 @@ export default async function handler(req, res) {
       try {
         const receiptResp = await fetch(payload.receipt_url);
         const receiptText = await receiptResp.text();
-        console.log('=== RECEIPT URL RESPONSE ===', receiptText.substring(0, 2000));
+       // Tentar extrair dados do cliente do HTML
+const nomeMatch = receiptText.match(/nome["\s:>]+([^<"]+)/i);
+const cpfMatch = receiptText.match(/cpf["\s:>]+([^<"]+)/i);
+const emailMatch = receiptText.match(/email["\s:>]+([^<"]+)/i);
+const telefoneMatch = receiptText.match(/telefone["\s:>]+([^<"]+)/i) || receiptText.match(/phone["\s:>]+([^<"]+)/i);
+const enderecoMatch = receiptText.match(/endere[çc]o["\s:>]+([^<"]+)/i) || receiptText.match(/address["\s:>]+([^<"]+)/i);
+
+console.log('=== DADOS CLIENTE DO RECIBO ===', JSON.stringify({
+  nome: nomeMatch ? nomeMatch[1].trim() : null,
+  cpf: cpfMatch ? cpfMatch[1].trim() : null,
+  email: emailMatch ? emailMatch[1].trim() : null,
+  telefone: telefoneMatch ? telefoneMatch[1].trim() : null,
+  endereco: enderecoMatch ? enderecoMatch[1].trim() : null
+}));
+
+// Log completo do HTML para análise
+console.log('=== RECEIPT HTML COMPLETO ===', receiptText.substring(0, 5000));
       } catch (e) {
         console.log('Erro receipt_url:', e.message);
       }
