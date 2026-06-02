@@ -7,6 +7,7 @@ export default async function handler(req, res) {
 
   try {
     const payload = req.body;
+    console.log('=== PAYLOAD INFINITEPAY ===', JSON.stringify(payload));
 
     if (!payload || !payload.items) {
       return res.status(400).json({ success: false, message: 'Payload inválido' });
@@ -14,11 +15,41 @@ export default async function handler(req, res) {
 
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+    const HANDLE = process.env.INFINITE_HANDLE;
+
+    // Tentar buscar mais dados via payment_check
+    let extraData = null;
+    if (payload.order_nsu && payload.transaction_nsu && payload.invoice_slug) {
+      try {
+        const checkResp = await fetch('https://api.checkout.infinitepay.io/payment_check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            handle: HANDLE,
+            order_nsu: payload.order_nsu,
+            transaction_nsu: payload.transaction_nsu,
+            slug: payload.invoice_slug
+          })
+        });
+        extraData = await checkResp.json();
+        console.log('=== PAYMENT CHECK RESPONSE ===', JSON.stringify(extraData));
+      } catch (e) {
+        console.log('Erro payment_check:', e.message);
+      }
+    }
+
+    // Tentar buscar dados do comprovante
+    if (payload.receipt_url) {
+      try {
+        const receiptResp = await fetch(payload.receipt_url);
+        const receiptText = await receiptResp.text();
+        console.log('=== RECEIPT URL RESPONSE ===', receiptText.substring(0, 2000));
+      } catch (e) {
+        console.log('Erro receipt_url:', e.message);
+      }
+    }
 
     const items = payload.items || [];
-    const customer = payload.customer || {};
-    const address = payload.address || {};
-
     const lineItems = items.map(item => ({
       title: item.description || 'Produto',
       quantity: item.quantity || 1,
@@ -30,27 +61,9 @@ export default async function handler(req, res) {
       order: {
         line_items: lineItems,
         financial_status: 'paid',
-        fulfillment_status: null,
         currency: 'BRL',
-        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''}`,
+        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Comprovante: ${payload.receipt_url || ''}`,
         tags: 'InfinitePay',
-        customer: customer.name ? {
-          first_name: customer.name.split(' ')[0] || '',
-          last_name: customer.name.split(' ').slice(1).join(' ') || '',
-          email: customer.email || '',
-          phone: customer.phone_number || ''
-        } : undefined,
-        shipping_address: address.cep ? {
-          first_name: customer.name ? customer.name.split(' ')[0] : '',
-          last_name: customer.name ? customer.name.split(' ').slice(1).join(' ') : '',
-          address1: `${address.street || ''}, ${address.number || ''}`,
-          address2: address.complement || '',
-          zip: address.cep || '',
-          city: address.city || '',
-          province: address.state || '',
-          country: 'BR',
-          phone: customer.phone_number || ''
-        } : undefined,
         transactions: [{
           kind: 'sale',
           status: 'success',
@@ -79,7 +92,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: null });
     } else {
       console.error('Erro Shopify:', JSON.stringify(shopifyData));
-      return res.status(400).json({ success: false, message: 'Erro ao criar pedido no Shopify' });
+      return res.status(400).json({ success: false, message: 'Erro ao criar pedido' });
     }
 
   } catch (error) {
