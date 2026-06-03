@@ -8,9 +8,7 @@ export default async function handler(req, res) {
   const { cor, preco, descricao, frete, cliente } = req.body;
   const HANDLE = process.env.INFINITE_HANDLE;
 
-  // Preco total = produto + frete
   const precoFrete = frete ? Math.round(frete.preco * 100) : 0;
-  const precoTotal = preco + precoFrete;
 
   const items = [
     { quantity: 1, price: preco, description: descricao }
@@ -20,19 +18,20 @@ export default async function handler(req, res) {
     items.push({
       quantity: 1,
       price: precoFrete,
-      description: `Frete ${frete.nome} (${frete.prazo} dias úteis)`
+      description: `Frete ${frete.nome} (${frete.prazo} dias uteis)`
     });
   }
+
+  const orderNsu = `pedido-${Date.now()}`;
 
   const body = {
     handle: HANDLE,
     redirect_url: process.env.URL_REDIRECIONADA,
     webhook_url: 'https://infinitepay-backend.vercel.app/api/webhook',
-    order_nsu: `pedido-${Date.now()}`,
+    order_nsu: orderNsu,
     items
   };
 
-  // Enviar dados do cliente para a InfinitePay
   if (cliente) {
     body.customer = {
       name: cliente.nome,
@@ -52,6 +51,31 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Salvar dados do cliente no Redis com o order_nsu como chave
+    if (cliente && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      const dadosPedido = {
+        cliente,
+        frete,
+        preco,
+        descricao,
+        cor,
+        order_nsu: orderNsu,
+        criado_em: new Date().toISOString()
+      };
+
+      await fetch(`${process.env.KV_REST_API_URL}/set/${orderNsu}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          value: JSON.stringify(dadosPedido),
+          ex: 86400 // expira em 24 horas
+        })
+      });
+    }
+
     const response = await fetch('https://api.checkout.infinitepay.io/links', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
