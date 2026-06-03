@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
     const MELHORENVIO_TOKEN = process.env.MELHORENVIO_TOKEN;
 
-    // Buscar dados do cliente no Redis
+    // Buscar dados do cliente no Redis v3
     let dadosPedido = null;
     if (payload.order_nsu && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       try {
