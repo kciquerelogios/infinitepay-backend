@@ -24,22 +24,28 @@ export default async function handler(req, res) {
           headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
         });
         const redisData = await redisResp.json();
-        console.log('=== REDIS RAW ===', JSON.stringify(redisData));
 
-        // O Upstash retorna { result: "string_json" }
+        // Upstash retorna { result: string }
+        // O string pode ter múltiplos níveis de JSON aninhado
         if (redisData && redisData.result) {
-          var raw = redisData.result;
-          // Se o result for um objeto com "value", pegar o value
-          if (typeof raw === 'object' && raw.value) {
-            raw = raw.value;
+          let parsed = redisData.result;
+
+          // Desencapsular até chegar no objeto com "cliente"
+          while (typeof parsed === 'string') {
+            parsed = JSON.parse(parsed);
           }
-          // Parse do JSON
-          if (typeof raw === 'string') {
-            dadosPedido = JSON.parse(raw);
-          } else {
-            dadosPedido = raw;
+
+          // Se ainda tiver um "value" dentro, desencapsular mais
+          if (parsed && parsed.value) {
+            let inner = parsed.value;
+            while (typeof inner === 'string') {
+              inner = JSON.parse(inner);
+            }
+            parsed = inner;
           }
-          console.log('=== DADOS CLIENTE ===', JSON.stringify(dadosPedido));
+
+          dadosPedido = parsed;
+          console.log('=== DADOS CLIENTE FINAL ===', JSON.stringify(dadosPedido));
         }
       } catch (e) {
         console.log('Erro ao buscar Redis:', e.message);
