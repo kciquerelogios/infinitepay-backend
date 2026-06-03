@@ -15,55 +15,26 @@ export default async function handler(req, res) {
 
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
-    const HANDLE = process.env.INFINITE_HANDLE;
 
-    // Tentar buscar mais dados via payment_check
-    let extraData = null;
-    if (payload.order_nsu && payload.transaction_nsu && payload.invoice_slug) {
+    // Buscar dados do cliente no Redis pelo order_nsu
+    let dadosPedido = null;
+    if (payload.order_nsu && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       try {
-        const checkResp = await fetch('https://api.checkout.infinitepay.io/payment_check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            handle: HANDLE,
-            order_nsu: payload.order_nsu,
-            transaction_nsu: payload.transaction_nsu,
-            slug: payload.invoice_slug
-          })
+        const redisResp = await fetch(`${process.env.KV_REST_API_URL}/get/${payload.order_nsu}`, {
+          headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
         });
-        extraData = await checkResp.json();
-        console.log('=== PAYMENT CHECK RESPONSE ===', JSON.stringify(extraData));
+        const redisData = await redisResp.json();
+        if (redisData && redisData.result) {
+          dadosPedido = JSON.parse(redisData.result);
+          console.log('=== DADOS CLIENTE REDIS ===', JSON.stringify(dadosPedido));
+        }
       } catch (e) {
-        console.log('Erro payment_check:', e.message);
+        console.log('Erro ao buscar Redis:', e.message);
       }
     }
 
-    // Tentar buscar dados do comprovante
-    if (payload.receipt_url) {
-      try {
-        const receiptResp = await fetch(payload.receipt_url);
-        const receiptText = await receiptResp.text();
-       // Tentar extrair dados do cliente do HTML
-const nomeMatch = receiptText.match(/nome["\s:>]+([^<"]+)/i);
-const cpfMatch = receiptText.match(/cpf["\s:>]+([^<"]+)/i);
-const emailMatch = receiptText.match(/email["\s:>]+([^<"]+)/i);
-const telefoneMatch = receiptText.match(/telefone["\s:>]+([^<"]+)/i) || receiptText.match(/phone["\s:>]+([^<"]+)/i);
-const enderecoMatch = receiptText.match(/endere[çc]o["\s:>]+([^<"]+)/i) || receiptText.match(/address["\s:>]+([^<"]+)/i);
-
-console.log('=== DADOS CLIENTE DO RECIBO ===', JSON.stringify({
-  nome: nomeMatch ? nomeMatch[1].trim() : null,
-  cpf: cpfMatch ? cpfMatch[1].trim() : null,
-  email: emailMatch ? emailMatch[1].trim() : null,
-  telefone: telefoneMatch ? telefoneMatch[1].trim() : null,
-  endereco: enderecoMatch ? enderecoMatch[1].trim() : null
-}));
-
-// Log completo do HTML para análise
-console.log('=== RECEIPT HTML COMPLETO ===', receiptText.substring(0, 5000));
-      } catch (e) {
-        console.log('Erro receipt_url:', e.message);
-      }
-    }
+    const cliente = dadosPedido ? dadosPedido.cliente : null;
+    const frete = dadosPedido ? dadosPedido.frete : null;
 
     const items = payload.items || [];
     const lineItems = items.map(item => ({
@@ -73,10 +44,12 @@ console.log('=== RECEIPT HTML COMPLETO ===', receiptText.substring(0, 5000));
       requires_shipping: true
     }));
 
+    // Montar pedido Shopify
     const orderData = {
       order: {
         line_items: lineItems,
         financial_status: 'paid',
+        fulfillment_status: null,
         currency: 'BRL',
         note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Comprovante: ${payload.receipt_url || ''}`,
         tags: 'InfinitePay',
@@ -88,6 +61,39 @@ console.log('=== RECEIPT HTML COMPLETO ===', receiptText.substring(0, 5000));
         }]
       }
     };
+
+    // Adicionar dados do cliente se disponíveis
+    if (cliente) {
+      orderData.order.customer = {
+        first_name: cliente.nome.split(' ')[0] || '',
+        last_name: cliente.nome.split(' ').slice(1).join(' ') || '',
+        email: cliente.email || '',
+        phone: cliente.telefone || ''
+      };
+
+      orderData.order.shipping_address = {
+        first_name: cliente.nome.split(' ')[0] || '',
+        last_name: cliente.nome.split(' ').slice(1).join(' ') || '',
+        address1: `${cliente.rua}, ${cliente.numero}`,
+        address2: cliente.complemento || '',
+        zip: cliente.cep.replace(/\D/g, ''),
+        city: cliente.cidade,
+        province: cliente.estado,
+        country: 'BR',
+        phone: cliente.telefone || ''
+      };
+
+      orderData.order.billing_address = orderData.order.shipping_address;
+    }
+
+    // Adicionar método de envio se disponível
+    if (frete) {
+      orderData.order.shipping_lines = [{
+        title: frete.nome,
+        price: frete.preco.toFixed(2),
+        code: frete.id === 1 ? 'PAC' : 'SEDEX'
+      }];
+    }
 
     const shopifyResponse = await fetch(
       `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`,
@@ -105,6 +111,15 @@ console.log('=== RECEIPT HTML COMPLETO ===', receiptText.substring(0, 5000));
 
     if (shopifyData.order) {
       console.log('Pedido criado no Shopify:', shopifyData.order.id);
+
+      // Deletar dados do Redis após usar
+      if (payload.order_nsu && process.env.KV_REST_API_URL) {
+        await fetch(`${process.env.KV_REST_API_URL}/del/${payload.order_nsu}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+        });
+      }
+
       return res.status(200).json({ success: true, message: null });
     } else {
       console.error('Erro Shopify:', JSON.stringify(shopifyData));
