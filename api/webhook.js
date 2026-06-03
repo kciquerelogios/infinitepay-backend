@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
 
-    // Buscar dados do cliente no Redis pelo order_nsu
+    // Buscar dados do cliente no Redis
     let dadosPedido = null;
     if (payload.order_nsu && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       try {
@@ -24,9 +24,22 @@ export default async function handler(req, res) {
           headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
         });
         const redisData = await redisResp.json();
+        console.log('=== REDIS RAW ===', JSON.stringify(redisData));
+
+        // O Upstash retorna { result: "string_json" }
         if (redisData && redisData.result) {
-          dadosPedido = JSON.parse(redisData.result);
-          console.log('=== DADOS CLIENTE REDIS ===', JSON.stringify(dadosPedido));
+          var raw = redisData.result;
+          // Se o result for um objeto com "value", pegar o value
+          if (typeof raw === 'object' && raw.value) {
+            raw = raw.value;
+          }
+          // Parse do JSON
+          if (typeof raw === 'string') {
+            dadosPedido = JSON.parse(raw);
+          } else {
+            dadosPedido = raw;
+          }
+          console.log('=== DADOS CLIENTE ===', JSON.stringify(dadosPedido));
         }
       } catch (e) {
         console.log('Erro ao buscar Redis:', e.message);
@@ -44,7 +57,6 @@ export default async function handler(req, res) {
       requires_shipping: true
     }));
 
-    // Montar pedido Shopify
     const orderData = {
       order: {
         line_items: lineItems,
@@ -62,18 +74,20 @@ export default async function handler(req, res) {
       }
     };
 
-    // Adicionar dados do cliente se disponíveis
     if (cliente) {
+      const primeiroNome = cliente.nome.split(' ')[0] || '';
+      const sobrenome = cliente.nome.split(' ').slice(1).join(' ') || '';
+
       orderData.order.customer = {
-        first_name: cliente.nome.split(' ')[0] || '',
-        last_name: cliente.nome.split(' ').slice(1).join(' ') || '',
+        first_name: primeiroNome,
+        last_name: sobrenome,
         email: cliente.email || '',
         phone: cliente.telefone || ''
       };
 
       orderData.order.shipping_address = {
-        first_name: cliente.nome.split(' ')[0] || '',
-        last_name: cliente.nome.split(' ').slice(1).join(' ') || '',
+        first_name: primeiroNome,
+        last_name: sobrenome,
         address1: `${cliente.rua}, ${cliente.numero}`,
         address2: cliente.complemento || '',
         zip: cliente.cep.replace(/\D/g, ''),
@@ -86,7 +100,6 @@ export default async function handler(req, res) {
       orderData.order.billing_address = orderData.order.shipping_address;
     }
 
-    // Adicionar método de envio se disponível
     if (frete) {
       orderData.order.shipping_lines = [{
         title: frete.nome,
@@ -112,7 +125,7 @@ export default async function handler(req, res) {
     if (shopifyData.order) {
       console.log('Pedido criado no Shopify:', shopifyData.order.id);
 
-      // Deletar dados do Redis após usar
+      // Deletar do Redis após usar
       if (payload.order_nsu && process.env.KV_REST_API_URL) {
         await fetch(`${process.env.KV_REST_API_URL}/del/${payload.order_nsu}`, {
           method: 'POST',
