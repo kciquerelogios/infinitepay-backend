@@ -166,6 +166,7 @@ export default async function handler(req, res) {
             email: 'kciqueadm@gmail.com',
             document: '66609452000183',
             company_document: '66609452000183',
+            is_company: true,
             state_register: null,
             address: 'Rua Frei Antônio Ventura',
             complement: '',
