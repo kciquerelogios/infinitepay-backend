@@ -15,6 +15,7 @@ export default async function handler(req, res) {
 
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+    const MELHORENVIO_TOKEN = process.env.MELHORENVIO_TOKEN;
 
     // Buscar dados do cliente no Redis
     let dadosPedido = null;
@@ -27,14 +28,10 @@ export default async function handler(req, res) {
 
         if (redisData && redisData.result) {
           let parsed = redisData.result;
-          while (typeof parsed === 'string') {
-            parsed = JSON.parse(parsed);
-          }
+          while (typeof parsed === 'string') parsed = JSON.parse(parsed);
           if (parsed && parsed.value) {
             let inner = parsed.value;
-            while (typeof inner === 'string') {
-              inner = JSON.parse(inner);
-            }
+            while (typeof inner === 'string') inner = JSON.parse(inner);
             parsed = inner;
           }
           dadosPedido = parsed;
@@ -48,8 +45,7 @@ export default async function handler(req, res) {
     const cliente = dadosPedido ? dadosPedido.cliente : null;
     const frete = dadosPedido ? dadosPedido.frete : null;
 
-    // Filtrar itens — remover o item de frete dos line_items
-    // pois o frete vai no shipping_lines separadamente
+    // Filtrar frete dos line_items
     const items = payload.items || [];
     const lineItems = items
       .filter(item => !item.description.toLowerCase().startsWith('frete'))
@@ -60,6 +56,7 @@ export default async function handler(req, res) {
         requires_shipping: true
       }));
 
+    // Montar pedido Shopify
     const orderData = {
       order: {
         line_items: lineItems,
@@ -111,6 +108,7 @@ export default async function handler(req, res) {
       }];
     }
 
+    // Criar pedido no Shopify
     const shopifyResponse = await fetch(
       `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`,
       {
@@ -125,22 +123,115 @@ export default async function handler(req, res) {
 
     const shopifyData = await shopifyResponse.json();
 
-    if (shopifyData.order) {
-      console.log('Pedido criado no Shopify:', shopifyData.order.id);
-
-      // Deletar do Redis após usar
-      if (payload.order_nsu && process.env.KV_REST_API_URL) {
-        await fetch(`${process.env.KV_REST_API_URL}/del/${payload.order_nsu}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-        });
-      }
-
-      return res.status(200).json({ success: true, message: null });
-    } else {
+    if (!shopifyData.order) {
       console.error('Erro Shopify:', JSON.stringify(shopifyData));
-      return res.status(400).json({ success: false, message: 'Erro ao criar pedido' });
+      return res.status(400).json({ success: false, message: 'Erro ao criar pedido no Shopify' });
     }
+
+    console.log('Pedido criado no Shopify:', shopifyData.order.id);
+
+    // Adicionar no carrinho do Melhor Envio
+    if (cliente && frete && MELHORENVIO_TOKEN) {
+      try {
+        const cepLimpo = cliente.cep.replace(/\D/g, '');
+        const produtoDescricao = lineItems[0] ? lineItems[0].title : 'Produto';
+
+        // Serviço: 1 = PAC, 2 = SEDEX
+        const serviceId = frete.id === 1 ? 1 : 2;
+
+        const melhorEnvioBody = {
+          service: serviceId,
+          agency: null,
+          from: {
+            name: 'Kcique Relógios',
+            phone: '11000000000',
+            email: 'kciqueadm@gmail.com',
+            document: '66609452000183',
+            company_document: '66609452000183',
+            state_register: null,
+            address: 'Rua Frei Antônio Ventura',
+            complement: '',
+            number: '111',
+            district: 'Jardim Vera Cruz',
+            city: 'São Paulo',
+            country_id: 'BR',
+            postal_code: '03807060',
+            note: ''
+          },
+          to: {
+            name: cliente.nome,
+            phone: cliente.telefone.replace(/\D/g, ''),
+            email: cliente.email,
+            document: cliente.cpf ? cliente.cpf.replace(/\D/g, '') : '',
+            address: cliente.rua,
+            complement: cliente.complemento || '',
+            number: cliente.numero,
+            district: cliente.bairro,
+            city: cliente.cidade,
+            country_id: 'BR',
+            postal_code: cepLimpo,
+            note: ''
+          },
+          products: [{
+            name: produtoDescricao,
+            quantity: 1,
+            unitary_value: ((payload.paid_amount || payload.amount || 0) / 100 - frete.preco).toFixed(2),
+            weight: 0.5
+          }],
+          volumes: [{
+            height: 10,
+            width: 12,
+            length: 18,
+            weight: 0.5
+          }],
+          tag: shopifyData.order.id.toString(),
+          platform: 'Shopify',
+          invoice: {
+            key: null
+          },
+          options: {
+            insurance_value: ((payload.paid_amount || payload.amount || 0) / 100 - frete.preco).toFixed(2),
+            receipt: false,
+            own_hand: false,
+            collect: false,
+            reverse: false,
+            non_commercial: false
+          }
+        };
+
+        const meResp = await fetch('https://melhorenvio.com.br/api/v2/me/cart', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${MELHORENVIO_TOKEN}`,
+            'Accept': 'application/json',
+            'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)'
+          },
+          body: JSON.stringify(melhorEnvioBody)
+        });
+
+        const meData = await meResp.json();
+        console.log('=== MELHOR ENVIO CART ===', JSON.stringify(meData));
+
+        if (meData.id) {
+          console.log('Etiqueta adicionada ao carrinho do Melhor Envio:', meData.id);
+        } else {
+          console.log('Erro ao adicionar no Melhor Envio:', JSON.stringify(meData));
+        }
+      } catch (e) {
+        console.log('Erro Melhor Envio:', e.message);
+      }
+    }
+
+    // Deletar do Redis após usar
+    if (payload.order_nsu && process.env.KV_REST_API_URL) {
+      await fetch(`${process.env.KV_REST_API_URL}/del/${payload.order_nsu}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+      });
+    }
+
+    return res.status(200).json({ success: true, message: null });
 
   } catch (error) {
     console.error('Erro webhook:', error);
