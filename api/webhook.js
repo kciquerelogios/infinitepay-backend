@@ -25,17 +25,11 @@ export default async function handler(req, res) {
         });
         const redisData = await redisResp.json();
 
-        // Upstash retorna { result: string }
-        // O string pode ter múltiplos níveis de JSON aninhado
         if (redisData && redisData.result) {
           let parsed = redisData.result;
-
-          // Desencapsular até chegar no objeto com "cliente"
           while (typeof parsed === 'string') {
             parsed = JSON.parse(parsed);
           }
-
-          // Se ainda tiver um "value" dentro, desencapsular mais
           if (parsed && parsed.value) {
             let inner = parsed.value;
             while (typeof inner === 'string') {
@@ -43,7 +37,6 @@ export default async function handler(req, res) {
             }
             parsed = inner;
           }
-
           dadosPedido = parsed;
           console.log('=== DADOS CLIENTE FINAL ===', JSON.stringify(dadosPedido));
         }
@@ -55,13 +48,17 @@ export default async function handler(req, res) {
     const cliente = dadosPedido ? dadosPedido.cliente : null;
     const frete = dadosPedido ? dadosPedido.frete : null;
 
+    // Filtrar itens — remover o item de frete dos line_items
+    // pois o frete vai no shipping_lines separadamente
     const items = payload.items || [];
-    const lineItems = items.map(item => ({
-      title: item.description || 'Produto',
-      quantity: item.quantity || 1,
-      price: ((item.price || 0) / 100).toFixed(2),
-      requires_shipping: true
-    }));
+    const lineItems = items
+      .filter(item => !item.description.toLowerCase().startsWith('frete'))
+      .map(item => ({
+        title: item.description || 'Produto',
+        quantity: item.quantity || 1,
+        price: ((item.price || 0) / 100).toFixed(2),
+        requires_shipping: true
+      }));
 
     const orderData = {
       order: {
