@@ -78,12 +78,30 @@ export default async function handler(req, res) {
       const primeiroNome = cliente.nome.split(' ')[0] || '';
       const sobrenome = cliente.nome.split(' ').slice(1).join(' ') || '';
 
-      orderData.order.customer = {
-        first_name: primeiroNome,
-        last_name: sobrenome,
-        email: cliente.email || '',
-        phone: cliente.telefone || ''
-      };
+      // Buscar cliente existente pelo email
+      try {
+        const clienteResp = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(cliente.email)}`,
+          { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+        );
+        const clienteData = await clienteResp.json();
+        if (clienteData.customers && clienteData.customers.length > 0) {
+          orderData.order.customer = { id: clienteData.customers[0].id };
+        } else {
+          orderData.order.customer = {
+            first_name: primeiroNome,
+            last_name: sobrenome,
+            email: cliente.email || '',
+            phone: cliente.telefone || ''
+          };
+        }
+      } catch(e) {
+        orderData.order.customer = {
+          first_name: primeiroNome,
+          last_name: sobrenome,
+          email: cliente.email || ''
+        };
+      }
 
       orderData.order.shipping_address = {
         first_name: primeiroNome,
