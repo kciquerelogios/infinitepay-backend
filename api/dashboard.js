@@ -14,7 +14,17 @@ export default async function handler(req, res) {
     `);
   }
 
-  // Buscar leads
+  // Deletar lead se solicitado
+  if (req.query.del) {
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    await fetch(`${KV_URL}/del/${req.query.del}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}` }
+    });
+    return res.redirect(`/api/dashboard?secret=${secret}`);
+  }
+
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
@@ -24,7 +34,18 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${KV_TOKEN}` }
     });
     const listaData = await listaResp.json();
-    const ids = listaData.result || [];
+    const idsRaw = listaData.result || [];
+
+    // Normalizar IDs — Upstash retorna {"value":"lead-xxx"}
+    const ids = idsRaw.map(i => {
+      if (typeof i === 'string') {
+        try {
+          const p = JSON.parse(i);
+          return p.value || i;
+        } catch(e) { return i; }
+      }
+      return i.value || i;
+    });
 
     for (const id of ids) {
       try {
@@ -34,7 +55,16 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (d.result) {
           let parsed = d.result;
-          while (typeof parsed === 'string') parsed = JSON.parse(parsed);
+          while (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch(e) { break; }
+          }
+          if (parsed && parsed.value) {
+            let inner = parsed.value;
+            while (typeof inner === 'string') {
+              try { inner = JSON.parse(inner); } catch(e) { break; }
+            }
+            parsed = inner;
+          }
           if (parsed && parsed.email) leads.push(parsed);
         }
       } catch(e) {}
@@ -182,27 +212,26 @@ export default async function handler(req, res) {
   }
 
   .produtos-lista { font-size: 13px; color: #374151; line-height: 1.6; }
-  .produto-item { display: flex; align-items: center; gap: 6px; }
-
-  .nome-email { }
   .nome { font-weight: 600; color: #1a1a2e; }
   .email { font-size: 12px; color: #6b7280; margin-top: 2px; }
   .tel { font-size: 12px; color: #6b7280; margin-top: 2px; }
-
   .data { font-size: 12px; color: #9ca3af; }
 
   .vazio {
     text-align: center;
     padding: 48px;
     color: #9ca3af;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e8eaf0;
   }
 
   @media (max-width: 768px) {
     .stats { grid-template-columns: 1fr; padding: 16px; }
     .container { padding: 0 16px 32px; }
     .header { padding: 16px; }
-    table { font-size: 13px; }
-    th, td { padding: 10px 12px; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 10px; }
   }
 </style>
 </head>
@@ -253,14 +282,14 @@ export default async function handler(req, res) {
         const valor = (lead.carrinho || []).reduce((s, i) => s + (i.preco * i.quantidade / 100), 0);
         const telefone = (lead.telefone || '').replace(/\D/g, '');
         const produtos = (lead.carrinho || []).map(i =>
-          `<div class="produto-item">• ${i.nome}${i.cor && i.cor !== 'Default Title' ? ' — ' + i.cor : ''} (x${i.quantidade})</div>`
-        ).join('');
+          `<div>• ${i.nome}${i.cor && i.cor !== 'Default Title' ? ' — ' + i.cor : ''} (x${i.quantidade}) — R$ ${(i.preco * i.quantidade / 100).toFixed(2).replace('.', ',')}</div>`
+        ).join('') || '<div style="color:#9ca3af">Sem produtos</div>';
 
         const data = new Date(lead.criado_em);
         const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
         const msg = encodeURIComponent(
-          `Olá ${lead.nome.split(' ')[0]}! Vi que você estava interessado(a) em produtos da Kcique Relógios e gostaria de te ajudar a finalizar sua compra. Posso te ajudar? 😊`
+          `Olá ${(lead.nome || '').split(' ')[0]}! 😊 Vi que você estava olhando nossos relógios na Kcique e gostaria de te ajudar a finalizar sua compra. Posso te ajudar?`
         );
 
         const badge = lead.estagio === 'pagamento'
@@ -269,22 +298,20 @@ export default async function handler(req, res) {
 
         return `<tr>
           <td>
-            <div class="nome-email">
-              <div class="nome">${lead.nome || '—'}</div>
-              <div class="email">${lead.email}</div>
-              <div class="tel">${lead.telefone || '—'}</div>
-            </div>
+            <div class="nome">${lead.nome || '—'}</div>
+            <div class="email">${lead.email}</div>
+            <div class="tel">${lead.telefone || '—'}</div>
           </td>
           <td>${badge}</td>
-          <td><div class="produtos-lista">${produtos || '—'}</div></td>
-          <td><strong>R$ ${valor.toFixed(2).replace('.', ',')}</strong>${lead.frete ? '<br><span style="font-size:12px;color:#6b7280">+ frete ' + lead.frete.nome + '</span>' : ''}</td>
+          <td><div class="produtos-lista">${produtos}</div></td>
+          <td><strong>R$ ${valor.toFixed(2).replace('.', ',')}</strong>${lead.frete ? '<br><span style="font-size:11px;color:#6b7280">+ frete ' + lead.frete.nome + '</span>' : ''}</td>
           <td><div class="data">${dataStr}</div></td>
-          <td>
-            <a href="https://wa.me/55${telefone}?text=${msg}" target="_blank" class="btn-wpp">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.553 4.122 1.522 5.862L.057 23.57a.5.5 0 00.614.612l5.807-1.524A11.935 11.935 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.882a9.856 9.856 0 01-5.031-1.378l-.36-.214-3.733.979.997-3.648-.235-.374A9.856 9.856 0 012.118 12C2.118 6.52 6.52 2.118 12 2.118S21.882 6.52 21.882 12 17.48 21.882 12 21.882z"/></svg>
+          <td style="white-space:nowrap">
+            ${telefone ? `<a href="https://wa.me/55${telefone}?text=${msg}" target="_blank" class="btn-wpp">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.553 4.122 1.522 5.862L.057 23.57a.5.5 0 00.614.612l5.807-1.524A11.935 11.935 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.882a9.856 9.856 0 01-5.031-1.378l-.36-.214-3.733.979.997-3.648-.235-.374A9.856 9.856 0 012.118 12C2.118 6.52 6.52 2.118 12 2.118S21.882 6.52 21.882 12 17.48 21.882 12 21.882z"/></svg>
               WhatsApp
-            </a>
-            <a href="/api/dashboard?secret=${secret}&del=${lead.id}" class="btn-del" title="Remover lead">
+            </a>` : '<span style="font-size:12px;color:#9ca3af">Sem telefone</span>'}
+            <a href="/api/dashboard?secret=${secret}&del=${lead.id}" class="btn-del" title="Remover" onclick="return confirm('Remover este lead?')">
               <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
             </a>
           </td>
@@ -296,17 +323,6 @@ export default async function handler(req, res) {
 
 </body>
 </html>`;
-
-  // Deletar lead se solicitado
-  if (req.query.del) {
-    const KV_URL = process.env.KV_REST_API_URL;
-    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-    await fetch(`${KV_URL}/del/${req.query.del}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}` }
-    });
-    return res.redirect(`/api/dashboard?secret=${secret}`);
-  }
 
   res.setHeader('Content-Type', 'text/html');
   return res.status(200).send(html);
