@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       email,
       telefone: telefone || '',
       cpf: cpf || '',
-      estagio, // 'dados' ou 'pagamento'
+      estagio,
       carrinho: carrinho || [],
       frete: frete || null,
       endereco: endereco || null,
@@ -27,21 +27,29 @@ export default async function handler(req, res) {
       contatado: false
     };
 
-    // Salvar lead individual
-    await fetch(`${KV_URL}/set/${id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 }) // 7 dias
-    });
+    try {
+      // Salvar lead individual
+      const setResp = await fetch(`${KV_URL}/set/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
+      });
+      const setData = await setResp.json();
+      console.log('SET lead:', JSON.stringify(setData));
 
-    // Adicionar ID na lista de leads
-    await fetch(`${KV_URL}/lpush/leads-lista`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: id })
-    });
+      // Adicionar ID na lista usando endpoint correto do Upstash
+      const pushResp = await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      const pushData = await pushResp.json();
+      console.log('LPUSH leads-lista:', JSON.stringify(pushData));
 
-    return res.status(200).json({ ok: true, id });
+      return res.status(200).json({ ok: true, id });
+    } catch(e) {
+      console.error('Erro leads POST:', e.message);
+      return res.status(500).json({ erro: e.message });
+    }
   }
 
   // LISTAR LEADS
@@ -50,14 +58,13 @@ export default async function handler(req, res) {
     if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
 
     try {
-      // Buscar lista de IDs
       const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/200`, {
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
       const listaData = await listaResp.json();
+      console.log('LRANGE result:', JSON.stringify(listaData));
       const ids = listaData.result || [];
 
-      // Buscar cada lead
       const leads = [];
       for (const id of ids) {
         try {
@@ -73,7 +80,6 @@ export default async function handler(req, res) {
         } catch(e) {}
       }
 
-      // Ordenar por mais recente
       leads.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
       return res.status(200).json({ leads });
     } catch(e) {
