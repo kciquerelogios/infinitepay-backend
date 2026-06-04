@@ -75,20 +75,12 @@ export default async function handler(req, res) {
         if (idsVistos.includes(parsed.id)) continue;
         idsVistos.push(parsed.id);
 
-        // Atualizar pagamento_pendente com mais de 1 minuto para abandonou_pagamento
+        // Mostrar como abandonou_pagamento se passou mais de 10 minutos (sem salvar)
         if (parsed.estagio === 'pagamento_pendente' && parsed.atualizado_em) {
           const minutos = (new Date() - new Date(parsed.atualizado_em)) / 1000 / 60;
           console.log('Lead', id, '| minutos:', Math.round(minutos));
-          if (minutos >= 1) {
+          if (minutos >= 10) {
             parsed.estagio = 'abandonou_pagamento';
-            parsed.atualizado_em = new Date().toISOString();
-            const saveResp = await fetch(`${KV_URL}/set/${id}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ value: JSON.stringify(parsed), ex: 604800 })
-            });
-            const saveData = await saveResp.json();
-            console.log('Salvo:', JSON.stringify(saveData));
           }
         }
 
