@@ -9,20 +9,28 @@ export default async function handler(req, res) {
 
   // SALVAR LEAD
   if (req.method === 'POST') {
-    const { nome, email, telefone, cpf, estagio, carrinho, frete, endereco } = req.body;
+    const body = req.body;
+    const email = body.email;
     if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
 
     const id = `lead-${Date.now()}`;
     const lead = {
       id,
-      nome: nome || '',
+      nome: body.nome || '',
       email,
-      telefone: telefone || '',
-      cpf: cpf || '',
-      estagio,
-      carrinho: carrinho || [],
-      frete: frete || null,
-      endereco: endereco || null,
+      telefone: body.telefone || '',
+      cpf: body.cpf || '',
+      estagio: body.estagio || 'email',
+      carrinho: body.carrinho || [],
+      frete: body.frete || null,
+      // Endereço — campos individuais
+      cep: body.cep || '',
+      rua: body.rua || '',
+      numero: body.numero || '',
+      complemento: body.complemento || '',
+      bairro: body.bairro || '',
+      cidade: body.cidade || '',
+      estado: body.estado || '',
       criado_em: new Date().toISOString(),
       contatado: false
     };
