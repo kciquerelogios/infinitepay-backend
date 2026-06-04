@@ -1,17 +1,3 @@
-function desencapsular(val) {
-  let v = val;
-  for (let i = 0; i < 10; i++) {
-    if (typeof v === 'string') {
-      try { v = JSON.parse(v); } catch(e) { break; }
-    } else if (v && typeof v === 'object') {
-      if (v.value !== undefined) { v = v.value; continue; }
-      if (v.result !== undefined) { v = v.result; continue; }
-      break;
-    } else break;
-  }
-  return v;
-}
-
 export default async function handler(req, res) {
   const { secret } = req.query;
   if (secret !== process.env.REPROCESSAR_SECRET) {
@@ -30,6 +16,7 @@ export default async function handler(req, res) {
 
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+  const BASE_URL = `https://${req.headers.host}`;
 
   // Deletar lead se solicitado
   if (req.query.del) {
@@ -41,58 +28,34 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}` }
     });
-    return res.redirect(`/api/dashboard?secret=${secret}`);
+    return res.redirect(`/api/dashboard?secret=${secret}&t=${Date.now()}`);
   }
 
+  // Buscar leads via API interna
   let leads = [];
   try {
-    const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/200`, {
-      headers: { Authorization: `Bearer ${KV_TOKEN}` }
-    });
-    const listaData = await listaResp.json();
-    const idsRaw = listaData.result || [];
-    console.log('LISTA RAW:', JSON.stringify(idsRaw));
+    const leadsResp = await fetch(`${BASE_URL}/api/leads?secret=${secret}`);
+    const leadsData = await leadsResp.json();
+    leads = leadsData.leads || [];
 
-    const ids = idsRaw.map(i => {
-      if (typeof i === 'string') {
-        try { const p = JSON.parse(i); return p.value || i; } catch(e) { return i; }
-      }
-      return i.value || i;
-    });
-
-    const idsVistos = [];
-    for (const id of ids) {
-      try {
-        const r = await fetch(`${KV_URL}/get/${id}`, {
-          headers: { Authorization: `Bearer ${KV_TOKEN}` }
-        });
-        const d = await r.json();
-        if (!d.result) continue;
-
-        const parsed = desencapsular(d.result);
-        console.log('ID:', id, '| email:', parsed && parsed.email, '| estagio:', parsed && parsed.estagio);
-
-        if (!parsed || !parsed.email) continue;
-        if (idsVistos.includes(parsed.id)) continue;
-        idsVistos.push(parsed.id);
-
-        // Mostrar como abandonou_pagamento se passou mais de 10 minutos
-        if (parsed.estagio === 'pagamento_pendente') {
-          const dataRef = parsed.atualizado_em || parsed.criado_em;
-          if (dataRef) {
-            const minutos = (new Date() - new Date(dataRef)) / 1000 / 60;
-            if (minutos >= 10) {
-              parsed.estagio = 'abandonou_pagamento';
-            }
+    // Verificar pagamento_pendente com mais de 10 minutos
+    leads = leads.map(lead => {
+      if (lead.estagio === 'pagamento_pendente') {
+        const dataRef = lead.atualizado_em || lead.criado_em;
+        if (dataRef) {
+          const minutos = (new Date() - new Date(dataRef)) / 1000 / 60;
+          if (minutos >= 10) {
+            return { ...lead, estagio: 'abandonou_pagamento' };
           }
         }
-
-        leads.push(parsed);
-      } catch(e) { console.log('Erro lead', id, e.message); }
-    }
+      }
+      return lead;
+    });
 
     leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
-  } catch(e) { console.log('Erro geral:', e.message); }
+  } catch(e) {
+    console.log('Erro buscar leads:', e.message);
+  }
 
   const totalValor = leads.reduce((s, l) => {
     return s + (l.carrinho || []).reduce((cs, i) => cs + (i.preco * i.quantidade / 100), 0);
@@ -115,7 +78,7 @@ export default async function handler(req, res) {
   .stat-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
   .stat-value { font-size: 28px; font-weight: 700; color: #1a1a2e; margin-top: 6px; }
   .container { max-width: 1200px; margin: 0 auto; padding: 0 32px 32px; }
-  .section-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .section-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; }
   .btn-refresh { padding: 8px 16px; background: #f3f4f6; border: 1px solid #e8eaf0; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; color: #374151; }
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; border: 1px solid #e8eaf0; overflow: hidden; }
   th { background: #f9f9fb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e8eaf0; }
@@ -226,9 +189,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0');
-  res.setHeader('Surrogate-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.setHeader('Vary', '*');
   return res.status(200).send(html);
 }
