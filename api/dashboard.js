@@ -75,12 +75,14 @@ export default async function handler(req, res) {
         if (idsVistos.includes(parsed.id)) continue;
         idsVistos.push(parsed.id);
 
-        // Mostrar como abandonou_pagamento se passou mais de 10 minutos (sem salvar)
-        if (parsed.estagio === 'pagamento_pendente' && parsed.atualizado_em) {
-          const minutos = (new Date() - new Date(parsed.atualizado_em)) / 1000 / 60;
-          console.log('Lead', id, '| minutos:', Math.round(minutos));
-          if (minutos >= 10) {
-            parsed.estagio = 'abandonou_pagamento';
+        // Mostrar como abandonou_pagamento se passou mais de 10 minutos
+        if (parsed.estagio === 'pagamento_pendente') {
+          const dataRef = parsed.atualizado_em || parsed.criado_em;
+          if (dataRef) {
+            const minutos = (new Date() - new Date(dataRef)) / 1000 / 60;
+            if (minutos >= 10) {
+              parsed.estagio = 'abandonou_pagamento';
+            }
           }
         }
 
