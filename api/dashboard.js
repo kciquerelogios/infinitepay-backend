@@ -18,10 +18,20 @@ export default async function handler(req, res) {
   if (req.query.del) {
     const KV_URL = process.env.KV_REST_API_URL;
     const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-    await fetch(`${KV_URL}/del/${req.query.del}`, {
+    const delId = req.query.del;
+
+    // Deletar o lead
+    await fetch(`${KV_URL}/del/${delId}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}` }
     });
+
+    // Remover da lista
+    await fetch(`${KV_URL}/lrem/leads-lista/0/${delId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}` }
+    });
+
     return res.redirect(`/api/dashboard?secret=${secret}`);
   }
 
