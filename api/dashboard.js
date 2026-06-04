@@ -57,6 +57,21 @@ export default async function handler(req, res) {
       return i.value || i;
     });
 
+
+function desencapsular(val) {
+  let v = val;
+  for (let i = 0; i < 10; i++) {
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch(e) { break; }
+    } else if (v && typeof v === 'object') {
+      if (v.value !== undefined) { v = v.value; continue; }
+      if (v.result !== undefined) { v = v.result; continue; }
+      break;
+    } else break;
+  }
+  return v;
+}
+
     const idsVistos = [];
     for (const id of ids) {
       try {
@@ -66,23 +81,12 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (!d.result) continue;
 
-        let parsed = d.result;
-        // Desencapsular todos os níveis de JSON string
-        for (let i = 0; i < 5; i++) {
-          if (typeof parsed === 'string') {
-            try { parsed = JSON.parse(parsed); } catch(e) { break; }
-          } else if (parsed && typeof parsed === 'object' && parsed.value !== undefined) {
-            parsed = parsed.value;
-          } else {
-            break;
-          }
-        }
-
+        const parsed = desencapsular(d.result);
         if (!parsed || !parsed.email) continue;
         if (idsVistos.includes(parsed.id)) continue;
         idsVistos.push(parsed.id);
 
-        // Verificar leads pagamento_pendente com mais de 10 minutos → marcar como abandonou
+        // Verificar leads pagamento_pendente com mais de 10 minutos
         if (parsed.estagio === 'pagamento_pendente' && parsed.atualizado_em) {
           const minutos = (new Date() - new Date(parsed.atualizado_em)) / 1000 / 60;
           if (minutos >= 10) {
