@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   }
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-  const BASE_URL = `https://${req.headers.host}`;
+  const BASE_URL = `https://infinitepay-backend.vercel.app`;
 
   // Deletar lead se solicitado
   if (req.query.del) {
