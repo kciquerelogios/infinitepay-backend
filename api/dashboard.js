@@ -67,15 +67,15 @@ export default async function handler(req, res) {
         if (!d.result) continue;
 
         let parsed = d.result;
-        while (typeof parsed === 'string') {
-          try { parsed = JSON.parse(parsed); } catch(e) { break; }
-        }
-        if (parsed && parsed.value) {
-          let inner = parsed.value;
-          while (typeof inner === 'string') {
-            try { inner = JSON.parse(inner); } catch(e) { break; }
+        // Desencapsular todos os níveis de JSON string
+        for (let i = 0; i < 5; i++) {
+          if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch(e) { break; }
+          } else if (parsed && typeof parsed === 'object' && parsed.value !== undefined) {
+            parsed = parsed.value;
+          } else {
+            break;
           }
-          parsed = inner;
         }
 
         if (!parsed || !parsed.email) continue;
