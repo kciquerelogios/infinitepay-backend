@@ -51,7 +51,7 @@ export default async function handler(req, res) {
         id: s.id,
         nome: s.name,
         preco: parseFloat(s.price),
-        prazo: s.delivery_time,
+        prazo: s.delivery_time <= 5 ? s.delivery_time : s.delivery_time <= 10 ? s.delivery_time - 2 : s.delivery_time - 3,
         empresa: s.company.name
       }));
 
