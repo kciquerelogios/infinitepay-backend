@@ -57,30 +57,50 @@ export default async function handler(req, res) {
       return i.value || i;
     });
 
+    const idsVistos = [];
     for (const id of ids) {
       try {
         const r = await fetch(`${KV_URL}/get/${id}`, {
           headers: { Authorization: `Bearer ${KV_TOKEN}` }
         });
         const d = await r.json();
-        if (d.result) {
-          let parsed = d.result;
-          while (typeof parsed === 'string') {
-            try { parsed = JSON.parse(parsed); } catch(e) { break; }
-          }
-          if (parsed && parsed.value) {
-            let inner = parsed.value;
-            while (typeof inner === 'string') {
-              try { inner = JSON.parse(inner); } catch(e) { break; }
-            }
-            parsed = inner;
-          }
-          if (parsed && parsed.email) leads.push(parsed);
+        if (!d.result) continue;
+
+        let parsed = d.result;
+        while (typeof parsed === 'string') {
+          try { parsed = JSON.parse(parsed); } catch(e) { break; }
         }
+        if (parsed && parsed.value) {
+          let inner = parsed.value;
+          while (typeof inner === 'string') {
+            try { inner = JSON.parse(inner); } catch(e) { break; }
+          }
+          parsed = inner;
+        }
+
+        if (!parsed || !parsed.email) continue;
+        if (idsVistos.includes(parsed.id)) continue;
+        idsVistos.push(parsed.id);
+
+        // Verificar leads pagamento_pendente com mais de 10 minutos → marcar como abandonou
+        if (parsed.estagio === 'pagamento_pendente' && parsed.atualizado_em) {
+          const minutos = (new Date() - new Date(parsed.atualizado_em)) / 1000 / 60;
+          if (minutos >= 10) {
+            parsed.estagio = 'abandonou_pagamento';
+            parsed.atualizado_em = new Date().toISOString();
+            await fetch(`${KV_URL}/set/${id}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ value: JSON.stringify(parsed), ex: 604800 })
+            });
+          }
+        }
+
+        leads.push(parsed);
       } catch(e) {}
     }
 
-    leads.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+    leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
   } catch(e) {}
 
   const totalValor = leads.reduce((s, l) => {
