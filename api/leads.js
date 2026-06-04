@@ -63,7 +63,17 @@ export default async function handler(req, res) {
       });
       const listaData = await listaResp.json();
       console.log('LRANGE result:', JSON.stringify(listaData));
-      const ids = listaData.result || [];
+      const idsRaw = listaData.result || [];
+      // Upstash retorna IDs como strings ou como {"value":"lead-xxx"} — normalizar
+      const ids = idsRaw.map(i => {
+        if (typeof i === 'string') {
+          try {
+            const parsed = JSON.parse(i);
+            return parsed.value || i;
+          } catch(e) { return i; }
+        }
+        return i.value || i;
+      });
 
       const leads = [];
       for (const id of ids) {
