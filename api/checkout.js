@@ -14,7 +14,7 @@ export default async function handler(req, res) {
 
   const precoFrete = frete ? Math.round(frete.preco * 100) : 0;
 
-  // Montar items para InfinitePay
+  // Montar items para InfinitePayw
   const items = carrinho.map(item => ({
     quantity: item.quantidade || 1,
     price: item.preco * (item.quantidade || 1),
