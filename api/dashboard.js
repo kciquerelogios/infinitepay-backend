@@ -221,8 +221,11 @@ export default async function handler(req, res) {
 </body>
 </html>`;
 
-  res.setHeader('Content-Type', 'text/html');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0');
+  res.setHeader('Surrogate-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Vary', '*');
   return res.status(200).send(html);
 }
