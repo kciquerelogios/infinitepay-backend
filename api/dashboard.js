@@ -89,14 +89,18 @@ function desencapsular(val) {
         // Verificar leads pagamento_pendente com mais de 10 minutos
         if (parsed.estagio === 'pagamento_pendente' && parsed.atualizado_em) {
           const minutos = (new Date() - new Date(parsed.atualizado_em)) / 1000 / 60;
-          if (minutos >= 10) {
+          console.log('Lead', id, 'minutos:', minutos, 'estagio:', parsed.estagio);
+          if (minutos >= 1) {
             parsed.estagio = 'abandonou_pagamento';
             parsed.atualizado_em = new Date().toISOString();
-            await fetch(`${KV_URL}/set/${id}`, {
+            // Salvar direto como string JSON no value
+            const saveResp = await fetch(`${KV_URL}/set/${id}`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ value: JSON.stringify(parsed), ex: 604800 })
             });
+            const saveData = await saveResp.json();
+            console.log('Save result:', JSON.stringify(saveData));
           }
         }
 
