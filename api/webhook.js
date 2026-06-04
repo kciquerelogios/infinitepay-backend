@@ -251,12 +251,27 @@ export default async function handler(req, res) {
       }
     }
 
-    // Deletar do Redis após usar
+    // Deletar dados do pedido do Redis após usar
     if (payload.order_nsu && process.env.KV_REST_API_URL) {
       await fetch(`${process.env.KV_REST_API_URL}/del/${payload.order_nsu}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
       });
+    }
+
+    // Deletar lead de abandono se existir (cliente pagou!)
+    if (cliente && cliente.email && process.env.KV_REST_API_URL) {
+      const leadId = `lead-${cliente.email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+      await fetch(`${process.env.KV_REST_API_URL}/del/${leadId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+      });
+      // Remover da lista também
+      await fetch(`${process.env.KV_REST_API_URL}/lrem/leads-lista/0/${leadId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+      });
+      console.log('Lead removido após pagamento:', leadId);
     }
 
     return res.status(200).json({ success: true, message: null });
