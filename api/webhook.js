@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
     const MELHORENVIO_TOKEN = process.env.MELHORENVIO_TOKEN;
 
-    // Buscar dados do cliente no Redis v3
+    // Buscar dados do cliente no Redis
     let dadosPedido = null;
     if (payload.order_nsu && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       try {
@@ -167,13 +167,13 @@ export default async function handler(req, res) {
             document: process.env.MELHORENVIO_CPF,
             company_document: '66609452000183',
             state_register: null,
-            address: 'Rua Frei Antônio Ventura',
-            complement: '',
-            number: '111',
-            district: 'Jardim Vera Cruz',
+            address: 'Rua São Francisco',
+            complement: 'Ap 804',
+            number: '98',
+            district: 'Se',
             city: 'São Paulo',
             country_id: 'BR',
-            postal_code: '03807060',
+            postal_code: '01005020',
             note: ''
           },
           to: {
