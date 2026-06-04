@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!carrinho || carrinho.length === 0) {
     return res.status(400).json({ erro: 'Carrinho vazio' });
   }
-
+// test
   const precoFrete = frete ? Math.round(frete.preco * 100) : 0;
 
   // Montar items para InfinitePayw
