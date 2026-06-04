@@ -103,6 +103,20 @@ export default async function handler(req, res) {
         return i.value || i;
       });
 
+      function desencapsular(val) {
+        let v = val;
+        for (let i = 0; i < 10; i++) {
+          if (typeof v === 'string') {
+            try { v = JSON.parse(v); } catch(e) { break; }
+          } else if (v && typeof v === 'object') {
+            if (v.value !== undefined) { v = v.value; continue; }
+            if (v.result !== undefined) { v = v.result; continue; }
+            break;
+          } else break;
+        }
+        return v;
+      }
+
       const leads = [];
       const idsValidos = [];
 
@@ -112,25 +126,11 @@ export default async function handler(req, res) {
             headers: { Authorization: `Bearer ${KV_TOKEN}` }
           });
           const d = await r.json();
-          if (d.result) {
-            let parsed = d.result;
-            while (typeof parsed === 'string') {
-              try { parsed = JSON.parse(parsed); } catch(e) { break; }
-            }
-            if (parsed && parsed.value) {
-              let inner = parsed.value;
-              while (typeof inner === 'string') {
-                try { inner = JSON.parse(inner); } catch(e) { break; }
-              }
-              parsed = inner;
-            }
-            if (parsed && parsed.email) {
-              // Evitar duplicados na listagem
-              if (!idsValidos.includes(parsed.id)) {
-                idsValidos.push(parsed.id);
-                leads.push(parsed);
-              }
-            }
+          if (!d.result) continue;
+          const parsed = desencapsular(d.result);
+          if (parsed && parsed.email && !idsValidos.includes(parsed.id)) {
+            idsValidos.push(parsed.id);
+            leads.push(parsed);
           }
         } catch(e) {}
       }
