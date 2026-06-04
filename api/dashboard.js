@@ -154,7 +154,7 @@ export default async function handler(req, res) {
           'email': '<span class="badge" style="background:#f3f4f6;color:#374151">⚪ Só email</span>',
           'dados_parciais': '<span class="badge badge-dados">🟡 Dados parciais</span>',
           'endereco': '<span class="badge" style="background:#dbeafe;color:#1e40af">🔵 Preencheu endereço</span>',
-          'pagamento_pendente': '<span class="badge" style="background:#fef3c7;color:#92400e">⏳ Aguardando pagamento</span>',
+          'pagamento_pendente': \`<span class="badge" style="background:#fef3c7;color:#92400e" data-atualizado="\${lead.atualizado_em || lead.criado_em}">⏳ Aguardando pagamento</span>\`,
           'abandonou_pagamento': '<span class="badge badge-pagamento">🔴 Abandonou no pagamento</span>'
         };
         const badge = badges[lead.estagio] || `<span class="badge badge-dados">🟡 ${lead.estagio || 'dados'}</span>`;
@@ -184,6 +184,32 @@ export default async function handler(req, res) {
     </tbody>
   </table>`}
 </div>
+<script>
+// Atualizar badges no cliente
+document.addEventListener('DOMContentLoaded', function() {
+  var agora = new Date();
+  document.querySelectorAll('[data-atualizado]').forEach(function(el) {
+    var atualizado = new Date(el.getAttribute('data-atualizado'));
+    var minutos = (agora - atualizado) / 1000 / 60;
+    if (minutos >= 10) {
+      el.innerHTML = '<span class="badge badge-pagamento">🔴 Abandonou no pagamento</span>';
+    }
+  });
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var agora = new Date();
+  document.querySelectorAll('[data-atualizado]').forEach(function(el) {
+    var dt = el.getAttribute('data-atualizado');
+    if (!dt) return;
+    var minutos = (agora - new Date(dt)) / 1000 / 60;
+    if (minutos >= 10) {
+      el.innerHTML = '<span class="badge badge-pagamento">&#x1F534; Abandonou no pagamento</span>';
+    }
+  });
+});
+</script>
 </body>
 </html>`;
 
