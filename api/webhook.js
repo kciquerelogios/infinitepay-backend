@@ -44,17 +44,28 @@ export default async function handler(req, res) {
 
     const cliente = dadosPedido ? dadosPedido.cliente : null;
     const frete = dadosPedido ? dadosPedido.frete : null;
+    const carrinhoSalvo = dadosPedido ? dadosPedido.carrinho : null;
 
-    // Filtrar frete dos line_items
-    const items = payload.items || [];
-    const lineItems = items
-      .filter(item => !item.description.toLowerCase().startsWith('frete'))
-      .map(item => ({
-        title: item.description || 'Produto',
-        quantity: item.quantity || 1,
-        price: ((item.price || 0) / 100).toFixed(2),
+    // Usar carrinho salvo se disponível, senão usar payload
+    let lineItems;
+    if (carrinhoSalvo && carrinhoSalvo.length > 0) {
+      lineItems = carrinhoSalvo.map(item => ({
+        title: item.nome + (item.cor && item.cor !== 'Default Title' ? ' - Cor: ' + item.cor : ''),
+        quantity: item.quantidade || 1,
+        price: (item.preco / 100).toFixed(2),
         requires_shipping: true
       }));
+    } else {
+      const items = payload.items || [];
+      lineItems = items
+        .filter(item => !item.description.toLowerCase().startsWith('frete'))
+        .map(item => ({
+          title: item.description || 'Produto',
+          quantity: item.quantity || 1,
+          price: ((item.price || 0) / 100).toFixed(2),
+          requires_shipping: true
+        }));
+    }
 
     // Montar pedido Shopify
     const orderData = {
