@@ -9,13 +9,12 @@ export default async function handler(req, res) {
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
-  // SALVAR LEAD — usar email como chave única para evitar duplicados
+  // SALVAR LEAD
   if (req.method === 'POST') {
     const body = req.body;
     const email = body.email;
     if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
 
-    // Chave única por email
     const id = `lead-${email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
 
     const lead = {
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
       email,
       telefone: body.telefone || '',
       cpf: body.cpf || '',
-      estagio: body.estagio || 'email',
+      estagio: body.estagio || 'dados',
       carrinho: body.carrinho || [],
       frete: body.frete || null,
       cep: body.cep || '',
@@ -35,47 +34,47 @@ export default async function handler(req, res) {
       cidade: body.cidade || '',
       estado: body.estado || '',
       atualizado_em: new Date().toISOString(),
-      criado_em: null, // será preenchido abaixo
       contatado: false
     };
 
     try {
-      // Verificar se já existe lead com esse email
+      // Verificar se já existe para preservar criado_em
+      let criado_em = new Date().toISOString();
+      let naLista = false;
+
       const existeResp = await fetch(`${KV_URL}/get/${id}`, {
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
       const existeData = await existeResp.json();
 
       if (existeData.result) {
-        // Lead já existe — atualizar mantendo criado_em original
+        // Já existe — preservar criado_em
         let existente = existeData.result;
-        while (typeof existente === 'string') {
-          try { existente = JSON.parse(existente); } catch(e) { break; }
+        for (let i = 0; i < 10; i++) {
+          if (typeof existente === 'string') { try { existente = JSON.parse(existente); } catch(e) { break; } }
+          else if (existente && existente.value !== undefined) { existente = existente.value; }
+          else break;
         }
-        if (existente && existente.value) {
-          let inner = existente.value;
-          while (typeof inner === 'string') {
-            try { inner = JSON.parse(inner); } catch(e) { break; }
-          }
-          existente = inner;
-        }
-        lead.criado_em = existente && existente.criado_em ? existente.criado_em : new Date().toISOString();
-        lead.contatado = existente && existente.contatado ? existente.contatado : false;
-      } else {
-        // Lead novo — adicionar na lista
-        lead.criado_em = new Date().toISOString();
+        if (existente && existente.criado_em) criado_em = existente.criado_em;
+        naLista = true; // Já está na lista
+      }
+
+      lead.criado_em = criado_em;
+
+      // Salvar lead
+      await fetch(`${KV_URL}/set/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
+      });
+
+      // Adicionar na lista somente se é novo
+      if (!naLista) {
         await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${KV_TOKEN}` }
         });
       }
-
-      // Salvar/atualizar lead
-      await fetch(`${KV_URL}/set/${id}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 }) // 7 dias
-      });
 
       return res.status(200).json({ ok: true, id });
     } catch(e) {
@@ -97,18 +96,15 @@ export default async function handler(req, res) {
       const idsRaw = listaData.result || [];
 
       const ids = idsRaw.map(i => {
-        if (typeof i === 'string') {
-          try { const p = JSON.parse(i); return p.value || i; } catch(e) { return i; }
-        }
+        if (typeof i === 'string') { try { const p = JSON.parse(i); return p.value || i; } catch(e) { return i; } }
         return i.value || i;
       });
 
       function desencapsular(val) {
         let v = val;
         for (let i = 0; i < 10; i++) {
-          if (typeof v === 'string') {
-            try { v = JSON.parse(v); } catch(e) { break; }
-          } else if (v && typeof v === 'object') {
+          if (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+          else if (v && typeof v === 'object') {
             if (v.value !== undefined) { v = v.value; continue; }
             if (v.result !== undefined) { v = v.result; continue; }
             break;
@@ -118,18 +114,16 @@ export default async function handler(req, res) {
       }
 
       const leads = [];
-      const idsValidos = [];
+      const idsVistos = [];
 
       for (const id of ids) {
         try {
-          const r = await fetch(`${KV_URL}/get/${id}`, {
-            headers: { Authorization: `Bearer ${KV_TOKEN}` }
-          });
+          const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
           const d = await r.json();
           if (!d.result) continue;
           const parsed = desencapsular(d.result);
-          if (parsed && parsed.email && !idsValidos.includes(parsed.id)) {
-            idsValidos.push(parsed.id);
+          if (parsed && parsed.email && !idsVistos.includes(parsed.id)) {
+            idsVistos.push(parsed.id);
             leads.push(parsed);
           }
         } catch(e) {}
@@ -146,19 +140,8 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { secret, id } = req.query;
     if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-
-    // Deletar o lead
-    await fetch(`${KV_URL}/del/${id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}` }
-    });
-
-    // Remover da lista também
-    await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}` }
-    });
-
+    await fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     return res.status(200).json({ ok: true });
   }
 
