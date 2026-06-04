@@ -292,15 +292,24 @@ export default async function handler(req, res) {
           `Olá ${(lead.nome || '').split(' ')[0]}! 😊 Vi que você estava olhando nossos relógios na Kcique e gostaria de te ajudar a finalizar sua compra. Posso te ajudar?`
         );
 
-        const badge = lead.estagio === 'pagamento'
-          ? '<span class="badge badge-pagamento">🔴 Abandonou no pagamento</span>'
-          : '<span class="badge badge-dados">🟡 Preencheu dados</span>';
+        const badges = {
+          'email': '<span class="badge" style="background:#f3f4f6;color:#374151">⚪ Só email</span>',
+          'dados_parciais': '<span class="badge badge-dados">🟡 Dados parciais</span>',
+          'endereco': '<span class="badge" style="background:#dbeafe;color:#1e40af">🔵 Preencheu endereço</span>',
+          'pagamento': '<span class="badge badge-pagamento">🔴 Abandonou no pagamento</span>'
+        };
+        const badge = badges[lead.estagio] || '<span class="badge badge-dados">🟡 ' + (lead.estagio || 'dados') + '</span>';
+        
+        const enderecoStr = lead.rua ? 
+          `${lead.rua}${lead.numero ? ', ' + lead.numero : ''}${lead.complemento ? ' ' + lead.complemento : ''} — ${lead.bairro || ''} — ${lead.cidade || ''}/${lead.estado || ''} — CEP: ${lead.cep || ''}` 
+          : '';
 
         return `<tr>
           <td>
             <div class="nome">${lead.nome || '—'}</div>
             <div class="email">${lead.email}</div>
             <div class="tel">${lead.telefone || '—'}</div>
+            ${enderecoStr ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px">${enderecoStr}</div>` : ''}
           </td>
           <td>${badge}</td>
           <td><div class="produtos-lista">${produtos}</div></td>
