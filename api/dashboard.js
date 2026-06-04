@@ -13,11 +13,10 @@ export default async function handler(req, res) {
       </body></html>
     `);
   }
+
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-  const BASE_URL = `https://infinitepay-backend.vercel.app`;
-  const VERSAO = '2.0';
-console.log('Dashboard versao:', VERSAO);
+  const BASE_URL = `https://${req.headers.host}`;
 
   // Deletar lead se solicitado
   if (req.query.del) {
