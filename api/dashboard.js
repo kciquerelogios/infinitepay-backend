@@ -51,6 +51,7 @@ export default async function handler(req, res) {
     });
     const listaData = await listaResp.json();
     const idsRaw = listaData.result || [];
+    console.log('LISTA RAW:', JSON.stringify(idsRaw));
 
     const ids = idsRaw.map(i => {
       if (typeof i === 'string') {
