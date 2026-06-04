@@ -82,12 +82,24 @@ export default async function handler(req, res) {
             headers: { Authorization: `Bearer ${KV_TOKEN}` }
           });
           const d = await r.json();
+          console.log('GET', id, JSON.stringify(d).substring(0, 200));
           if (d.result) {
             let parsed = d.result;
-            while (typeof parsed === 'string') parsed = JSON.parse(parsed);
+            while (typeof parsed === 'string') {
+              try { parsed = JSON.parse(parsed); } catch(e) { break; }
+            }
+            // Se ainda tiver value dentro
+            if (parsed && parsed.value) {
+              let inner = parsed.value;
+              while (typeof inner === 'string') {
+                try { inner = JSON.parse(inner); } catch(e) { break; }
+              }
+              parsed = inner;
+            }
+            console.log('LEAD parsed:', JSON.stringify(parsed).substring(0, 100));
             if (parsed && parsed.email) leads.push(parsed);
           }
-        } catch(e) {}
+        } catch(e) { console.log('Erro GET', id, e.message); }
       }
 
       leads.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
