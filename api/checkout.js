@@ -5,14 +5,21 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { cor, preco, descricao, frete, cliente } = req.body;
+  const { carrinho, frete, cliente } = req.body;
   const HANDLE = process.env.INFINITE_HANDLE;
+
+  if (!carrinho || carrinho.length === 0) {
+    return res.status(400).json({ erro: 'Carrinho vazio' });
+  }
 
   const precoFrete = frete ? Math.round(frete.preco * 100) : 0;
 
-  const items = [
-    { quantity: 1, price: preco, description: descricao }
-  ];
+  // Montar items para InfinitePay
+  const items = carrinho.map(item => ({
+    quantity: item.quantidade || 1,
+    price: item.preco * (item.quantidade || 1),
+    description: item.nome + (item.cor && item.cor !== 'Default Title' ? ' - Cor: ' + item.cor : '')
+  }));
 
   if (frete && precoFrete > 0) {
     items.push({
@@ -51,14 +58,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Salvar dados do cliente no Redis com o order_nsu como chave
-    if (cliente && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    // Salvar dados no Redis
+    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       const dadosPedido = {
         cliente,
         frete,
-        preco,
-        descricao,
-        cor,
+        carrinho,
         order_nsu: orderNsu,
         criado_em: new Date().toISOString()
       };
@@ -71,7 +76,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           value: JSON.stringify(dadosPedido),
-          ex: 86400 // expira em 24 horas
+          ex: 86400
         })
       });
     }
