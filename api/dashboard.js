@@ -6,7 +6,7 @@ export default async function handler(req, res) {
 
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-
+// v3
   if (req.query.del) {
     await fetch(`${KV_URL}/del/${req.query.del}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     await fetch(`${KV_URL}/lrem/leads-lista/0/${req.query.del}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
