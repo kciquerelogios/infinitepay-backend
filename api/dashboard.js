@@ -374,5 +374,7 @@ function desencapsular(val) {
 </html>`;
 
   res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   return res.status(200).send(html);
 }
