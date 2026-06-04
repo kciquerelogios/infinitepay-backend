@@ -38,45 +38,26 @@ export default async function handler(req, res) {
     };
 
     try {
-      // Verificar se já existe para preservar criado_em
-      let criado_em = new Date().toISOString();
-      let naLista = false;
+      lead.criado_em = new Date().toISOString();
 
-      const existeResp = await fetch(`${KV_URL}/get/${id}`, {
-        headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-      const existeData = await existeResp.json();
-
-      if (existeData.result) {
-        // Já existe — preservar criado_em
-        let existente = existeData.result;
-        for (let i = 0; i < 10; i++) {
-          if (typeof existente === 'string') { try { existente = JSON.parse(existente); } catch(e) { break; } }
-          else if (existente && existente.value !== undefined) { existente = existente.value; }
-          else break;
-        }
-        if (existente && existente.criado_em) criado_em = existente.criado_em;
-        naLista = true; // Já está na lista
-      }
-
-      lead.criado_em = criado_em;
+      // Salvar lead com ID único por sessão (timestamp)
+      const sessionId = `${id}-${Date.now()}`;
+      lead.id = sessionId;
 
       // Salvar lead
-      await fetch(`${KV_URL}/set/${id}`, {
+      await fetch(`${KV_URL}/set/${sessionId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
       });
 
-      // Adicionar na lista somente se é novo
-      if (!naLista) {
-        await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${KV_TOKEN}` }
-        });
-      }
+      // Sempre adicionar na lista
+      await fetch(`${KV_URL}/lpush/leads-lista/${sessionId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
 
-      return res.status(200).json({ ok: true, id });
+      return res.status(200).json({ ok: true, id: sessionId });
     } catch(e) {
       console.error('Erro leads POST:', e.message);
       return res.status(500).json({ erro: e.message });
