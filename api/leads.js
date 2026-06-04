@@ -9,13 +9,15 @@ export default async function handler(req, res) {
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
-  // SALVAR LEAD
+  // SALVAR LEAD — usar email como chave única para evitar duplicados
   if (req.method === 'POST') {
     const body = req.body;
     const email = body.email;
     if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
 
-    const id = `lead-${Date.now()}`;
+    // Chave única por email
+    const id = `lead-${email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+
     const lead = {
       id,
       nome: body.nome || '',
@@ -25,7 +27,6 @@ export default async function handler(req, res) {
       estagio: body.estagio || 'email',
       carrinho: body.carrinho || [],
       frete: body.frete || null,
-      // Endereço — campos individuais
       cep: body.cep || '',
       rua: body.rua || '',
       numero: body.numero || '',
@@ -33,27 +34,48 @@ export default async function handler(req, res) {
       bairro: body.bairro || '',
       cidade: body.cidade || '',
       estado: body.estado || '',
-      criado_em: new Date().toISOString(),
+      atualizado_em: new Date().toISOString(),
+      criado_em: null, // será preenchido abaixo
       contatado: false
     };
 
     try {
-      // Salvar lead individual
-      const setResp = await fetch(`${KV_URL}/set/${id}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
-      });
-      const setData = await setResp.json();
-      console.log('SET lead:', JSON.stringify(setData));
-
-      // Adicionar ID na lista usando endpoint correto do Upstash
-      const pushResp = await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
-        method: 'POST',
+      // Verificar se já existe lead com esse email
+      const existeResp = await fetch(`${KV_URL}/get/${id}`, {
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
-      const pushData = await pushResp.json();
-      console.log('LPUSH leads-lista:', JSON.stringify(pushData));
+      const existeData = await existeResp.json();
+
+      if (existeData.result) {
+        // Lead já existe — atualizar mantendo criado_em original
+        let existente = existeData.result;
+        while (typeof existente === 'string') {
+          try { existente = JSON.parse(existente); } catch(e) { break; }
+        }
+        if (existente && existente.value) {
+          let inner = existente.value;
+          while (typeof inner === 'string') {
+            try { inner = JSON.parse(inner); } catch(e) { break; }
+          }
+          existente = inner;
+        }
+        lead.criado_em = existente && existente.criado_em ? existente.criado_em : new Date().toISOString();
+        lead.contatado = existente && existente.contatado ? existente.contatado : false;
+      } else {
+        // Lead novo — adicionar na lista
+        lead.criado_em = new Date().toISOString();
+        await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}` }
+        });
+      }
+
+      // Salvar/atualizar lead
+      await fetch(`${KV_URL}/set/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 }) // 7 dias
+      });
 
       return res.status(200).json({ ok: true, id });
     } catch(e) {
@@ -68,37 +90,33 @@ export default async function handler(req, res) {
     if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
 
     try {
-      const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/200`, {
+      const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/500`, {
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
       const listaData = await listaResp.json();
-      console.log('LRANGE result:', JSON.stringify(listaData));
       const idsRaw = listaData.result || [];
-      // Upstash retorna IDs como strings ou como {"value":"lead-xxx"} — normalizar
+
       const ids = idsRaw.map(i => {
         if (typeof i === 'string') {
-          try {
-            const parsed = JSON.parse(i);
-            return parsed.value || i;
-          } catch(e) { return i; }
+          try { const p = JSON.parse(i); return p.value || i; } catch(e) { return i; }
         }
         return i.value || i;
       });
 
       const leads = [];
+      const idsValidos = [];
+
       for (const id of ids) {
         try {
           const r = await fetch(`${KV_URL}/get/${id}`, {
             headers: { Authorization: `Bearer ${KV_TOKEN}` }
           });
           const d = await r.json();
-          console.log('GET', id, JSON.stringify(d).substring(0, 200));
           if (d.result) {
             let parsed = d.result;
             while (typeof parsed === 'string') {
               try { parsed = JSON.parse(parsed); } catch(e) { break; }
             }
-            // Se ainda tiver value dentro
             if (parsed && parsed.value) {
               let inner = parsed.value;
               while (typeof inner === 'string') {
@@ -106,13 +124,18 @@ export default async function handler(req, res) {
               }
               parsed = inner;
             }
-            console.log('LEAD parsed:', JSON.stringify(parsed).substring(0, 100));
-            if (parsed && parsed.email) leads.push(parsed);
+            if (parsed && parsed.email) {
+              // Evitar duplicados na listagem
+              if (!idsValidos.includes(parsed.id)) {
+                idsValidos.push(parsed.id);
+                leads.push(parsed);
+              }
+            }
           }
-        } catch(e) { console.log('Erro GET', id, e.message); }
+        } catch(e) {}
       }
 
-      leads.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+      leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
       return res.status(200).json({ leads });
     } catch(e) {
       return res.status(500).json({ erro: e.message });
@@ -123,10 +146,19 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { secret, id } = req.query;
     if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+
+    // Deletar o lead
     await fetch(`${KV_URL}/del/${id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}` }
     });
+
+    // Remover da lista também
+    await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}` }
+    });
+
     return res.status(200).json({ ok: true });
   }
 
