@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   // Montar items para InfinitePay
   const items = carrinho.map(item => ({
     quantity: item.quantidade || 1,
-    price: item.preco * (item.quantidade || 1),
+    price: item.preco,
     description: item.nome + (item.cor && item.cor !== 'Default Title' ? ' - Cor: ' + item.cor : '')
   }));
 
