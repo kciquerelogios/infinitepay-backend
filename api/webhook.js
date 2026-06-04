@@ -63,7 +63,7 @@ export default async function handler(req, res) {
         financial_status: 'paid',
         fulfillment_status: null,
         currency: 'BRL',
-        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Comprovante: ${payload.receipt_url || ''}`,
+        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Telefone: ${cliente ? cliente.telefone : ''} | Comprovante: ${payload.receipt_url || ''}`,
         tags: 'InfinitePay',
         transactions: [{
           kind: 'sale',
@@ -91,8 +91,7 @@ export default async function handler(req, res) {
           orderData.order.customer = {
             first_name: primeiroNome,
             last_name: sobrenome,
-            email: cliente.email || '',
-            phone: cliente.telefone || ''
+            email: cliente.email || ''
           };
         }
       } catch(e) {
