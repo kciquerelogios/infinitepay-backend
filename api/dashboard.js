@@ -27,8 +27,8 @@ export default async function handler(req, res) {
     const valor = (lead.carrinho || []).reduce((s, i) => s + (i.preco * i.quantidade / 100), 0);
     const telefone = (lead.telefone || '').replace(/\D/g, '');
     const produtos = (lead.carrinho || []).map(i => `<div>• ${i.nome}${i.cor && i.cor !== 'Default Title' ? ' — ' + i.cor : ''} (x${i.quantidade}) — R$ ${(i.preco * i.quantidade / 100).toFixed(2).replace('.', ',')}</div>`).join('') || '<div style="color:#9ca3af">Sem produtos</div>';
-    const data = new Date(lead.criado_em);
-    const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const data = new Date(new Date(lead.criado_em).getTime() - 3 * 60 * 60 * 1000);
+const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const msg = encodeURIComponent(`Olá ${(lead.nome || '').split(' ')[0]}! 😊 Vi que você estava olhando nossos relógios na Kcique e gostaria de te ajudar a finalizar sua compra. Posso te ajudar?`);
     const enderecoStr = lead.rua ? `${lead.rua}${lead.numero ? ', ' + lead.numero : ''} — ${lead.bairro || ''} — ${lead.cidade || ''}/${lead.estado || ''} — CEP: ${lead.cep || ''}` : '';
     const dataRef = lead.atualizado_em || lead.criado_em || '';
