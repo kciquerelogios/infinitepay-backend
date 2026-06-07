@@ -32,10 +32,10 @@ export default async function handler(req, res) {
       criado_em: new Date().toISOString()
     };
 
-    await fetch(`${KV_URL}/set/${id}`, {
+    await fetch(`${KV_URL}/set/${id}/ex/2592000`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(oferta), ex: 60 * 60 * 24 * 30 })
+      body: JSON.stringify(JSON.stringify(oferta))
     });
 
     await fetch(`${KV_URL}/rpush/ofertas-lista`, {
