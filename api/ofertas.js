@@ -66,10 +66,9 @@ async function salvarOferta(KV_URL, KV_TOKEN, dados) {
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(JSON.stringify(oferta))
   });
-  const rpushResp = await fetch(`${KV_URL}/rpush/ofertas-lista`, {
+  const rpushResp = await fetch(`${KV_URL}/rpush/ofertas-lista/${id}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([id])
+    headers: { Authorization: `Bearer ${KV_TOKEN}` }
   });
   const rpushData = await rpushResp.json();
   console.log('rpush result:', JSON.stringify(rpushData));
