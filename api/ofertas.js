@@ -42,18 +42,16 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
   const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
   const listaData = await listaResp.json();
   const ids = listaData.result || [];
-  console.log('IDs na lista:', JSON.stringify(ids));
   const ofertas = [];
   for (const id of ids) {
     try {
       const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const d = await r.json();
-      console.log('Raw Redis get', id, ':', JSON.stringify(d).substring(0, 200));
       if (d.result === null || d.result === undefined) continue;
       let oferta = d.result;
       if (typeof oferta === 'string') oferta = JSON.parse(oferta);
       if (oferta && oferta.id) ofertas.push(oferta);
-    } catch(e) { console.error('Erro parse', id, e.message); }
+    } catch(e) {}
   }
   return ofertas.sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
 }
@@ -61,18 +59,20 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
 async function salvarOferta(KV_URL, KV_TOKEN, dados) {
   const { texto, imagem, link, dataHora, grupos } = dados;
   if (!texto || !dataHora) throw new Error('Texto e data obrigatórios');
-  const id = `oferta-${Date.now()}`;
+  const id = `oferta_${Date.now()}`;
   const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', status: 'agendada', criado_em: new Date().toISOString() };
   await fetch(`${KV_URL}/set/${id}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(JSON.stringify(oferta))
   });
-  await fetch(`${KV_URL}/rpush/ofertas-lista`, {
+  const rpushResp = await fetch(`${KV_URL}/rpush/ofertas-lista`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify([id])
   });
+  const rpushData = await rpushResp.json();
+  console.log('rpush result:', JSON.stringify(rpushData));
   return id;
 }
 
