@@ -33,6 +33,65 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/admin?secret=${secret}#ofertas"></head><body></body></html>`);
   }
 
+  // ===== DADOS HOME (Shopify) =====
+  const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
+  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+  const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
+  const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+
+  const hoje = new Date();
+  const hojeStr = hoje.toISOString().split('T')[0];
+  const inicioDia = hojeStr + 'T00:00:00-03:00';
+  const fimDia = hojeStr + 'T23:59:59-03:00';
+  const inicioMes = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-01T00:00:00-03:00';
+  const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+  const inicioSemanaStr = inicioSemana.toISOString().split('T')[0] + 'T00:00:00-03:00';
+
+  let vendas = { hoje: { count: 0, valor: 0 }, semana: { count: 0, valor: 0 }, mes: { count: 0, valor: 0 } };
+  let topProdutos = [];
+  let novosClientes = 0;
+  let totalMembrosGrupos = 0;
+
+  try {
+    const [ordersHoje, ordersSemana, ordersMes, clientesHoje] = await Promise.all([
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioDia}&created_at_max=${fimDia}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioSemanaStr}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMes}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?created_at_min=${inicioDia}&created_at_max=${fimDia}&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({customers:[]})),
+    ]);
+
+    const calcVendas = (orders) => ({
+      count: (orders||[]).length,
+      valor: (orders||[]).reduce((s,o) => s + parseFloat(o.total_price||0), 0)
+    });
+
+    vendas.hoje = calcVendas(ordersHoje.orders);
+    vendas.semana = calcVendas(ordersSemana.orders);
+    vendas.mes = calcVendas(ordersMes.orders);
+    novosClientes = (clientesHoje.customers||[]).length;
+
+    // Top produtos do mês
+    const prodContagem = {};
+    (ordersMes.orders||[]).forEach(order => {
+      (order.line_items||[]).forEach(item => {
+        if (!prodContagem[item.title]) prodContagem[item.title] = { count: 0, valor: 0 };
+        prodContagem[item.title].count += item.quantity;
+        prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
+      });
+    });
+    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5);
+  } catch(e) { console.error('Erro Shopify home:', e.message); }
+
+  // Total membros grupos Z-API
+  try {
+    const gruposResp = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/groups`, { headers: { 'Content-Type': 'application/json' } });
+    const gruposData = await gruposResp.json();
+    if (Array.isArray(gruposData)) {
+      const vip = gruposData.filter(g => g.name && g.name.toLowerCase().includes('kcique'));
+      totalMembrosGrupos = vip.reduce((s, g) => s + (g.participants || g.membersCount || 0), 0);
+    }
+  } catch(e) {}
+
   // Carregar tudo em paralelo
   let leads = [], ofertas = [], totalValor = 0;
 
@@ -169,6 +228,46 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     <div style="font-size:14px;color:#6b7280">Em breve! Aqui você poderá cadastrar cupons de % off, frete grátis e muito mais.</div>
   </div>`;
 
+  // ===== ABA HOME =====
+  const abaHome = `
+    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat-card"><div class="stat-label">💰 Vendas Hoje</div><div class="stat-value">R$ ${vendas.hoje.valor.toFixed(2).replace('.',',')}</div><div style="font-size:13px;color:#6b7280;margin-top:4px">${vendas.hoje.count} pedido${vendas.hoje.count !== 1 ? 's' : ''}</div></div>
+      <div class="stat-card"><div class="stat-label">📅 Esta Semana</div><div class="stat-value">R$ ${vendas.semana.valor.toFixed(2).replace('.',',')}</div><div style="font-size:13px;color:#6b7280;margin-top:4px">${vendas.semana.count} pedidos</div></div>
+      <div class="stat-card"><div class="stat-label">📆 Este Mês</div><div class="stat-value">R$ ${vendas.mes.valor.toFixed(2).replace('.',',')}</div><div style="font-size:13px;color:#6b7280;margin-top:4px">${vendas.mes.count} pedidos</div></div>
+      <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
+      <div class="stat-card">
+        <div class="stat-label" style="margin-bottom:16px">🏆 Top Produtos do Mês</div>
+        ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mês</div>' : topProdutos.map(([nome, dados], i) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:18px">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#1a1a2e">${nome.substring(0,35)}${nome.length>35?'...':''}</div>
+                <div style="font-size:12px;color:#6b7280">${dados.count} unid. — R$ ${dados.valor.toFixed(2).replace('.',',')}</div>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="stat-card">
+          <div class="stat-label" style="margin-bottom:12px">🛒 Carrinhos Abandonados</div>
+          <div style="font-size:32px;font-weight:700">${leads.length}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px">Valor potencial: R$ ${totalValor.toFixed(2).replace('.',',')}</div>
+          <button onclick="mudarAba('carrinhos')" style="margin-top:12px;padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">Ver carrinhos →</button>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" style="margin-bottom:12px">📣 Grupos VIP WhatsApp</div>
+          <div style="font-size:32px;font-weight:700">17</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px">Ofertas agendadas: ${ofertas.filter(o=>o.status==='agendada').length}</div>
+          <button onclick="mudarAba('ofertas')" style="margin-top:12px;padding:8px 16px;background:#f0fff4;color:#16a34a;border:1px solid #16a34a;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">Agendar oferta →</button>
+        </div>
+      </div>
+    </div>`;
+
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).send(`<!DOCTYPE html>
@@ -223,7 +322,8 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 <div class="sidebar">
   <div class="sidebar-logo">⌚ <span>Kcique Admin</span></div>
   <div class="sidebar-menu">
-    <button onclick="mudarAba('carrinhos')" class="menu-item ativo" id="menu-carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
+    <button onclick="mudarAba('home')" class="menu-item ativo" id="menu-home"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
+    <button onclick="mudarAba('carrinhos')" class="menu-item" id="menu-carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
     <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas WhatsApp</span></button>
     <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
   </div>
@@ -234,12 +334,13 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
     <span id="page-title">🛒 Carrinhos Abandonados</span>
     <button onclick="window.location.reload()" class="refresh-btn">🔄 Atualizar</button>
   </div>
-  <div id="aba-carrinhos" class="aba ativa">${abaCarrinhos}</div>
+  <div id="aba-home" class="aba ativa">${abaHome}</div>
+  <div id="aba-carrinhos" class="aba">${abaCarrinhos}</div>
   <div id="aba-ofertas" class="aba">${abaOfertas}</div>
   <div id="aba-cupons" class="aba">${abaCupons}</div>
 </div>
 <script>
-var titulos = { carrinhos: '🛒 Carrinhos Abandonados', ofertas: '📣 Ofertas WhatsApp', cupons: '🎟 Cupons de Desconto' };
+var titulos = { home: '📊 Visão Geral', carrinhos: '🛒 Carrinhos Abandonados', ofertas: '📣 Ofertas WhatsApp', cupons: '🎟 Cupons de Desconto' };
 function mudarAba(aba) {
   document.querySelectorAll('.aba').forEach(function(el){ el.classList.remove('ativa'); });
   document.querySelectorAll('.menu-item').forEach(function(el){ el.classList.remove('ativo'); });
