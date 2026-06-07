@@ -42,16 +42,18 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
   const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
   const listaData = await listaResp.json();
   const ids = listaData.result || [];
+  console.log('IDs na lista:', JSON.stringify(ids));
   const ofertas = [];
   for (const id of ids) {
     try {
       const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const d = await r.json();
+      console.log('Raw Redis get', id, ':', JSON.stringify(d).substring(0, 200));
       if (d.result === null || d.result === undefined) continue;
       let oferta = d.result;
       if (typeof oferta === 'string') oferta = JSON.parse(oferta);
       if (oferta && oferta.id) ofertas.push(oferta);
-    } catch(e) {}
+    } catch(e) { console.error('Erro parse', id, e.message); }
   }
   return ofertas.sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
 }
