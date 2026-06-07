@@ -21,7 +21,8 @@ export default async function handler(req, res) {
     const oferta = { id, texto, imagem, link, dataHora, grupos: grupos || 'todos', status: 'agendada', criado_em: new Date().toISOString() };
     await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: JSON.stringify(oferta), ex: 60 * 60 * 24 * 30 }) });
     await fetch(`${KV_URL}/rpush/ofertas-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([id]) });
-    return res.redirect(`/api/ofertas-dashboard?secret=${secret}&t=${Date.now()}`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/ofertas-dashboard?secret=${secret}&t=${Date.now()}"></head><body>Redirecionando...</body></html>`);
   }
 
   // Listar ofertas
