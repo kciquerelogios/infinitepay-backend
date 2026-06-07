@@ -135,7 +135,7 @@ tr:hover td { background: #f9f9fb; }
 
   <div class="form-card">
     <h2>➕ Agendar Nova Oferta</h2>
-    <form method="POST" action="/api/ofertas-dashboard?secret=${secret}" onsubmit="prepararGrupos(event)">
+    <form onsubmit="salvarOferta(event)">
       <div class="field">
         <label>Texto da mensagem</label>
         <textarea name="texto" placeholder="🔥 OFERTA RELÂMPAGO!\n\nRélogio X por R$ 199,90\n\nClique no link e garanta o seu!" required></textarea>
@@ -163,6 +163,7 @@ tr:hover td { background: #f9f9fb; }
         <input type="hidden" name="grupos" id="grupos-hidden" value="todos">
       </div>
       <button type="submit" class="btn">📅 Agendar Oferta</button>
+      <div id="form-msg" style="margin-top:12px;font-size:13px"></div>
     </form>
   </div>
 
@@ -175,11 +176,44 @@ function toggleTodos(cb) {
   document.querySelectorAll('#grupos-wrap input[type=checkbox]').forEach(function(el) { el.checked = cb.checked; });
 }
 
-function prepararGrupos(e) {
+async function salvarOferta(e) {
+  e.preventDefault();
+  var msg = document.getElementById('form-msg');
+  msg.textContent = 'Salvando...';
+  msg.style.color = '#6b7280';
+
   var selecionados = [];
   document.querySelectorAll('#grupos-wrap input[type=checkbox]:checked').forEach(function(el) { selecionados.push(el.value); });
   var total = document.querySelectorAll('#grupos-wrap input[type=checkbox]').length;
-  document.getElementById('grupos-hidden').value = selecionados.length === total ? 'todos' : selecionados.join(',');
+  var grupos = selecionados.length === total ? 'todos' : selecionados.join(',');
+
+  var payload = {
+    texto: document.querySelector('[name=texto]').value,
+    imagem: document.querySelector('[name=imagem]').value,
+    link: document.querySelector('[name=link]').value,
+    dataHora: document.querySelector('[name=dataHora]').value,
+    grupos: grupos
+  };
+
+  try {
+    var resp = await fetch('/api/ofertas-salvar?secret=' + '${secret}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var data = await resp.json();
+    if (data.success) {
+      msg.textContent = '✅ Oferta agendada com sucesso!';
+      msg.style.color = '#10b981';
+      setTimeout(function(){ window.location.reload(); }, 1500);
+    } else {
+      msg.textContent = '❌ Erro: ' + (data.error || 'tente novamente');
+      msg.style.color = '#ef4444';
+    }
+  } catch(err) {
+    msg.textContent = '❌ Erro de conexão';
+    msg.style.color = '#ef4444';
+  }
 }
 
 // Definir data mínima como agora
