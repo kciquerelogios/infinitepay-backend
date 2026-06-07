@@ -49,7 +49,7 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
       const d = await r.json();
       if (d.result === null || d.result === undefined) continue;
       let oferta = d.result;
-      if (typeof oferta === 'string') oferta = JSON.parse(oferta);
+      while (typeof oferta === 'string') { try { oferta = JSON.parse(oferta); } catch(e) { break; } }
       if (oferta && oferta.id) ofertas.push(oferta);
     } catch(e) {}
   }
@@ -64,7 +64,7 @@ async function salvarOferta(KV_URL, KV_TOKEN, dados) {
   await fetch(`${KV_URL}/set/${id}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(JSON.stringify(oferta))
+    body: JSON.stringify(oferta)
   });
   const rpushResp = await fetch(`${KV_URL}/rpush/ofertas-lista/${id}`, {
     method: 'POST',
@@ -110,7 +110,7 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
     await fetch(`${KV_URL}/set/${oferta.id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(JSON.stringify(oferta))
+      body: JSON.stringify(oferta)
     });
     disparadas.push({ id: oferta.id, grupos: gruposEnviar.length, erros });
   }
