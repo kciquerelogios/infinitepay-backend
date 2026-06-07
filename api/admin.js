@@ -17,6 +17,38 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
+  // Retornar membros dos grupos (chamado via AJAX)
+  if (req.query.action === 'grupos') {
+    const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
+    const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+    const GRUPOS_VIP = [
+      {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
+      {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
+      {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
+      {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
+      {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
+      {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
+      {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
+      {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
+      {nome:'#17',id:'120363406426269657-group'},
+    ];
+    const resultados = [];
+    let total = 0;
+    await Promise.all(GRUPOS_VIP.map(async g => {
+      try {
+        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-members/${g.id}`);
+        const d = await r.json();
+        const membros = Array.isArray(d) ? d.length : (d.participants ? d.participants.length : 0);
+        total += membros;
+        resultados.push({ nome: g.nome, membros });
+      } catch(e) {
+        resultados.push({ nome: g.nome, membros: 0 });
+      }
+    }));
+    resultados.sort((a,b) => a.nome.localeCompare(b.nome, undefined, {numeric:true}));
+    return res.status(200).json({ grupos: resultados, total });
+  }
+
   // Deletar lead
   if (req.query.del_lead) {
     await fetch(`${KV_URL}/del/${req.query.del_lead}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
@@ -261,8 +293,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         </div>
         <div class="stat-card">
           <div class="stat-label" style="margin-bottom:12px">📣 Grupos VIP WhatsApp</div>
-          <div style="font-size:32px;font-weight:700">17</div>
+          <div style="font-size:32px;font-weight:700">17 grupos</div>
           <div style="font-size:13px;color:#6b7280;margin-top:4px">Ofertas agendadas: ${ofertas.filter(o=>o.status==='agendada').length}</div>
+          <div id="grupos-membros" style="margin-top:12px;font-size:12px;color:#6b7280">Carregando membros...</div>
           <button onclick="mudarAba('ofertas')" style="margin-top:12px;padding:8px 16px;background:#f0fff4;color:#16a34a;border:1px solid #16a34a;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">Agendar oferta →</button>
         </div>
       </div>
@@ -372,6 +405,43 @@ async function salvarOferta() {
     else{msg.textContent='❌ '+(data.error||'Erro');msg.style.color='#ef4444';}
   } catch(e){msg.textContent='❌ Erro de conexão';msg.style.color='#ef4444';}
 }
+
+// Carregar membros dos grupos de forma assíncrona
+var GRUPOS_VIP_IDS = [
+  {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
+  {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
+  {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
+  {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
+  {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
+  {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
+  {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
+  {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
+  {nome:'#17',id:'120363406426269657-group'},
+];
+
+async function carregarMembrosGrupos() {
+  var el = document.getElementById('grupos-membros');
+  if (!el) return;
+  try {
+    var resultados = [];
+    var totalMembros = 0;
+    var resp = await fetch('/api/admin?action=grupos&secret=${secret}');
+    var data = await resp.json();
+    if (data.grupos) {
+      resultados = data.grupos;
+      totalMembros = data.total;
+    }
+    el.innerHTML = '<div style="font-weight:600;color:#1a1a2e;margin-bottom:8px">Total: ' + totalMembros + ' membros</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">' +
+      resultados.map(function(g){ return '<span style="background:#f3f4f6;padding:2px 8px;border-radius:4px;font-size:11px">' + g.nome + ': ' + g.membros + '</span>'; }).join('') +
+      '</div>';
+  } catch(e) {
+    el.textContent = 'Erro ao carregar membros';
+  }
+}
+
+// Carregar membros quando estiver na aba home
+setTimeout(carregarMembrosGrupos, 500);
 
 // Data mínima
 var agora=new Date();agora.setMinutes(agora.getMinutes()+5);
