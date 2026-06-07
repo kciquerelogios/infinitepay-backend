@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', status: 'agendada', criado_em: new Date().toISOString() };
 
     // Salvar no Redis como string JSON simples
-    await fetch(`${KV_URL}/set/${encodeURIComponent(id)}`, {
+    await fetch(`${KV_URL}/set/${id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(JSON.stringify(oferta))
