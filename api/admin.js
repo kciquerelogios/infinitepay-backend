@@ -136,15 +136,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    // Melhor Envio pedidos (buscar postados e pendentes separadamente)
+    // Melhor Envio - carrinho (pending) e pedidos postados
     Promise.all([
-      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=pending', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=posted', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=delivered', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    ]).then(([p, po, d]) => ({
-      pending: p.data || [], posted: po.data || [], delivered: d.data || [],
-      total_pending: p.total || 0, total_posted: po.total || 0, total_delivered: d.total || 0
-    })).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+    ]).then(([cart, orders]) => ({
+      cart: cart.data || [],
+      orders: orders.data || [],
+      total_cart: cart.total || 0,
+    })).catch(()=>({ cart: [], orders: [], total_cart: 0 })),
   ]);
 
   // Processar leads
@@ -211,17 +211,16 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   try {
     saldoME = parseFloat(saldoMelhorEnvio.balance || saldoMelhorEnvio?.data?.balance || 0);
     const hojeDate = new Date().toISOString().split('T')[0];
-    const pendentes = etiquetasME.pending || [];
-    const postados = etiquetasME.posted || [];
-    // Criadas hoje (pending de hoje)
-    etiquetasHoje = pendentes.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    // Pronto para postar
-    prontoPostar = etiquetasME.total_pending || pendentes.length;
-    // Em trânsito
-    emTransito = etiquetasME.total_posted || postados.length;
-    // Entregues no mês
-    const entregues = etiquetasME.delivered || [];
-    problemaEntrega = entregues.filter(s => s.delivered_at && s.delivered_at.startsWith(hoje.toISOString().substring(0,7))).length;
+    const cart = etiquetasME.cart || [];
+    const orders = etiquetasME.orders || [];
+    // Etiquetas criadas hoje (no carrinho hoje)
+    etiquetasHoje = cart.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
+    // Pronto para postar = total no carrinho
+    prontoPostar = etiquetasME.total_cart || cart.length;
+    // Em trânsito = pedidos com posted_at preenchido
+    emTransito = orders.filter(s => s.posted_at && !s.delivered_at).length;
+    // Problema = cancelados
+    problemaEntrega = orders.filter(s => s.status === 'canceled' || s.status === 'expired').length;
   } catch(e) { console.error('ME error:', e.message); }
 
   // Comparativo mês
