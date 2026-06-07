@@ -28,11 +28,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
       const endpoints = [
+        'https://melhorenvio.com.br/api/v2/me/purchases?limit=5&status=posted',
         'https://melhorenvio.com.br/api/v2/me/purchases?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&filter[]=posted',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&status[]=posted',
-        'https://melhorenvio.com.br/api/v2/me/shipments?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&q=posted',
+        'https://melhorenvio.com.br/api/v2/me/orders/posted?limit=5',
+        'https://melhorenvio.com.br/api/v2/me/shipment/posted?limit=5',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&search=posted',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&posted=true',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&situation=posted',
       ];
       const resultados = {};
       for (const ep of endpoints) {
@@ -41,10 +43,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const text = await r.text();
           try {
             const json = JSON.parse(text);
-            const data = json.data || json;
-            const first = Array.isArray(data) ? data[0] : (data.data ? data.data[0] : null);
+            const arr = json.data || json;
+            const first = Array.isArray(arr) ? arr[0] : (arr.data ? arr.data[0] : null);
             resultados[ep] = { status: r.status, total: json.total, first_status: first ? first.status : null, first_posted_at: first ? first.posted_at : null };
-          } catch(e) { resultados[ep] = { status: r.status, raw: text.substring(0, 100) }; }
+          } catch(e) { resultados[ep] = { status: r.status, raw: text.substring(0, 150) }; }
         } catch(e) { resultados[ep] = { error: e.message }; }
       }
       return res.status(200).json(resultados);
@@ -251,7 +253,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
       <div class="stat-card"><div class="stat-label">💳 Saldo Melhor Envio</div><div class="stat-value" style="color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Saldo baixo!':'disponível'}</div></div>
       <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
-      <div class="stat-card"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${emTransito}</div><div class="stat-sub">postados nos Correios</div></div>
+      <div class="stat-card" style="cursor:pointer" onclick="window.open('https://melhorenvio.com.br/envios/postados','_blank')"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${vendas.mes.count - prontoPostar > 0 ? vendas.mes.count - prontoPostar : '—'}</div><div class="stat-sub">ver no Melhor Envio →</div></div>
       <div class="stat-card"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="color:${prontoPostar>0?'#f59e0b':'#10b981'}">${prontoPostar}</div><div class="stat-sub">no carrinho ME</div></div>
     </div>
 
