@@ -136,8 +136,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    // Melhor Envio pedidos
-    fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+    // Melhor Envio pedidos (buscar postados e pendentes separadamente)
+    Promise.all([
+      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=pending', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=posted', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&status=delivered', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+    ]).then(([p, po, d]) => ({
+      pending: p.data || [], posted: po.data || [], delivered: d.data || [],
+      total_pending: p.total || 0, total_posted: po.total || 0, total_delivered: d.total || 0
+    })).catch(()=>({})),
   ]);
 
   // Processar leads
@@ -203,16 +210,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // Processar Melhor Envio
   try {
     saldoME = parseFloat(saldoMelhorEnvio.balance || saldoMelhorEnvio?.data?.balance || 0);
-    const orders = etiquetasME.data || [];
     const hojeDate = new Date().toISOString().split('T')[0];
-    // Hoje = criadas hoje
-    etiquetasHoje = orders.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    // Pronto para postar = pending sem posted_at (no carrinho)
-    prontoPostar = orders.filter(s => s.status === 'pending' && !s.posted_at).length;
-    // Em trânsito = tem posted_at preenchido mas não entregue
-    emTransito = orders.filter(s => s.posted_at && !s.delivered_at && s.status !== 'canceled' && s.status !== 'expired').length;
-    // Problema = canceladas ou expiradas
-    problemaEntrega = orders.filter(s => s.status === 'canceled' || s.status === 'expired').length;
+    const pendentes = etiquetasME.pending || [];
+    const postados = etiquetasME.posted || [];
+    // Criadas hoje (pending de hoje)
+    etiquetasHoje = pendentes.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
+    // Pronto para postar
+    prontoPostar = etiquetasME.total_pending || pendentes.length;
+    // Em trânsito
+    emTransito = etiquetasME.total_posted || postados.length;
+    // Entregues no mês
+    const entregues = etiquetasME.delivered || [];
+    problemaEntrega = entregues.filter(s => s.delivered_at && s.delivered_at.startsWith(hoje.toISOString().substring(0,7))).length;
   } catch(e) { console.error('ME error:', e.message); }
 
   // Comparativo mês
@@ -238,9 +247,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
       <div class="stat-card"><div class="stat-label">💳 Saldo Melhor Envio</div><div class="stat-value" style="color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Saldo baixo!':'disponível'}</div></div>
-      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value">${etiquetasHoje}</div><div class="stat-sub">geradas hoje</div></div>
-      <div class="stat-card"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${emTransito}</div><div class="stat-sub">pacotes a caminho</div></div>
-      <div class="stat-card" style="${problemaEntrega>0?'border-color:#fecaca;background:#fef2f2':''}"><div class="stat-label">⚠️ Prob. Entrega</div><div class="stat-value" style="color:${problemaEntrega>0?'#ef4444':'#10b981'}">${problemaEntrega}</div><div class="stat-sub">${problemaEntrega>0?'requer atenção':'tudo ok'}</div></div>
+      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
+      <div class="stat-card"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${emTransito}</div><div class="stat-sub">postados nos Correios</div></div>
+      <div class="stat-card"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="color:${prontoPostar>0?'#f59e0b':'#10b981'}">${prontoPostar}</div><div class="stat-sub">no carrinho ME</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
