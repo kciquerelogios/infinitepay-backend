@@ -27,29 +27,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      const endpoints = [
-        'https://melhorenvio.com.br/api/v2/me/purchases?limit=5&status=posted',
-        'https://melhorenvio.com.br/api/v2/me/purchases?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/orders/posted?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/shipment/posted?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&search=posted',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&posted=true',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&situation=posted',
-      ];
-      const resultados = {};
-      for (const ep of endpoints) {
-        try {
-          const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-          const text = await r.text();
-          try {
-            const json = JSON.parse(text);
-            const arr = json.data || json;
-            const first = Array.isArray(arr) ? arr[0] : (arr.data ? arr.data[0] : null);
-            resultados[ep] = { status: r.status, total: json.total, first_status: first ? first.status : null, first_posted_at: first ? first.posted_at : null };
-          } catch(e) { resultados[ep] = { status: r.status, raw: text.substring(0, 150) }; }
-        } catch(e) { resultados[ep] = { error: e.message }; }
+      // Testar purchases com diferentes status
+      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=3', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+      const d1 = await r1.json();
+      const first = (d1.data || [])[0];
+      const campos = first ? Object.keys(first) : [];
+      // Testar com status de transito
+      const statusTests = ['posted', 'in_transit', 'delivered', 'paid', 'pending'];
+      const statusResults = {};
+      for (const s of statusTests) {
+        const r = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=1&status=' + s, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+        const d = await r.json();
+        statusResults[s] = { httpStatus: r.status, total: d.total };
       }
-      return res.status(200).json(resultados);
+      return res.status(200).json({ total_purchases: d1.total, campos_disponiveis: campos, primeiro_item_status: first ? first.status : null, primeiro_item: first ? { status: first.status, posted_at: first.posted_at, delivered_at: first.delivered_at, tracking: first.tracking } : null, status_tests: statusResults });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
