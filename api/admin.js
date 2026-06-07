@@ -135,9 +135,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Shopify produtos sem estoque
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
-    fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    // Melhor Envio etiquetas
-    fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking?limit=50', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+    fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+    // Melhor Envio pedidos
+    fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
   ]);
 
   // Processar leads
@@ -202,14 +202,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // Processar Melhor Envio
   try {
-    saldoME = parseFloat(saldoMelhorEnvio.balance || 0);
-    const shipments = Array.isArray(etiquetasME) ? etiquetasME : (etiquetasME.data || []);
+    saldoME = parseFloat(saldoMelhorEnvio.balance || saldoMelhorEnvio?.data?.balance || 0);
+    const orders = etiquetasME.data || [];
     const hojeDate = new Date().toISOString().split('T')[0];
-    etiquetasHoje = shipments.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    prontoPostar = shipments.filter(s => s.status === 'pending' || s.status === 'released').length;
-    emTransito = shipments.filter(s => s.status === 'in_transit' || s.status === 'posted').length;
-    problemaEntrega = shipments.filter(s => s.status === 'failed' || s.status === 'returned').length;
-  } catch(e) {}
+    // Hoje = criadas hoje
+    etiquetasHoje = orders.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
+    // Pronto para postar = pending (no carrinho, etiqueta gerada mas não postada)
+    prontoPostar = orders.filter(s => s.status === 'pending' && s.generated_at).length;
+    // Em trânsito = postadas
+    emTransito = orders.filter(s => s.status === 'posted' || s.posted_at).length;
+    // Problema = canceladas ou expiradas
+    problemaEntrega = orders.filter(s => s.status === 'canceled' || s.status === 'expired').length;
+  } catch(e) { console.error('ME error:', e.message); }
 
   // Comparativo mês
   const variacaoMes = vendas.mesAnt.valor > 0 ? ((vendas.mes.valor - vendas.mesAnt.valor) / vendas.mesAnt.valor * 100).toFixed(1) : null;
