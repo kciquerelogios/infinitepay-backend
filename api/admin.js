@@ -207,10 +207,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const hojeDate = new Date().toISOString().split('T')[0];
     // Hoje = criadas hoje
     etiquetasHoje = orders.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    // Pronto para postar = pending (no carrinho, etiqueta gerada mas não postada)
-    prontoPostar = orders.filter(s => s.status === 'pending' && s.generated_at).length;
-    // Em trânsito = postadas
-    emTransito = orders.filter(s => s.status === 'posted' || s.posted_at).length;
+    // Pronto para postar = pending sem posted_at (no carrinho)
+    prontoPostar = orders.filter(s => s.status === 'pending' && !s.posted_at).length;
+    // Em trânsito = tem posted_at preenchido mas não entregue
+    emTransito = orders.filter(s => s.posted_at && !s.delivered_at && s.status !== 'canceled' && s.status !== 'expired').length;
     // Problema = canceladas ou expiradas
     problemaEntrega = orders.filter(s => s.status === 'canceled' || s.status === 'expired').length;
   } catch(e) { console.error('ME error:', e.message); }
