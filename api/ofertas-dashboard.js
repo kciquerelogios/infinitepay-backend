@@ -42,13 +42,14 @@ export default async function handler(req, res) {
       try {
         const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         const d = await r.json();
-        if (d.result) {
+        if (d.result !== null && d.result !== undefined) {
           let parsed = d.result;
-          while (typeof parsed === 'string') parsed = JSON.parse(parsed);
-          if (parsed && parsed.value) { let v = parsed.value; while (typeof v === 'string') v = JSON.parse(v); parsed = v; }
-          ofertas.push(parsed);
+          while (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch(e) { break; }
+          }
+          if (parsed && parsed.id) ofertas.push(parsed);
         }
-      } catch(e) {}
+      } catch(e) { console.error('Erro oferta', id, e); }
     }
     ofertas.sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
   } catch(e) {}
