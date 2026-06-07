@@ -27,11 +27,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=3', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+      // Ver todos os campos do primeiro item de purchases
+      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=1', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
       const d1 = await r1.json();
-      const itens = d1.data || [];
-      const resumo = itens.map(function(i){ return { status: i.status, posted_at: i.posted_at, delivered_at: i.delivered_at, tracking: i.tracking }; });
-      return res.status(200).json({ total: d1.total, resumo });
+      const first = (d1.data || [])[0];
+      // Ver orders do primeiro purchase
+      let ordersData = null;
+      if (first && first.id) {
+        const r2 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases/' + first.id, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+        const txt2 = await r2.text();
+        try { ordersData = JSON.parse(txt2); } catch(e) { ordersData = txt2.substring(0,300); }
+      }
+      return res.status(200).json({ total: d1.total, campos_first: first ? Object.keys(first) : [], first, primeiro_purchase_detalhe: ordersData });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
