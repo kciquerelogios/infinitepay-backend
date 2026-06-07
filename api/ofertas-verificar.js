@@ -48,8 +48,9 @@ export default async function handler(req, res) {
         if (!d.result) continue;
 
         let oferta = d.result;
-        while (typeof oferta === 'string') oferta = JSON.parse(oferta);
-        if (oferta && oferta.value) { let v = oferta.value; while (typeof v === 'string') v = JSON.parse(v); oferta = v; }
+        while (typeof oferta === 'string') {
+          try { oferta = JSON.parse(oferta); } catch(e) { break; }
+        }
 
         if (!oferta || oferta.status !== 'agendada') continue;
 
