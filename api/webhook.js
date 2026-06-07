@@ -258,20 +258,35 @@ export default async function handler(req, res) {
         headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
       });
     }
-
-    // Deletar lead de abandono se existir (cliente pagou!)
+// Deletar lead de abandono se existir (cliente pagou!)
     if (cliente && cliente.email && process.env.KV_REST_API_URL) {
-      const leadId = `lead-${cliente.email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-      await fetch(`${process.env.KV_REST_API_URL}/del/${leadId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-      });
-      // Remover da lista também
-      await fetch(`${process.env.KV_REST_API_URL}/lrem/leads-lista/0/${leadId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-      });
-      console.log('Lead removido após pagamento:', leadId);
+      try {
+        const KV_URL = process.env.KV_REST_API_URL;
+        const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+        // Buscar todos os leads da lista
+        const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/-1`, {
+          headers: { Authorization: `Bearer ${KV_TOKEN}` }
+        });
+        const listaData = await listaResp.json();
+        const todos = listaData.result || [];
+        // Filtrar os que pertencem a este email
+        const emailLead = `lead-${cliente.email}`;
+        const leadsDoCliente = todos.filter(id => id.startsWith(emailLead));
+        // Deletar cada um
+        for (const id of leadsDoCliente) {
+          await fetch(`${KV_URL}/del/${id}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${KV_TOKEN}` }
+          });
+          await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${KV_TOKEN}` }
+          });
+          console.log('Lead removido após pagamento:', id);
+        }
+      } catch(e) {
+        console.log('Erro ao remover leads:', e.message);
+      }
     }
 
     return res.status(200).json({ success: true, message: null });
