@@ -1,4 +1,11 @@
 export default async function handler(req, res) {
+  // Parse body manualmente se necessário
+  if (req.method === 'POST' && typeof req.body === 'string') {
+    try { req.body = JSON.parse(req.body); } catch(e) {
+      const params = new URLSearchParams(req.body);
+      req.body = Object.fromEntries(params);
+    }
+  }
   const { secret } = req.query;
   if (secret !== process.env.REPROCESSAR_SECRET) {
     return res.status(401).send(`<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h2>🔒 Acesso Restrito</h2><form onsubmit="window.location.href='/api/ofertas-dashboard?secret='+document.getElementById('s').value;return false" style="margin-top:20px"><input id="s" type="password" placeholder="Senha" style="padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"><button type="submit" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;margin-left:8px;font-size:15px;cursor:pointer">Entrar</button></form></div></body></html>`);
