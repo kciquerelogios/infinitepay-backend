@@ -21,6 +21,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'grupos') {
     const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
     const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+    const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
     const GRUPOS_VIP = [
       {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
       {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
@@ -36,9 +37,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     let total = 0;
     await Promise.all(GRUPOS_VIP.map(async g => {
       try {
-        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-members/${g.id}`);
+        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
+          headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+        });
         const d = await r.json();
-        const membros = Array.isArray(d) ? d.length : (d.participants ? d.participants.length : 0);
+        const membros = d.participants ? d.participants.length : 0;
         total += membros;
         resultados.push({ nome: g.nome, membros });
       } catch(e) {
