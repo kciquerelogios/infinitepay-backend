@@ -27,20 +27,24 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      // Testar vários endpoints
       const endpoints = [
-        'https://melhorenvio.com.br/api/v2/me/shipment/tracking?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=5',
-        'https://melhorenvio.com.br/api/v2/me/cart',
-        'https://melhorenvio.com.br/api/v2/me/balance',
+        'https://melhorenvio.com.br/api/v2/me/purchases?limit=5',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&filter[]=posted',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&status[]=posted',
+        'https://melhorenvio.com.br/api/v2/me/shipments?limit=5',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=5&q=posted',
       ];
       const resultados = {};
       for (const ep of endpoints) {
         try {
           const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
           const text = await r.text();
-          try { resultados[ep] = { status: r.status, data: JSON.parse(text) }; }
-          catch(e) { resultados[ep] = { status: r.status, raw: text.substring(0, 200) }; }
+          try {
+            const json = JSON.parse(text);
+            const data = json.data || json;
+            const first = Array.isArray(data) ? data[0] : (data.data ? data.data[0] : null);
+            resultados[ep] = { status: r.status, total: json.total, first_status: first ? first.status : null, first_posted_at: first ? first.posted_at : null };
+          } catch(e) { resultados[ep] = { status: r.status, raw: text.substring(0, 100) }; }
         } catch(e) { resultados[ep] = { error: e.message }; }
       }
       return res.status(200).json(resultados);
