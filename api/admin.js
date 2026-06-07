@@ -139,7 +139,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Melhor Envio - carrinho (pending) e pedidos postados
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      fetch(`https://melhorenvio.com.br/api/v2/me/orders?limit=100&posted_at=${inicioMes.split('T')[0]}`, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/orders?limit=100&page=1', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(async r => {
+        const d = await r.json();
+        const total = d.total || 0;
+        const lastPage = d.last_page || 1;
+        // Buscar últimas páginas para pegar postados recentes
+        if (lastPage <= 1) return d;
+        const extraPages = [];
+        for (let p = Math.max(2, lastPage - 4); p <= lastPage; p++) {
+          extraPages.push(fetch(`https://melhorenvio.com.br/api/v2/me/orders?limit=100&page=${p}`, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]})));
+        }
+        const extras = await Promise.all(extraPages);
+        const allData = [...(d.data||[]), ...extras.flatMap(e => e.data||[])];
+        return { data: allData, total };
+      }).catch(()=>({})),
     ]).then(([cart, orders]) => ({
       cart: cart.data || [],
       orders: orders.data || [],
