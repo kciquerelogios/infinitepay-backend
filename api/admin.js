@@ -27,20 +27,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      // Testar purchases com diferentes status
       const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=3', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
       const d1 = await r1.json();
-      const first = (d1.data || [])[0];
-      const campos = first ? Object.keys(first) : [];
-      // Testar com status de transito
-      const statusTests = ['posted', 'in_transit', 'delivered', 'paid', 'pending'];
-      const statusResults = {};
-      for (const s of statusTests) {
-        const r = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=1&status=' + s, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-        const d = await r.json();
-        statusResults[s] = { httpStatus: r.status, total: d.total };
-      }
-      return res.status(200).json({ total_purchases: d1.total, campos_disponiveis: campos, primeiro_item_status: first ? first.status : null, primeiro_item: first ? { status: first.status, posted_at: first.posted_at, delivered_at: first.delivered_at, tracking: first.tracking } : null, status_tests: statusResults });
+      const itens = d1.data || [];
+      const resumo = itens.map(function(i){ return { status: i.status, posted_at: i.posted_at, delivered_at: i.delivered_at, tracking: i.tracking }; });
+      return res.status(200).json({ total: d1.total, resumo });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
