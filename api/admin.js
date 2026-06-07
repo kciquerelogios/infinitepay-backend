@@ -23,6 +23,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
+  // ===== ACTION: DEBUG MELHOR ENVIO =====
+  if (req.query.action === 'me-debug') {
+    const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
+    try {
+      const r = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking?limit=20', {
+        headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+      });
+      const d = await r.json();
+      const arr = Array.isArray(d) ? d : (d.data || []);
+      const statusUnicos = [...new Set(arr.map(s => s.status))];
+      const resumo = arr.slice(0, 5).map(s => ({ id: s.id, status: s.status, created_at: s.created_at, tracking: s.tracking }));
+      return res.status(200).json({ total: arr.length, statusUnicos, resumo, raw_first: arr[0] });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== ACTION: GRUPOS (AJAX) =====
   if (req.query.action === 'grupos') {
     const GRUPOS_VIP = [
