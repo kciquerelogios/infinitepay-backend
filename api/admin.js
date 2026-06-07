@@ -45,35 +45,40 @@ button{width:100%;padding:12px;background:#25d366;color:#fff;border:none;border-
     return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/admin?secret=${secret}&pagina=ofertas"></head><body></body></html>`);
   }
 
-  // ===== DADOS =====
+  // ===== DADOS — carrega só o necessário para a página atual =====
   let leads = [], ofertas = [], totalValor = 0;
 
-  // Carregar leads
-  try {
-    const leadsResp = await fetch(`https://infinitepay-backend.vercel.app/api/leads?secret=${secret}`);
-    const leadsData = await leadsResp.json();
-    leads = leadsData.leads || [];
-    leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
-    totalValor = leads.reduce((s, l) => s + (l.carrinho || []).reduce((cs, i) => cs + (i.preco * i.quantidade / 100), 0), 0);
-  } catch(e) {}
+  if (paginaAtual === 'carrinhos') {
+    try {
+      const leadsResp = await fetch(`https://infinitepay-backend.vercel.app/api/leads?secret=${secret}`);
+      const leadsData = await leadsResp.json();
+      leads = leadsData.leads || [];
+      leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
+      totalValor = leads.reduce((s, l) => s + (l.carrinho || []).reduce((cs, i) => cs + (i.preco * i.quantidade / 100), 0), 0);
+    } catch(e) {}
+  }
 
-  // Carregar ofertas
-  try {
-    const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-    const listaData = await listaResp.json();
-    const ids = listaData.result || [];
-    for (const id of ids) {
-      try {
-        const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-        const d = await r.json();
-        if (!d.result) continue;
-        let o = d.result;
-        while (typeof o === 'string') { try { o = JSON.parse(o); } catch(e) { break; } }
-        if (o && o.id) ofertas.push(o);
-      } catch(e) {}
-    }
-    ofertas.sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
-  } catch(e) {}
+  if (paginaAtual === 'ofertas') {
+    try {
+      const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const listaData = await listaResp.json();
+      const ids = listaData.result || [];
+      // Buscar em paralelo
+      const promises = ids.map(id =>
+        fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } })
+          .then(r => r.json())
+          .then(d => {
+            if (!d.result) return null;
+            let o = d.result;
+            while (typeof o === 'string') { try { o = JSON.parse(o); } catch(e) { break; } }
+            return (o && o.id) ? o : null;
+          })
+          .catch(() => null)
+      );
+      const results = await Promise.all(promises);
+      ofertas = results.filter(Boolean).sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+    } catch(e) {}
+  }
 
   // ===== CONTEÚDO POR PÁGINA =====
   const agora = new Date();
