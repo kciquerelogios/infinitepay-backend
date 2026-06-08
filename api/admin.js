@@ -147,7 +147,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
             });
             const ct = pdfFileResp.headers.get('content-type') || '';
             const rawText = await pdfFileResp.text();
-            console.log('imprimir/pdf content-type:', ct, 'status:', pdfFileResp.status, 'raw:', rawText.substring(0,300));
+            console.log('imprimir/pdf content-type:', ct, 'status:', pdfFileResp.status);
 
             let pdfUrl2 = '';
             try {
@@ -174,7 +174,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
               });
             } else if (pdfUrl2) {
               // URL retornada no JSON - baixar e enviar
-              const pdfResp2 = await fetch(pdfUrl2, { headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+              // URL S3 pré-assinada - não precisa de Authorization
+              const pdfResp2 = await fetch(pdfUrl2);
               const ct2 = pdfResp2.headers.get('content-type') || '';
               console.log('PDF URL2 ct:', ct2);
               if (ct2.includes('pdf') || ct2.includes('octet')) {
