@@ -188,62 +188,62 @@ https://www.melhorrastreio.com.br/rastreio/${tracking}
 
 Qualquer dúvida estamos aqui! 😊`;
 
+      // 1. Enviar WhatsApp
       try {
-        // 1. Enviar WhatsApp
         await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
           body: JSON.stringify({ phone: telefone, message: mensagem })
         });
+        console.log('WhatsApp enviado para:', telefone, '| Tracking:', tracking);
+      } catch(e) { console.error('Erro WhatsApp:', e.message); }
 
-        // 2. Criar fulfillment no Shopify (marcar pedido como enviado)
-        if (emailDestinatario && SHOPIFY_STORE && SHOPIFY_TOKEN) {
-          try {
-            // Buscar pedido pelo email
-            const shopResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
-              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-            );
-            const shopData = await shopResp.json();
-            const pedido = (shopData.orders || [])[0];
+      // 2. Marcar como enviado no Redis (TTL 30 dias) — ANTES do fulfillment para não reprocessar
+      await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      enviados++;
 
-            if (pedido && pedido.id) {
-              // Criar fulfillment com rastreio
-              const fulfillResp = await fetch(
-                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
-                  body: JSON.stringify({
-                    fulfillment: {
-                      tracking_number: tracking,
-                      tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
-                      tracking_company: 'Correios',
-                      notify_customer: false, // já enviamos pelo WhatsApp
-                      line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
-                    }
-                  })
-                }
-              );
-              const fulfillData = await fulfillResp.json();
-              if (fulfillData.fulfillment) {
-                console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
-              } else {
-                console.log('Erro fulfillment:', JSON.stringify(fulfillData).substring(0,200));
+      // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
+      if (emailDestinatario && SHOPIFY_STORE && SHOPIFY_TOKEN) {
+        try {
+          const shopResp = await fetch(
+            `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
+            { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+          );
+          const shopText = await shopResp.text();
+          const shopData = shopText ? JSON.parse(shopText) : {};
+          const pedido = (shopData.orders || [])[0];
+
+          if (pedido && pedido.id) {
+            // Usar a nova API de fulfillment do Shopify
+            const fulfillResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+                body: JSON.stringify({
+                  fulfillment: {
+                    tracking_number: tracking,
+                    tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
+                    tracking_company: 'Correios',
+                    notify_customer: false,
+                    line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
+                  }
+                })
               }
+            );
+            const fulfillText = await fulfillResp.text();
+            const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
+            if (fulfillData.fulfillment) {
+              console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
+            } else {
+              console.log('Shopify fulfillment resposta:', fulfillText.substring(0,200));
             }
-          } catch(e) { console.error('Erro fulfillment Shopify:', e.message); }
-        }
+          }
+        } catch(e) { console.error('Erro fulfillment Shopify:', e.message); }
+      }
 
-        // 3. Marcar como enviado no Redis (TTL 30 dias)
-        await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-
-        console.log('Rastreio enviado para:', telefone, '| Tracking:', tracking);
-        enviados++;
-
-        // Delay para não sobrecarregar Z-API
-        await new Promise(r => setTimeout(r, 1000));
-      } catch(e) { console.error('Erro envio rastreio:', e.message); }
+      // Delay para não sobrecarregar Z-API
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 
@@ -280,6 +280,80 @@ export default async function handler(req, res) {
         deletados++;
       }
       return res.status(200).json({ success: true, deletados });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // Sincronizar fulfillments no Shopify sem reenviar WhatsApp
+  if (action === 'sync-fulfillments') {
+    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
+      const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+      const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
+
+      // Buscar purchases das primeiras 5 páginas
+      const pages = await Promise.all([1,2,3,4,5].map(page =>
+        fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, {
+          headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+        }).then(r => r.json()).catch(() => ({ data: [] }))
+      ));
+      const purchases = pages.flatMap(p => p.data || []);
+
+      let criados = 0, erros = 0, semPedido = 0;
+
+      for (const purchase of purchases) {
+        for (const order of (purchase.orders || [])) {
+          if (order.status !== 'released' || !order.tracking) continue;
+          const email = order.to?.email || '';
+          if (!email) { semPedido++; continue; }
+
+          try {
+            // Buscar pedido no Shopify
+            const shopResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(email)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+            );
+            const shopText = await shopResp.text();
+            const shopData = shopText ? JSON.parse(shopText) : {};
+            const pedido = (shopData.orders || [])[0];
+
+            if (!pedido || !pedido.id) { semPedido++; continue; }
+
+            // Criar fulfillment
+            const fulfillResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+                body: JSON.stringify({
+                  fulfillment: {
+                    tracking_number: order.tracking,
+                    tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + order.tracking,
+                    tracking_company: 'Correios',
+                    notify_customer: false,
+                    line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
+                  }
+                })
+              }
+            );
+            const fulfillText = await fulfillResp.text();
+            const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
+            if (fulfillData.fulfillment) {
+              criados++;
+              console.log('Fulfillment criado:', pedido.order_number, '|', order.tracking);
+            } else {
+              erros++;
+              console.log('Erro fulfillment:', pedido.order_number, fulfillText.substring(0,150));
+            }
+          } catch(e) { erros++; console.error('Erro:', e.message); }
+
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+
+      return res.status(200).json({ success: true, criados, erros, semPedido });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
