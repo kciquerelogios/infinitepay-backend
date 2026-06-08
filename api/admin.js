@@ -26,9 +26,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ACTION: DEBUG PRODUTOS =====
   if (req.query.action === 'prod-debug') {
     const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
-    const d = await r.json();
+    const text = await r.text();
+    let d;
+    try { d = JSON.parse(text); } catch(e) { d = {}; }
     return res.status(200).json({ 
+      http_status: r.status,
+      store: SHOPIFY_STORE,
       total: (d.products||[]).length,
+      raw: text.substring(0, 300),
       produtos: (d.products||[]).map(p => ({ title: p.title, tem_imagem: !!p.image, img: p.image?.src?.substring(0,80) }))
     });
   }
