@@ -23,6 +23,22 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
+  // ===== ACTION: BUSCAR GRUPO =====
+  if (req.query.action === 'buscar-grupo') {
+    const nome = req.query.nome || '';
+    try {
+      const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/chats?page=1&pageSize=100`, {
+        headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+      });
+      const d = await r.json();
+      const chats = Array.isArray(d) ? d : (d.chats || d.result || []);
+      const grupos = chats.filter(c => (c.isGroup || (c.id && c.id.includes('-group'))) && (!nome || (c.name||c.title||c.subject||'').toLowerCase().includes(nome.toLowerCase())));
+      return res.status(200).json({ total: grupos.length, grupos: grupos.map(g => ({ id: g.id, nome: g.name||g.title||g.subject||'—' })) });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== ACTION: DEBUG PRODUTOS =====
   if (req.query.action === 'prod-debug') {
     const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
