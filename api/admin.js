@@ -115,8 +115,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
 
           if (pdfUrl) {
-            // Baixar PDF diretamente via API de impressão em arquivo
-            const pdfFileResp = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}/print`, {
+            // Baixar PDF via endpoint de impressão em arquivo
+            const pdfFileResp = await fetch(`https://melhorenvio.com.br/api/v2/me/shipment/${meOrderId}/print`, {
               headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/pdf', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
             });
             const contentType = pdfFileResp.headers.get('content-type') || '';
