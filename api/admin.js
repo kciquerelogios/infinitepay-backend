@@ -223,11 +223,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Mapa de imagens por título do produto (busca parcial)
     const produtosShopify = produtosSemEstoque.products || [];
     const getImagem = (nomeOrder) => {
-      // Tenta match exato primeiro
-      const exato = produtosShopify.find(p => p.title === nomeOrder);
+      // Remove variante " - Cor: X" para comparar só o título base
+      const nomeBase = nomeOrder.split(' - Cor:')[0].split(' - ')[0].trim();
+      // Tenta match exato
+      const exato = produtosShopify.find(p => p.title === nomeOrder || p.title === nomeBase);
       if (exato && exato.image) return exato.image.src;
-      // Tenta match parcial (nome do order começa com título do produto)
-      const parcial = produtosShopify.find(p => nomeOrder.startsWith(p.title) || p.title.startsWith(nomeOrder.split(' - ')[0]));
+      // Tenta match parcial
+      const parcial = produtosShopify.find(p => p.title.includes(nomeBase) || nomeBase.includes(p.title));
       if (parcial && parcial.image) return parcial.image.src;
       return '';
     };
