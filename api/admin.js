@@ -460,64 +460,96 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== ABA PEDIDOS =====
   const pedidosList = (pedidosRecentes.orders || []);
-  const pedidosRows = pedidosList.map(order => {
-    const data = new Date(new Date(order.created_at).getTime() - 3*60*60*1000);
-    const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
-    const produtos = (order.line_items||[]).map(i => `${i.name} (x${i.quantity})`).join(', ');
-    const tel = (order.phone || order.billing_address?.phone || '').replace(/\D/g,'');
-    const fulfillment = order.fulfillment_status;
-    const financial = order.financial_status;
-    
-    let statusBadge = '';
-    if (fulfillment === 'fulfilled') statusBadge = '<span class="badge" style="background:#dcfce7;color:#16a34a">✅ Enviado</span>';
-    else if (fulfillment === 'partial') statusBadge = '<span class="badge" style="background:#fef3c7;color:#92400e">⚠️ Parcial</span>';
-    else if (financial === 'paid') statusBadge = '<span class="badge" style="background:#dbeafe;color:#1e40af">💳 Pago</span>';
-    else if (financial === 'pending') statusBadge = '<span class="badge" style="background:#f3f4f6;color:#374151">⏳ Pendente</span>';
-    else if (financial === 'refunded') statusBadge = '<span class="badge" style="background:#fee2e2;color:#991b1b">↩️ Reembolso</span>';
-    else statusBadge = `<span class="badge" style="background:#f3f4f6;color:#374151">${financial}</span>`;
 
-    // Rastreio do fulfillment
-    const rastreios = (order.fulfillments||[]).flatMap(f => f.tracking_numbers||[]);
-    const rastreioStr = rastreios.length > 0 
-      ? rastreios.map(r => `<a href="https://www.melhorrastreio.com.br/rastreio/${r}" target="_blank" style="color:#2563eb;font-size:12px">${r}</a>`).join('<br>')
-      : '<span style="color:#9ca3af;font-size:12px">—</span>';
-
-    const msgRastreio = rastreios.length > 0 
-      ? encodeURIComponent(`Olá ${(order.customer?.first_name||'')}! 😊 Seu pedido foi enviado!
-
-📦 Rastreie aqui: https://www.melhorrastreio.com.br/rastreio/${rastreios[0]}
-
-Qualquer dúvida estamos aqui! — Kcique Relógios ⌚`)
-      : '';
-
-    return `<tr>
-      <td><div style="font-weight:600;font-size:13px">#${order.order_number}</div><div style="font-size:11px;color:#9ca3af">${dataStr}</div></td>
-      <td><div style="font-weight:600">${order.customer?.first_name||''} ${order.customer?.last_name||''}</div><div style="font-size:12px;color:#6b7280">${order.email||''}</div><div style="font-size:12px;color:#6b7280">${order.phone||''}</div></td>
-      <td style="font-size:12px;max-width:200px">${produtos.substring(0,80)}${produtos.length>80?'...':''}</td>
-      <td><strong>R$ ${parseFloat(order.total_price||0).toFixed(2).replace('.',',')}</strong></td>
-      <td>${statusBadge}</td>
-      <td>${rastreioStr}</td>
-      <td style="white-space:nowrap">
-        ${tel && msgRastreio ? `<a href="https://wa.me/55${tel}?text=${msgRastreio}" target="_blank" class="btn-wpp" title="Enviar rastreio">📦 WPP</a>` : ''}
-        ${tel && !msgRastreio ? `<a href="https://wa.me/55${tel}" target="_blank" class="btn-wpp">💬 WPP</a>` : ''}
-        <a href="https://admin.shopify.com/store/757ac6-c8/orders/${order.id}" target="_blank" style="display:inline-flex;align-items:center;padding:6px 10px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:12px;text-decoration:none">🔗 Ver</a>
-      </td>
-    </tr>`;
-  }).join('');
+  const getImgPedido = (titulo) => {
+    const base = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
+    const p = (produtosSemEstoque.products||[]).find(p => p.title === titulo || p.title === base || p.title.includes(base) || base.includes(p.title));
+    return p && p.image ? p.image.src : '';
+  };
 
   const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
   const pedidosPagosNaoEnviados = pedidosList.filter(o => o.financial_status === 'paid' && !o.fulfillment_status).length;
 
+  const pedidosCards = pedidosList.map(order => {
+    const data = new Date(new Date(order.created_at).getTime() - 3*60*60*1000);
+    const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const tel = ((order.shipping_address && order.shipping_address.phone) || order.phone || (order.billing_address && order.billing_address.phone) || '').replace(/[^0-9]/g,'');
+    const rastreios = (order.fulfillments||[]).flatMap(f => f.tracking_numbers||[]);
+    const nome = (order.customer ? ((order.customer.first_name||'') + ' ' + (order.customer.last_name||'')).trim() : '') || 'Cliente';
+    const addr = order.shipping_address;
+    const endStr = addr ? (addr.address1||'') + (addr.address2 ? ' '+addr.address2 : '') + ', ' + (addr.city||'') + '/' + (addr.province_code||'') + ' — CEP ' + (addr.zip||'') : '—';
+    const financial = order.financial_status;
+    const fulfillment = order.fulfillment_status;
+
+    let statusColor = '#f59e0b', statusLabel = 'Pago';
+    if (fulfillment === 'fulfilled') { statusColor = '#16a34a'; statusLabel = '✅ Enviado'; }
+    else if (financial === 'refunded') { statusColor = '#ef4444'; statusLabel = '↩️ Reembolso'; }
+    else if (financial === 'pending') { statusColor = '#9ca3af'; statusLabel = 'Pendente'; }
+    else { statusLabel = '💳 Pago'; }
+
+    const msgRastreio = rastreios.length > 0
+      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Seu pedido foi enviado!\n\n📦 Rastreie: https://www.melhorrastreio.com.br/rastreio/' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
+      : '';
+    const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
+
+    const produtosHtml = (order.line_items||[]).map(item => {
+      const img = getImgPedido(item.title);
+      return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
+        + (img
+          ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
+          : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px">⌚</div>')
+        + '<div>'
+        + '<div style="font-size:14px;font-weight:600">' + item.title + '</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-top:2px">x' + item.quantity + ' — R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + '</div>'
+        + '</div></div>';
+    }).join('');
+
+    return '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:12px;overflow:hidden">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#fafafa;cursor:pointer;border-bottom:1px solid #f3f4f6" onclick="var el=document.getElementById('p' + order.id + '');el.style.display=el.style.display==='none'?'block':'none'">'
+        + '<div style="display:flex;align-items:center;gap:12px">'
+          + '<span style="font-weight:700;font-size:15px">#' + order.order_number + '</span>'
+          + '<span style="font-size:12px;color:#9ca3af">' + dataStr + '</span>'
+          + '<span style="font-size:13px;color:#1a1a2e;font-weight:500">' + nome + '</span>'
+          + '<span style="background:' + statusColor + '20;color:' + statusColor + ';padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600">' + statusLabel + '</span>'
+          + (rastreios.length > 0 ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">📦 ' + rastreios[0] + '</span>' : '')
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+          + '<span style="font-weight:700;font-size:16px">R$ ' + parseFloat(order.total_price||0).toFixed(2).replace('.',',') + '</span>'
+          + '<span style="color:#9ca3af;font-size:12px">▼</span>'
+        + '</div>'
+      + '</div>'
+      + '<div id="p' + order.id + '" style="display:none;padding:20px">'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">'
+          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">👤 Cliente</div>'
+            + '<div style="font-weight:600">' + nome + '</div>'
+            + '<div style="font-size:13px;color:#6b7280">' + (order.email||'') + '</div>'
+            + '<div style="font-size:13px;color:#6b7280">' + (tel ? '+55 '+tel : '—') + '</div>'
+          + '</div>'
+          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">📍 Entrega</div>'
+            + '<div style="font-size:13px;line-height:1.7">' + endStr + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">🛍 Produtos</div>' + produtosHtml + '</div>'
+        + (rastreios.length > 0
+          ? '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">📦 Rastreio</div>'
+            + rastreios.map(r => '<a href="https://www.melhorrastreio.com.br/rastreio/'+r+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#dbeafe;color:#1e40af;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;margin-right:6px">'+r+' →</a>').join('')
+            + '</div>'
+          : '<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;color:#92400e">⚠️ Sem código de rastreio ainda</div>')
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+          + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
+          + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+
   const abaPedidos = `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
-      <div class="stat-card"><div class="stat-label">Total (últimos 50)</div><div class="stat-value">${pedidosList.length}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">Últimos 50 Pedidos</div><div class="stat-value">${pedidosList.length}</div></div>
       <div class="stat-card"><div class="stat-label">✅ Enviados</div><div class="stat-value" style="color:#16a34a">${pedidosFulfilled}</div></div>
       <div class="stat-card"><div class="stat-label">⏳ Pagos Não Enviados</div><div class="stat-value" style="color:#f59e0b">${pedidosPagosNaoEnviados}</div></div>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Pedido</th><th>Cliente</th><th>Produtos</th><th>Valor</th><th>Status</th><th>Rastreio</th><th>Ação</th></tr></thead>
-      <tbody>${pedidosRows}</tbody>
-    </table></div>`;
+    <div>${pedidosCards}</div>`;
 
   const abaCupons = `<div class="vazio" style="padding:64px">
     <div style="font-size:48px;margin-bottom:16px">🎟</div>
