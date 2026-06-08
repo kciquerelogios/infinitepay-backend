@@ -27,26 +27,17 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      const endpoints = [
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=released',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=liberados',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=posted',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=dispatched',
-        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=shipping',
-      ];
-      const resultados = {};
-      for (const ep of endpoints) {
-        try {
-          const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-          const text = await r.text();
-          try {
-            const json = JSON.parse(text);
-            const first = (json.data||[])[0];
-            resultados[ep] = { httpStatus: r.status, total: json.total, first_status: first?.status, first_posted_at: first?.posted_at };
-          } catch(e) { resultados[ep] = { httpStatus: r.status, raw: text.substring(0,100) }; }
-        } catch(e) { resultados[ep] = { error: e.message }; }
-      }
-      return res.status(200).json(resultados);
+      // purchases contém orders com status 'released' = em trânsito
+      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+      const d1 = await r1.json();
+      const purchases = d1.data || [];
+      let emTransitoCount = 0;
+      purchases.forEach(p => {
+        (p.orders||[]).forEach(o => {
+          if (o.status === 'released') emTransitoCount++;
+        });
+      });
+      return res.status(200).json({ total_purchases: d1.total, em_transito: emTransitoCount });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
@@ -142,7 +133,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Melhor Envio - carrinho (pending) e pedidos postados
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     ]).then(([cart, orders]) => ({
       cart: cart.data || [],
       orders: orders.data || [],
@@ -215,15 +206,17 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     saldoME = parseFloat(saldoMelhorEnvio.balance || saldoMelhorEnvio?.data?.balance || 0);
     const hojeDate = new Date().toISOString().split('T')[0];
     const cart = etiquetasME.cart || [];
-    const tracking = Array.isArray(etiquetasME) ? etiquetasME : (etiquetasME.data || []);
     // Etiquetas criadas hoje (no carrinho hoje)
     etiquetasHoje = cart.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
     // Pronto para postar = total no carrinho
     prontoPostar = etiquetasME.total_cart || cart.length;
-    // Em trânsito = com código de rastreio
-    emTransito = tracking.filter(s => s.tracking && s.status !== 'delivered' && s.status !== 'canceled').length;
-    // Problema = cancelados ou devolvidos
-    problemaEntrega = tracking.filter(s => s.status === 'undelivered' || s.status === 'returned').length;
+    // Em trânsito = orders com status 'released' dentro dos purchases
+    const purchases = etiquetasME.data || [];
+    purchases.forEach(p => {
+      (p.orders||[]).forEach(o => {
+        if (o.status === 'released') emTransito++;
+      });
+    });
   } catch(e) { console.error('ME error:', e.message); }
 
   // Comparativo mês
@@ -250,7 +243,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
       <div class="stat-card"><div class="stat-label">💳 Saldo Melhor Envio</div><div class="stat-value" style="color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Saldo baixo!':'disponível'}</div></div>
       <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
-      <div class="stat-card" style="cursor:pointer" onclick="window.open('https://melhorenvio.com.br/envios/postados','_blank')"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${vendas.mes.count - prontoPostar > 0 ? vendas.mes.count - prontoPostar : '—'}</div><div class="stat-sub">ver no Melhor Envio →</div></div>
+      <div class="stat-card"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${emTransito}</div><div class="stat-sub">postados nos Correios</div></div>
       <div class="stat-card"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="color:${prontoPostar>0?'#f59e0b':'#10b981'}">${prontoPostar}</div><div class="stat-sub">no carrinho ME</div></div>
     </div>
 
