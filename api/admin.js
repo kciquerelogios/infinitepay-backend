@@ -31,18 +31,37 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     try {
       const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
 
-      // 1. Buscar order ID no Melhor Envio pelo tracking
+      // 1. Buscar order ID no Melhor Envio
       let meOrderId = req.query.meOrderId || null;
-      if (!meOrderId && tracking) {
-        // Buscar só página 1 para evitar timeout
-        const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=1', {
-          headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-        }).then(r=>r.json()).catch(()=>({data:[]}));
-        for (const purchase of (r1.data || [])) {
-          for (const order of (purchase.orders || [])) {
-            if (order.tracking === tracking) { meOrderId = order.id; break; }
+      let trackingFinal = tracking || '';
+
+      if (!meOrderId) {
+        // Buscar nas primeiras 3 páginas pelo tracking ou nome do cliente
+        const pages = await Promise.all([1,2,3].map(p =>
+          fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          }).then(r=>r.json()).catch(()=>({data:[]}))
+        ));
+        const allOrders = pages.flatMap(p => (p.data||[]).flatMap(pu => pu.orders||[]));
+        
+        // Buscar por tracking primeiro
+        if (trackingFinal) {
+          const found = allOrders.find(o => o.tracking === trackingFinal);
+          if (found) meOrderId = found.id;
+        }
+        
+        // Se não achou por tracking, buscar por nome do cliente
+        if (!meOrderId && clienteNome) {
+          const nomeNorm = clienteNome.toLowerCase().trim();
+          const found = allOrders.find(o => {
+            const toName = (o.to && o.to.name || '').toLowerCase().trim();
+            return toName === nomeNorm || toName.includes(nomeNorm.split(' ')[0].toLowerCase());
+          });
+          if (found) {
+            meOrderId = found.id;
+            trackingFinal = found.tracking || trackingFinal;
+            console.log('Encontrado por nome:', found.to.name, '| tracking:', trackingFinal);
           }
-          if (meOrderId) break;
         }
       }
 
