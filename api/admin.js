@@ -25,7 +25,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== ACTION: DEBUG PRODUTOS =====
   if (req.query.action === 'prod-debug') {
-    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5&fields=id,title,image`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
     const d = await r.json();
     return res.status(200).json({ 
       total: (d.products||[]).length,
@@ -159,7 +159,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Shopify pedidos aguardando pagamento/envio
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify produtos (estoque + imagens)
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,variants`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
