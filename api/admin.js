@@ -25,47 +25,50 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== ACTION: ENVIAR PARA FORNECEDOR =====
   if (req.query.action === 'enviar-fornecedor') {
-    const { orderId, clienteNome, tracking, imgUrl } = req.query;
-    console.log('=== ENVIAR FORNECEDOR ===', { clienteNome, tracking, meOrderId: req.query.meOrderId, imgUrl: req.query.imgUrl?.substring(0,50) });
+    const { clienteNome, tracking, imgUrl } = req.query;
+    let meOrderId = req.query.meOrderId || null;
+    let trackingFinal = tracking || '';
     const GRUPO_FORNECEDOR = '120363426285950378-group';
+    const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
+
     try {
-      const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
-
-      // 1. Buscar order ID no Melhor Envio
-      let meOrderId = req.query.meOrderId || null;
-      let trackingFinal = tracking || '';
-
+      // 1. Buscar meOrderId se não veio
       if (!meOrderId) {
-        // Buscar nas primeiras 3 páginas pelo tracking ou nome do cliente
         const pages = await Promise.all([1,2,3].map(p =>
           fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
             headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
           }).then(r=>r.json()).catch(()=>({data:[]}))
         ));
         const allOrders = pages.flatMap(p => (p.data||[]).flatMap(pu => pu.orders||[]));
-        
-        // Buscar por tracking primeiro
-        if (trackingFinal) {
-          const found = allOrders.find(o => o.tracking === trackingFinal);
-          if (found) meOrderId = found.id;
-        }
-        
-        // Se não achou por tracking, buscar por nome do cliente
-        if (!meOrderId && clienteNome) {
-          const nomeNorm = clienteNome.toLowerCase().trim();
-          const found = allOrders.find(o => {
-            const toName = (o.to && o.to.name || '').toLowerCase().trim();
-            return toName === nomeNorm || toName.includes(nomeNorm.split(' ')[0].toLowerCase());
-          });
-          if (found) {
-            meOrderId = found.id;
-            trackingFinal = found.tracking || trackingFinal;
-            console.log('Encontrado por nome:', found.to.name, '| tracking:', trackingFinal);
-          }
+        const found = trackingFinal
+          ? allOrders.find(o => o.tracking === trackingFinal)
+          : allOrders.find(o => {
+              const toName = (o.to&&o.to.name||'').toLowerCase().trim();
+              const cn = (clienteNome||'').toLowerCase().trim();
+              return toName === cn || toName.includes(cn.split(' ')[0]);
+            });
+        if (found) {
+          meOrderId = found.id;
+          trackingFinal = found.tracking || trackingFinal;
+          console.log('Encontrado:', found.to&&found.to.name, '| tracking:', trackingFinal);
         }
       }
 
-      // 2. Foguetes iniciais
+      // 2. Buscar URL do PDF no S3
+      let pdfS3Url = '';
+      if (meOrderId) {
+        try {
+          const pdfResp = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          });
+          const pdfData = await pdfResp.json();
+          pdfS3Url = Array.isArray(pdfData) ? pdfData[0] : (pdfData.url || '');
+          console.log('PDF S3 URL:', pdfS3Url ? 'encontrada' : 'nao encontrada');
+        } catch(e) { console.log('Erro PDF:', e.message); }
+      }
+
+      // 3. Enviar mensagens em sequência
+      // Foguetes iniciais
       await fetch(`${zapiBase}/send-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
@@ -73,16 +76,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
       await new Promise(r => setTimeout(r, 800));
 
-      // 3. Foto com legenda
+      // Foto com legenda
       if (imgUrl) {
         await fetch(`${zapiBase}/send-image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({
-            phone: GRUPO_FORNECEDOR,
-            image: decodeURIComponent(imgUrl),
-            caption: 'pedido ' + clienteNome + '\nETIQUETA PDF'
-          })
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, image: decodeURIComponent(imgUrl), caption: 'pedido ' + clienteNome + '\nETIQUETA PDF' })
         });
       } else {
         await fetch(`${zapiBase}/send-text`, {
@@ -93,126 +92,34 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
       await new Promise(r => setTimeout(r, 800));
 
-      // 4. Foguetes finais
+      // Foguetes finais
       await fetch(`${zapiBase}/send-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
         body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '\uD83D\uDE80\n\uD83D\uDE80' })
       });
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 800));
 
-      // 3. Gerar link público da etiqueta e enviar
-      if (meOrderId) {
-        try {
-          // Gerar link público de impressão via API
-          const printResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-            body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
-          });
-          const printData = await printResp.json();
-          console.log('Print response:', JSON.stringify(printData).substring(0,300));
-          const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
-
-          if (pdfUrl) {
-            // Tentar múltiplos endpoints para baixar PDF
-            const endpoints = [
-              `https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}.pdf`,
-              `https://melhorenvio.com.br/api/v2/me/shipment/print/${meOrderId}.pdf`,
-              `https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}/print.pdf`,
-            ];
-            let pdfBase64 = null;
-            for (const ep of endpoints) {
-              try {
-                const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/pdf,*/*', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-                const ct = r.headers.get('content-type') || '';
-                console.log('Trying', ep, '| ct:', ct, '| status:', r.status);
-                if (r.ok && (ct.includes('pdf') || ct.includes('octet'))) {
-                  const buf = await r.arrayBuffer();
-                  pdfBase64 = Buffer.from(buf).toString('base64');
-                  console.log('PDF found at:', ep, 'size:', buf.byteLength);
-                  break;
-                }
-              } catch(e) { console.log('Error:', ep, e.message); }
-            }
-
-            // Usar endpoint correto para baixar PDF em arquivo
-            const pdfFileResp = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
-              headers: { 
-                Authorization: `Bearer ${ME_TOKEN}`, 
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' 
-              }
-            });
-            const ct = pdfFileResp.headers.get('content-type') || '';
-            const rawText = await pdfFileResp.text();
-            console.log('imprimir/pdf content-type:', ct, 'status:', pdfFileResp.status);
-
-            let pdfUrl2 = '';
-            try {
-              const pdfJson = JSON.parse(rawText);
-              // Retorna array de URLs S3
-              if (Array.isArray(pdfJson)) pdfUrl2 = pdfJson[0] || '';
-              else pdfUrl2 = pdfJson.url || pdfJson.link || pdfJson.pdf || '';
-              console.log('PDF URL encontrada:', pdfUrl2.substring(0,100));
-            } catch(e) { console.log('Parse error:', e.message); }
-
-            if (ct.includes('pdf') || ct.includes('octet')) {
-              // Arquivo direto
-              const pdfBuffer = Buffer.from(rawText, 'binary');
-              const pdfBase64 = pdfBuffer.toString('base64');
-              await fetch(`${zapiBase}/send-document/base64`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({
-                  phone: GRUPO_FORNECEDOR,
-                  base64: 'data:application/pdf;base64,' + pdfBase64,
-                  fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId) + '.pdf',
-                  caption: ''
-                })
-              });
-            } else if (pdfUrl2) {
-              // URL retornada no JSON - baixar e enviar
-              // URL S3 pré-assinada - não precisa de Authorization
-              const pdfResp2 = await fetch(pdfUrl2);
-              const ct2 = pdfResp2.headers.get('content-type') || '';
-              console.log('PDF URL2 ct:', ct2);
-              if (ct2.includes('pdf') || ct2.includes('octet')) {
-                const buf2 = await pdfResp2.arrayBuffer();
-                const b64 = Buffer.from(buf2).toString('base64');
-                await fetch(`${zapiBase}/send-document/base64`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                  body: JSON.stringify({ phone: GRUPO_FORNECEDOR, base64: 'data:application/pdf;base64,' + b64, fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId) + '.pdf', caption: '' })
-                });
-              } else {
-                await fetch(`${zapiBase}/send-text`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN }, body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + pdfUrl2 }) });
-              }
-            } else {
-              await fetch(`${zapiBase}/send-text`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN }, body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + (pdfUrl || 'https://melhorenvio.com.br/imprimir/' + meOrderId) }) });
-            }
-          } else {
-            // Fallback: enviar link de rastreio
-            await fetch(`${zapiBase}/send-text`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-              body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Rastreio: ' + tracking + '\nhttps://www.melhorrastreio.com.br/rastreio/' + tracking })
-            });
-          }
-        } catch(e) {
-          console.error('Erro PDF:', e.message);
-        }
-      } else if (tracking) {
+      // PDF
+      if (pdfS3Url) {
+        const zapiDocResp = await fetch(`${zapiBase}/send-document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, document: pdfS3Url, fileName: 'etiqueta-' + (trackingFinal||meOrderId||'') + '.pdf', caption: '' })
+        });
+        const zapiDocData = await zapiDocResp.json();
+        console.log('PDF enviado:', JSON.stringify(zapiDocData).substring(0,100));
+      } else if (trackingFinal) {
         await fetch(`${zapiBase}/send-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Rastreio: ' + tracking + '\nhttps://www.melhorrastreio.com.br/rastreio/' + tracking })
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Rastreio: ' + trackingFinal })
         });
       }
 
       return res.status(200).json({ ok: true });
     } catch(e) {
+      console.error('Erro fornecedor:', e.message);
       return res.status(500).json({ error: e.message });
     }
   }
