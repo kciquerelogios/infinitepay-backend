@@ -153,9 +153,16 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      Promise.all([1,2,3,4,5,6,7,8,9,10].map(page =>
-        fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]}))
-      )).then(pages => ({ data: pages.flatMap(p => p.data||[]), total: pages[0]?.total || 0 })).catch(()=>({})),
+      fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(async r => {
+        const d = await r.json();
+        const lastPage = d.last_page || 1;
+        const extras = lastPage > 1 ? await Promise.all(
+          Array.from({length: lastPage - 1}, (_, i) =>
+            fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + (i+2), { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]}))
+          )
+        ) : [];
+        return { purchases: [...(d.data||[]), ...extras.flatMap(e=>e.data||[])], total_cart: 0 };
+      }).catch(()=>({ purchases: [], total_cart: 0 })),
     ]).then(([cart, purchases]) => ({
       cart: cart.data || [],
       purchases: purchases.data || [],
@@ -230,27 +237,17 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const cart = etiquetasME.cart || [];
     // Etiquetas criadas hoje (no carrinho hoje)
     etiquetasHoje = cart.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    // Pronto para postar = total no carrinho
+    // Pronto para postar = no carrinho (cart) - released é calculado abaixo
     prontoPostar = etiquetasME.total_cart || cart.length;
-    // Buscar tracking dos orders released para contar em trânsito real
+    // Contar por status real dos orders
     const purchases = etiquetasME.purchases || [];
-    const orderIds = [];
     purchases.forEach(p => {
-      (p.orders||[]).forEach(o => { if (o.status === 'released') orderIds.push(o.id); });
+      (p.orders||[]).forEach(o => {
+        if (o.status === 'posted') emTransito++;
+        if (o.status === 'released') prontoPostar++;
+        if (o.status === 'undelivered') problemaEntrega++;
+      });
     });
-    if (orderIds.length > 0) {
-      try {
-        const trackResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-          body: JSON.stringify({ orders: orderIds })
-        });
-        const trackData = await trackResp.json();
-        Object.values(trackData).forEach(o => {
-          if (o.tracking && !o.delivered_at && !o.canceled_at) emTransito++;
-        });
-      } catch(e) { emTransito = orderIds.length; }
-    }
   } catch(e) { console.error('ME error:', e.message); }
 
   // Comparativo mês
