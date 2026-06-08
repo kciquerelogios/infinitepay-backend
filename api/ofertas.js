@@ -117,6 +117,95 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
   return disparadas;
 }
 
+async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN, ME_TOKEN, SHOPIFY_STORE, SHOPIFY_TOKEN) {
+  // Buscar purchases recentes do Melhor Envio (primeiras 5 páginas)
+  const pages = await Promise.all([1,2,3,4,5].map(page =>
+    fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, {
+      headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+    }).then(r => r.json()).catch(() => ({ data: [] }))
+  ));
+
+  const purchases = pages.flatMap(p => p.data || []);
+  let enviados = 0;
+
+  for (const purchase of purchases) {
+    for (const order of (purchase.orders || [])) {
+      // Só processar released com tracking
+      if (order.status !== 'released' || !order.tracking) continue;
+
+      const tracking = order.tracking;
+      const chave = 'rastreio-enviado-' + tracking;
+
+      // Verificar se já enviou
+      try {
+        const r = await fetch(`${KV_URL}/get/${chave}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        const d = await r.json();
+        if (d.result) continue; // já enviou
+      } catch(e) { continue; }
+
+      // Pegar telefone e nome do destinatário
+      const nomeDestinatario = order.to?.name || '';
+      const emailDestinatario = order.to?.email || '';
+      let telefone = (order.to?.phone || '').replace(/[^0-9]/g, '');
+
+      // Buscar telefone no Shopify pelo email
+      if (!telefone && emailDestinatario) {
+        try {
+          const shopResp = await fetch(
+            `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=3&financial_status=paid`,
+            { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+          );
+          const shopData = await shopResp.json();
+          const pedido = (shopData.orders || [])[0];
+          if (pedido) {
+            telefone = ((pedido.shipping_address && pedido.shipping_address.phone) || pedido.phone || (pedido.billing_address && pedido.billing_address.phone) || '').replace(/[^0-9]/g, '');
+          }
+        } catch(e) {}
+      }
+
+      if (!telefone) {
+        // Marcar como enviado mesmo sem telefone para não tentar sempre
+        await fetch(`${KV_URL}/set/${chave}/sem-tel/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        continue;
+      }
+
+      if (!telefone.startsWith('55')) telefone = '55' + telefone;
+
+      const primeiroNome = nomeDestinatario.split(' ')[0] || 'cliente';
+      const mensagem = `Olá ${primeiroNome}! 😊
+
+Seu pedido da *Kcique Relógios* foi enviado! ⌚📦
+
+🔍 *Código de rastreio:*
+${tracking}
+
+📦 *Acompanhe aqui:*
+https://www.melhorrastreio.com.br/rastreio/${tracking}
+
+Qualquer dúvida estamos aqui! 😊`;
+
+      try {
+        await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({ phone: telefone, message: mensagem })
+        });
+
+        // Marcar como enviado no Redis (TTL 30 dias)
+        await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+
+        console.log('Rastreio enviado para:', telefone, '| Tracking:', tracking);
+        enviados++;
+
+        // Delay para não sobrecarregar Z-API
+        await new Promise(r => setTimeout(r, 1000));
+      } catch(e) { console.error('Erro envio rastreio:', e.message); }
+    }
+  }
+
+  console.log('Rastreios verificados. Enviados:', enviados);
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -138,6 +227,12 @@ export default async function handler(req, res) {
   if (action === 'verificar') {
     try {
       const disparadas = await verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN);
+
+      // Verificar rastreios novos e enviar WhatsApp
+      try {
+        await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
+      } catch(e) { console.error('Erro rastreios:', e.message); }
+
       return res.status(200).json({ success: true, disparadas, total: disparadas.length });
     } catch(e) {
       return res.status(500).json({ error: e.message });
