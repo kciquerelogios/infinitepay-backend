@@ -26,6 +26,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ACTION: ENVIAR PARA FORNECEDOR =====
   if (req.query.action === 'enviar-fornecedor') {
     const { orderId, clienteNome, tracking, imgUrl } = req.query;
+    console.log('=== ENVIAR FORNECEDOR ===', { clienteNome, tracking, meOrderId: req.query.meOrderId, imgUrl: req.query.imgUrl?.substring(0,50) });
     const GRUPO_FORNECEDOR = '120363426285950378-group';
     try {
       const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
