@@ -152,9 +152,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
             let pdfUrl2 = '';
             try {
               const pdfJson = JSON.parse(rawText);
-              pdfUrl2 = pdfJson.url || pdfJson.link || pdfJson.pdf || '';
-              console.log('PDF JSON:', JSON.stringify(pdfJson).substring(0,200));
-            } catch(e) {}
+              // Retorna array de URLs S3
+              if (Array.isArray(pdfJson)) pdfUrl2 = pdfJson[0] || '';
+              else pdfUrl2 = pdfJson.url || pdfJson.link || pdfJson.pdf || '';
+              console.log('PDF URL encontrada:', pdfUrl2.substring(0,100));
+            } catch(e) { console.log('Parse error:', e.message); }
 
             if (ct.includes('pdf') || ct.includes('octet')) {
               // Arquivo direto
