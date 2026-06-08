@@ -330,7 +330,10 @@ export default async function handler(req, res) {
             const shopData = shopText ? JSON.parse(shopText) : {};
             const pedido = (shopData.orders || [])[0];
 
-            if (!pedido || !pedido.id) { semPedido++; continue; }
+            if (!pedido || !pedido.id) { 
+              console.log('Pedido nao encontrado para email:', email);
+              semPedido++; continue; 
+            }
 
             // Buscar fulfillment_order do pedido
             const foResp = await fetch(
