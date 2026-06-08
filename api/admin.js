@@ -236,7 +236,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const hojeDate = new Date().toISOString().split('T')[0];
     const cart = etiquetasME.cart || [];
     // Etiquetas hoje = pedidos pagos hoje no Shopify
-    etiquetasHoje = vendas.hoje.count;
+    etiquetasHoje = (ordersHoje.orders || []).length;
     // Carrinho = etiquetas não pagas ainda
     cartME = etiquetasME.total_cart || cart.length;
     // Contar por status real dos orders
