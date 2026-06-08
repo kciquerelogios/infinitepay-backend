@@ -185,13 +185,53 @@ https://www.melhorrastreio.com.br/rastreio/${tracking}
 Qualquer dúvida estamos aqui! 😊`;
 
       try {
+        // 1. Enviar WhatsApp
         await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
           body: JSON.stringify({ phone: telefone, message: mensagem })
         });
 
-        // Marcar como enviado no Redis (TTL 30 dias)
+        // 2. Criar fulfillment no Shopify (marcar pedido como enviado)
+        if (emailDestinatario && SHOPIFY_STORE && SHOPIFY_TOKEN) {
+          try {
+            // Buscar pedido pelo email
+            const shopResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+            );
+            const shopData = await shopResp.json();
+            const pedido = (shopData.orders || [])[0];
+
+            if (pedido && pedido.id) {
+              // Criar fulfillment com rastreio
+              const fulfillResp = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+                  body: JSON.stringify({
+                    fulfillment: {
+                      tracking_number: tracking,
+                      tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
+                      tracking_company: 'Correios',
+                      notify_customer: false, // já enviamos pelo WhatsApp
+                      line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
+                    }
+                  })
+                }
+              );
+              const fulfillData = await fulfillResp.json();
+              if (fulfillData.fulfillment) {
+                console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
+              } else {
+                console.log('Erro fulfillment:', JSON.stringify(fulfillData).substring(0,200));
+              }
+            }
+          } catch(e) { console.error('Erro fulfillment Shopify:', e.message); }
+        }
+
+        // 3. Marcar como enviado no Redis (TTL 30 dias)
         await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
 
         console.log('Rastreio enviado para:', telefone, '| Tracking:', tracking);
