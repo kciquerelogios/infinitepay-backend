@@ -83,19 +83,48 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
       await new Promise(r => setTimeout(r, 500));
 
-      // 3. Enviar etiqueta PDF
+      // 3. Gerar link público da etiqueta e enviar
       if (meOrderId) {
-        const pdfUrl = `https://melhorenvio.com.br/impressao/${meOrderId}?inline=1`;
-        await fetch(`${zapiBase}/send-document`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({
-            phone: GRUPO_FORNECEDOR,
-            document: pdfUrl,
-            fileName: 'etiqueta-' + (tracking||'') + '.pdf',
-            caption: ''
-          })
-        });
+        try {
+          // Gerar link público de impressão via API
+          const printResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+            body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
+          });
+          const printData = await printResp.json();
+          console.log('Print response:', JSON.stringify(printData).substring(0,300));
+          const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
+
+          if (pdfUrl) {
+            // Baixar PDF e enviar como base64
+            const pdfResp = await fetch(pdfUrl, {
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+            });
+            const pdfBuffer = await pdfResp.arrayBuffer();
+            const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+
+            await fetch(`${zapiBase}/send-document/base64`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+              body: JSON.stringify({
+                phone: GRUPO_FORNECEDOR,
+                base64: 'data:application/pdf;base64,' + pdfBase64,
+                fileName: 'etiqueta-' + (tracking||'') + '.pdf',
+                caption: ''
+              })
+            });
+          } else {
+            // Fallback: enviar link de rastreio
+            await fetch(`${zapiBase}/send-text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+              body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Rastreio: ' + tracking + '\nhttps://www.melhorrastreio.com.br/rastreio/' + tracking })
+            });
+          }
+        } catch(e) {
+          console.error('Erro PDF:', e.message);
+        }
       } else if (tracking) {
         await fetch(`${zapiBase}/send-text`, {
           method: 'POST',
