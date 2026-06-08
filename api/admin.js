@@ -23,6 +23,98 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
+  // ===== ACTION: ENVIAR PARA FORNECEDOR =====
+  if (req.query.action === 'enviar-fornecedor') {
+    const { orderId, clienteNome, tracking, imgUrl } = req.query;
+    const GRUPO_FORNECEDOR = '120363426285950378-group';
+    try {
+      const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
+
+      // 1. Buscar order ID no Melhor Envio pelo tracking para pegar PDF
+      let meOrderId = null;
+      if (tracking) {
+        const pages = await Promise.all([1,2,3].map(p =>
+          fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          }).then(r=>r.json()).catch(()=>({data:[]}))
+        ));
+        const purchases = pages.flatMap(p => p.data || []);
+        for (const purchase of purchases) {
+          for (const order of (purchase.orders || [])) {
+            if (order.tracking === tracking) { meOrderId = order.id; break; }
+          }
+          if (meOrderId) break;
+        }
+      }
+
+      // 2. Foguetes iniciais
+      await fetch(`${zapiBase}/send-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '🚀
+🚀' })
+      });
+      await new Promise(r => setTimeout(r, 800));
+
+      // 3. Foto com legenda
+      if (imgUrl) {
+        await fetch(`${zapiBase}/send-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({
+            phone: GRUPO_FORNECEDOR,
+            image: decodeURIComponent(imgUrl),
+            caption: `pedido ${clienteNome}
+ETIQUETA PDF`
+          })
+        });
+      } else {
+        await fetch(`${zapiBase}/send-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: `pedido ${clienteNome}
+ETIQUETA PDF` })
+        });
+      }
+      await new Promise(r => setTimeout(r, 800));
+
+      // 4. Foguetes finais
+      await fetch(`${zapiBase}/send-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '🚀
+🚀' })
+      });
+      await new Promise(r => setTimeout(r, 500));
+
+      // 3. Enviar etiqueta PDF
+      if (meOrderId) {
+        const pdfUrl = `https://melhorenvio.com.br/impressao/${meOrderId}?inline=1`;
+        await fetch(`${zapiBase}/send-document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({
+            phone: GRUPO_FORNECEDOR,
+            document: pdfUrl,
+            fileName: 'etiqueta-' + (tracking||'') + '.pdf',
+            caption: ''
+          })
+        });
+      } else if (tracking) {
+        await fetch(`${zapiBase}/send-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: `Rastreio: ${tracking}
+https://www.melhorrastreio.com.br/rastreio/${tracking}` })
+        });
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== ACTION: BUSCAR GRUPO =====
   if (req.query.action === 'buscar-grupo') {
     const nome = req.query.nome || '';
@@ -554,6 +646,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
           + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
           + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
+          + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
         + '</div>'
       + '</div>'
     + '</div>';
@@ -683,6 +776,20 @@ var agora=new Date();agora.setMinutes(agora.getMinutes()+5);
 var pad=function(n){return n<10?'0'+n:n;};
 var min=agora.getFullYear()+'-'+pad(agora.getMonth()+1)+'-'+pad(agora.getDate())+'T'+pad(agora.getHours())+':'+pad(agora.getMinutes());
 if(document.getElementById('f-data')){document.getElementById('f-data').min=min;document.getElementById('f-data').value=min;}
+
+// Enviar pedido para fornecedor
+async function enviarFornecedor(nome, tracking, imgUrl) {
+  var btn = event.target;
+  btn.textContent = '⏳ Enviando...';
+  btn.disabled = true;
+  try {
+    var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl) });
+    var resp = await fetch('/api/admin?' + params.toString());
+    var data = await resp.json();
+    if (data.ok) { btn.textContent = '✅ Enviado!'; btn.style.background = '#16a34a'; }
+    else { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
+  } catch(e) { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
+}
 
 // Carregar membros dos grupos de forma assíncrona
 async function carregarMembrosGrupos(){
