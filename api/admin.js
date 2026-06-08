@@ -67,13 +67,25 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfData = await pdfResp.json();
           console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
           
-          // Também buscar via imprimir/pdf
+          // Testar variações do endpoint para incluir DACE
+          const endpoints = [
+            `https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`,
+            `https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}?dace=true`,
+            `https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}?include_dace=true`,
+            `https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}?mode=complete`,
+          ];
+          for (const ep of endpoints) {
+            const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+            const d = await r.json();
+            const urls = Array.isArray(d) ? d : [];
+            console.log(ep.split('?')[1]||'base', '-> urls:', urls.length);
+          }
+          
           const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
             headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
           });
           const pdfData2 = await pdfResp2.json();
-          console.log('imprimir/pdf:', JSON.stringify(pdfData2).substring(0,200));
-          
+          console.log('imprimir/pdf urls:', Array.isArray(pdfData2) ? pdfData2.length : 'nao array');
           allPdfUrls = Array.isArray(pdfData2) ? pdfData2 : [];
         } catch(e) { console.log('Erro PDF:', e.message); }
       }
