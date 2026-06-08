@@ -130,15 +130,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    // Melhor Envio - carrinho (pending) e pedidos postados
+    // Melhor Envio - carrinho (pending) e purchases (em trânsito)
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
       fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    ]).then(([cart, orders]) => ({
+    ]).then(([cart, purchases]) => ({
       cart: cart.data || [],
-      orders: orders.data || [],
+      purchases: purchases.data || [],
       total_cart: cart.total || 0,
-    })).catch(()=>({ cart: [], orders: [], total_cart: 0 })),
+    })).catch(()=>({ cart: [], purchases: [], total_cart: 0 })),
   ]);
 
   // Processar leads
@@ -211,7 +211,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Pronto para postar = total no carrinho
     prontoPostar = etiquetasME.total_cart || cart.length;
     // Em trânsito = orders com status 'released' dentro dos purchases
-    const purchases = etiquetasME.data || [];
+    const purchases = etiquetasME.purchases || [];
     purchases.forEach(p => {
       (p.orders||[]).forEach(o => {
         if (o.status === 'released') emTransito++;
