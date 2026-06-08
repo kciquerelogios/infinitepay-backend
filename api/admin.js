@@ -226,7 +226,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       if (p.image && p.image.src) imagemPorProduto[p.title] = p.image.src;
     });
 
-    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5).map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
+    topProdutos = Object.entries(prodContagem)
+      .filter(([nome]) => !nome.toLowerCase().includes('frete') && !nome.toLowerCase().includes('sedex') && !nome.toLowerCase().includes('pac') && nome.length > 3)
+      .sort((a,b) => b[1].count - a[1].count).slice(0, 5)
+      .map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
 
     // Sem estoque
     (produtosSemEstoque.products||[]).forEach(p => {
@@ -297,9 +300,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         <div class="stat-label" style="margin-bottom:16px">🏆 Top Produtos do Mês</div>
         ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mês</div>' : topProdutos.map(([nome, dados, img], i) => `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6">
-            ${img ? `<img src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">` : `<span style="font-size:18px">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>`}
+            ${img ? `<img src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">` : `<span style="font-size:18px;width:40px;text-align:center">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>`}
             <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${nome.substring(0,35)}${nome.length>35?'...':''}</div>
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome.substring(0,35)}${nome.length>35?'...':''}</div>
               <div style="font-size:12px;color:#6b7280">${dados.count} unid. — R$ ${dados.valor.toFixed(2).replace('.',',')}</div>
             </div>
           </div>`).join('')}
