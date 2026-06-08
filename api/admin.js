@@ -127,7 +127,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   let leads = [], ofertas = [], totalValorLeads = 0;
   let vendas = { hoje: {count:0,valor:0}, semana: {count:0,valor:0}, mes: {count:0,valor:0}, mesAnt: {count:0,valor:0} };
   let topProdutos = [], novosClientes = 0, semEstoque = [], pedidosPendentes = 0, pedidosTransito = 0, devolucoes = 0, ticketMedio = 0;
-  let saldoME = 0, etiquetasHoje = 0, prontoPostar = 0, emTransito = 0, problemaEntrega = 0;
+  let saldoME = 0, etiquetasHoje = 0, prontoPostar = 0, emTransito = 0, problemaEntrega = 0, entregues = 0, cancelados = 0;
 
   const [leadsResult, ofertasLista, ordersHoje, ordersSemana, ordersMes, ordersMesAnt, clientesHoje, pedidosPagar, produtosSemEstoque, saldoMelhorEnvio, etiquetasME] = await Promise.all([
     // Redis leads
@@ -163,9 +163,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         ) : [];
         return { purchases: [...(d.data||[]), ...extras.flatMap(e=>e.data||[])], total_cart: 0 };
       }).catch(()=>({ purchases: [], total_cart: 0 })),
-    ]).then(([cart, purchases]) => ({
+    ]).then(([cart, purchasesResult]) => ({
       cart: cart.data || [],
-      purchases: purchases.data || [],
+      purchases: purchasesResult.purchases || [],
       total_cart: cart.total || 0,
     })).catch(()=>({ cart: [], purchases: [], total_cart: 0 })),
   ]);
@@ -246,6 +246,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         if (o.status === 'posted') emTransito++;
         if (o.status === 'released') prontoPostar++;
         if (o.status === 'undelivered') problemaEntrega++;
+        if (o.status === 'delivered') entregues++;
+        if (o.status === 'canceled') cancelados++;
       });
     });
   } catch(e) { console.error('ME error:', e.message); }
@@ -271,11 +273,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">💳 Saldo Melhor Envio</div><div class="stat-value" style="color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Saldo baixo!':'disponível'}</div></div>
-      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
-      <div class="stat-card"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value">${emTransito}</div><div class="stat-sub">postados nos Correios</div></div>
-      <div class="stat-card"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="color:${prontoPostar>0?'#f59e0b':'#10b981'}">${prontoPostar}</div><div class="stat-sub">no carrinho ME</div></div>
+    <div class="section-divider">📦 Melhor Envio</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">💳 Saldo</div><div class="stat-value" style="font-size:18px;color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Baixo!':'disponível'}</div></div>
+      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value" style="font-size:22px">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
+      <div class="stat-card" style="border-color:#fef3c7"><div class="stat-label">📦 Pra Postar</div><div class="stat-value" style="font-size:22px;color:#f59e0b">${prontoPostar}</div><div class="stat-sub">etiqueta gerada</div></div>
+      <div class="stat-card" style="border-color:#dbeafe"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value" style="font-size:22px;color:#2563eb">${emTransito}</div><div class="stat-sub">postados</div></div>
+      <div class="stat-card" style="border-color:#dcfce7"><div class="stat-label">✅ Entregues</div><div class="stat-value" style="font-size:22px;color:#16a34a">${entregues}</div><div class="stat-sub">total entregue</div></div>
+      <div class="stat-card" style="${problemaEntrega>0?'border-color:#fecaca;background:#fef2f2':''}"><div class="stat-label">⚠️ Não Entregue</div><div class="stat-value" style="font-size:22px;color:${problemaEntrega>0?'#ef4444':'#6b7280'}">${problemaEntrega}</div><div class="stat-sub">${cancelados} cancelados</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -463,6 +468,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 .btn-green:hover{background:#1da851}
 .refresh-btn{padding:8px 16px;background:#f3f4f6;border:1px solid #e8eaf0;border-radius:8px;font-size:13px;color:#374151;cursor:pointer}
 .aba{display:none}.aba.ativa{display:block}
+.section-divider{font-size:13px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;margin-top:4px;padding-bottom:8px;border-bottom:1px solid #e8eaf0}
 @media(max-width:768px){.sidebar{width:60px}.sidebar-logo span,.menu-label,.sidebar-footer{display:none}.menu-item{padding:14px;justify-content:center}.main{margin-left:60px;padding:16px}.row-2{grid-template-columns:1fr}}
 </style>
 </head>
