@@ -100,15 +100,35 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
       await new Promise(r => setTimeout(r, 800));
 
-      // PDF
+      // PDFs (etiqueta + DACE se houver)
       if (pdfS3Url) {
-        const zapiDocResp = await fetch(`${zapiBase}/send-document/pdf`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, document: pdfS3Url, fileName: 'etiqueta-' + (trackingFinal||meOrderId||'') + '.pdf', caption: '' })
-        });
-        const zapiDocData = await zapiDocResp.json();
-        console.log('PDF enviado:', JSON.stringify(zapiDocData).substring(0,100));
+        // Buscar todos os PDFs do order (etiqueta + DACE)
+        let allPdfUrls = [pdfS3Url];
+        try {
+          const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          });
+          const pdfData2 = await pdfResp2.json();
+          if (Array.isArray(pdfData2) && pdfData2.length > 0) {
+            allPdfUrls = pdfData2;
+            console.log('Total PDFs encontrados:', allPdfUrls.length);
+          }
+        } catch(e) {}
+
+        for (let i = 0; i < allPdfUrls.length; i++) {
+          const url = allPdfUrls[i];
+          const fileName = i === 0
+            ? 'etiqueta-' + (trackingFinal||meOrderId||'') + '.pdf'
+            : 'dace-' + (trackingFinal||meOrderId||'') + '.pdf';
+          const zapiDocResp = await fetch(`${zapiBase}/send-document/pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+            body: JSON.stringify({ phone: GRUPO_FORNECEDOR, document: url, fileName, caption: '' })
+          });
+          const zapiDocData = await zapiDocResp.json();
+          console.log('PDF', i+1, 'enviado:', JSON.stringify(zapiDocData).substring(0,100));
+          await new Promise(r => setTimeout(r, 1000));
+        }
       } else if (trackingFinal) {
         await fetch(`${zapiBase}/send-text`, {
           method: 'POST',
