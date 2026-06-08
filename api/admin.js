@@ -33,7 +33,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const d = await r.json();
       const chats = Array.isArray(d) ? d : (d.chats || d.result || []);
       const grupos = chats.filter(c => (c.isGroup || (c.id && c.id.includes('-group'))) && (!nome || (c.name||c.title||c.subject||'').toLowerCase().includes(nome.toLowerCase())));
-      return res.status(200).json({ total: grupos.length, grupos: grupos.map(g => ({ id: g.id, nome: g.name||g.title||g.subject||'—' })) });
+      return res.status(200).json({ total: grupos.length, grupos: grupos.map(g => ({ id: g.id, phone: g.phone, chatId: g.chatId, nome: g.name||g.title||g.subject||'—', raw_keys: Object.keys(g) })) });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
