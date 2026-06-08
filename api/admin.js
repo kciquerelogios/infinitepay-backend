@@ -27,17 +27,27 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      // purchases contém orders com status 'released' = em trânsito
+      // Buscar orders released e consultar rastreio
       const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
       const d1 = await r1.json();
       const purchases = d1.data || [];
-      let emTransitoCount = 0;
+      const orderIds = [];
       purchases.forEach(p => {
-        (p.orders||[]).forEach(o => {
-          if (o.status === 'released') emTransitoCount++;
-        });
+        (p.orders||[]).forEach(o => { if (o.status === 'released') orderIds.push(o.id); });
       });
-      return res.status(200).json({ total_purchases: d1.total, em_transito: emTransitoCount });
+      // Consultar tracking dos primeiros 50
+      const trackingResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+        body: JSON.stringify({ orders: orderIds.slice(0, 50) })
+      });
+      const trackingData = await trackingResp.json();
+      const trackingText = await trackingResp.text().catch(()=>'');
+      return res.status(200).json({ 
+        orders_released: orderIds.length,
+        tracking_status: trackingResp.status,
+        tracking_sample: JSON.stringify(trackingData).substring(0, 500)
+      });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
