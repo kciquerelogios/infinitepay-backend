@@ -67,32 +67,43 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfData = await pdfResp.json();
           console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
           
-          // Buscar etiqueta PDF via S3
-          const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
-            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-          });
-          const pdfData2 = await pdfResp2.json();
-          const s3Urls = Array.isArray(pdfData2) ? pdfData2 : [];
-          
-          // Tentar gerar DACE via endpoint de geração separado
-          let daceUrl = '';
+          // Baixar PDF completo (etiqueta + DACE) via serviço Railway
+          const PDF_SERVICE = 'https://kcique-pdf-service-production.up.railway.app';
+          const PDF_SECRET = 'kcique2026';
+
           try {
-            const daceResp = await fetch(`https://melhorenvio.com.br/api/v2/me/shipment/generate`, {
+            // Pegar link de impressão do Melhor Envio
+            const printResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
               method: 'POST',
               headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
               body: JSON.stringify({ orders: [meOrderId] })
             });
-            const daceData = await daceResp.json();
-            console.log('generate response:', JSON.stringify(daceData).substring(0, 200));
-          } catch(e) {}
+            const printData = await printResp.json();
+            const printUrl = printData.url || '';
+            const printHash = printUrl.split('/imprimir/')[1] || meOrderId;
+            console.log('Print hash:', printHash);
 
-          // Se URL S3 tem múltiplas páginas, baixar e re-enviar como base64
-          if (s3Urls.length > 0) {
-            // Baixar o PDF do S3 e verificar tamanho (PDF com DACE é maior)
-            const s3Resp = await fetch(s3Urls[0]);
-            const s3Buf = await s3Resp.arrayBuffer();
-            console.log('PDF S3 tamanho:', s3Buf.byteLength, 'bytes');
+            // Chamar Railway para baixar PDF completo com DACE
+            const pdfServiceResp = await fetch(`${PDF_SERVICE}/pdf/${printHash}?secret=${PDF_SECRET}`);
+            console.log('PDF service status:', pdfServiceResp.status);
+
+            if (pdfServiceResp.ok) {
+              const pdfBuf = await pdfServiceResp.arrayBuffer();
+              console.log('PDF completo tamanho:', pdfBuf.byteLength, 'bytes');
+              allPdfUrls = [{ tipo: 'base64', data: Buffer.from(pdfBuf).toString('base64') }];
+            } else {
+              throw new Error('PDF service retornou ' + pdfServiceResp.status);
+            }
+          } catch(e) {
+            console.log('Erro PDF service Railway:', e.message);
+            // Fallback: URL S3 via API (só etiqueta sem DACE)
+            const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+            });
+            const pdfData2 = await pdfResp2.json();
+            const s3Urls = Array.isArray(pdfData2) ? pdfData2 : [];
             allPdfUrls = s3Urls.map(u => ({ tipo: 'url', data: u }));
+            console.log('Fallback S3 urls:', s3Urls.length);
           }
         } catch(e) { console.log('Erro PDF:', e.message); }
       }
