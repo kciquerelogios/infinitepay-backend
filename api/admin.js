@@ -102,7 +102,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
       // PDF
       if (pdfS3Url) {
-        const zapiDocResp = await fetch(`${zapiBase}/send-document`, {
+        const zapiDocResp = await fetch(`${zapiBase}/send-document/pdf`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
           body: JSON.stringify({ phone: GRUPO_FORNECEDOR, document: pdfS3Url, fileName: 'etiqueta-' + (trackingFinal||meOrderId||'') + '.pdf', caption: '' })
