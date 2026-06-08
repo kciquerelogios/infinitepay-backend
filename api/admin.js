@@ -505,7 +505,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }).join('');
 
     return '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:12px;overflow:hidden">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#fafafa;cursor:pointer;border-bottom:1px solid #f3f4f6" onclick="var el=document.getElementById('p' + order.id + '');el.style.display=el.style.display==='none'?'block':'none'">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#fafafa;cursor:pointer;border-bottom:1px solid #f3f4f6" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
         + '<div style="display:flex;align-items:center;gap:12px">'
           + '<span style="font-weight:700;font-size:15px">#' + order.order_number + '</span>'
           + '<span style="font-size:12px;color:#9ca3af">' + dataStr + '</span>'
