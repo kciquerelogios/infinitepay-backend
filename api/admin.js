@@ -146,7 +146,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   let topProdutos = [], novosClientes = 0, semEstoque = [], pedidosPendentes = 0, pedidosTransito = 0, devolucoes = 0, ticketMedio = 0;
   let saldoME = 0, etiquetasHoje = 0, prontoPostar = 0, emTransito = 0, problemaEntrega = 0, entregues = 0, cancelados = 0, cartME = 0;
 
-  const [leadsResult, ofertasLista, ordersHoje, ordersSemana, ordersMes, ordersMesAnt, clientesHoje, pedidosPagar, produtosSemEstoque, saldoMelhorEnvio, etiquetasME] = await Promise.all([
+  const [leadsResult, ofertasLista, ordersHoje, ordersSemana, ordersMes, ordersMesAnt, clientesHoje, pedidosPagar, produtosSemEstoque, pedidosRecentes, saldoMelhorEnvio, etiquetasME] = await Promise.all([
     // Redis leads
     fetch(`https://infinitepay-backend.vercel.app/api/leads?secret=${secret}`).then(r=>r.json()).catch(()=>({leads:[]})),
     // Redis ofertas
@@ -165,6 +165,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify produtos (estoque + imagens)
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    // Shopify pedidos recentes com fulfillment
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
@@ -456,6 +458,67 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
     ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>Ação</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
 
+  // ===== ABA PEDIDOS =====
+  const pedidosList = (pedidosRecentes.orders || []);
+  const pedidosRows = pedidosList.map(order => {
+    const data = new Date(new Date(order.created_at).getTime() - 3*60*60*1000);
+    const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const produtos = (order.line_items||[]).map(i => `${i.name} (x${i.quantity})`).join(', ');
+    const tel = (order.phone || order.billing_address?.phone || '').replace(/\D/g,'');
+    const fulfillment = order.fulfillment_status;
+    const financial = order.financial_status;
+    
+    let statusBadge = '';
+    if (fulfillment === 'fulfilled') statusBadge = '<span class="badge" style="background:#dcfce7;color:#16a34a">✅ Enviado</span>';
+    else if (fulfillment === 'partial') statusBadge = '<span class="badge" style="background:#fef3c7;color:#92400e">⚠️ Parcial</span>';
+    else if (financial === 'paid') statusBadge = '<span class="badge" style="background:#dbeafe;color:#1e40af">💳 Pago</span>';
+    else if (financial === 'pending') statusBadge = '<span class="badge" style="background:#f3f4f6;color:#374151">⏳ Pendente</span>';
+    else if (financial === 'refunded') statusBadge = '<span class="badge" style="background:#fee2e2;color:#991b1b">↩️ Reembolso</span>';
+    else statusBadge = `<span class="badge" style="background:#f3f4f6;color:#374151">${financial}</span>`;
+
+    // Rastreio do fulfillment
+    const rastreios = (order.fulfillments||[]).flatMap(f => f.tracking_numbers||[]);
+    const rastreioStr = rastreios.length > 0 
+      ? rastreios.map(r => `<a href="https://www.melhorrastreio.com.br/rastreio/${r}" target="_blank" style="color:#2563eb;font-size:12px">${r}</a>`).join('<br>')
+      : '<span style="color:#9ca3af;font-size:12px">—</span>';
+
+    const msgRastreio = rastreios.length > 0 
+      ? encodeURIComponent(`Olá ${(order.customer?.first_name||'')}! 😊 Seu pedido foi enviado!
+
+📦 Rastreie aqui: https://www.melhorrastreio.com.br/rastreio/${rastreios[0]}
+
+Qualquer dúvida estamos aqui! — Kcique Relógios ⌚`)
+      : '';
+
+    return `<tr>
+      <td><div style="font-weight:600;font-size:13px">#${order.order_number}</div><div style="font-size:11px;color:#9ca3af">${dataStr}</div></td>
+      <td><div style="font-weight:600">${order.customer?.first_name||''} ${order.customer?.last_name||''}</div><div style="font-size:12px;color:#6b7280">${order.email||''}</div><div style="font-size:12px;color:#6b7280">${order.phone||''}</div></td>
+      <td style="font-size:12px;max-width:200px">${produtos.substring(0,80)}${produtos.length>80?'...':''}</td>
+      <td><strong>R$ ${parseFloat(order.total_price||0).toFixed(2).replace('.',',')}</strong></td>
+      <td>${statusBadge}</td>
+      <td>${rastreioStr}</td>
+      <td style="white-space:nowrap">
+        ${tel && msgRastreio ? `<a href="https://wa.me/55${tel}?text=${msgRastreio}" target="_blank" class="btn-wpp" title="Enviar rastreio">📦 WPP</a>` : ''}
+        ${tel && !msgRastreio ? `<a href="https://wa.me/55${tel}" target="_blank" class="btn-wpp">💬 WPP</a>` : ''}
+        <a href="https://admin.shopify.com/store/757ac6-c8/orders/${order.id}" target="_blank" style="display:inline-flex;align-items:center;padding:6px 10px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:12px;text-decoration:none">🔗 Ver</a>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
+  const pedidosPagosNaoEnviados = pedidosList.filter(o => o.financial_status === 'paid' && !o.fulfillment_status).length;
+
+  const abaPedidos = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
+      <div class="stat-card"><div class="stat-label">Total (últimos 50)</div><div class="stat-value">${pedidosList.length}</div></div>
+      <div class="stat-card"><div class="stat-label">✅ Enviados</div><div class="stat-value" style="color:#16a34a">${pedidosFulfilled}</div></div>
+      <div class="stat-card"><div class="stat-label">⏳ Pagos Não Enviados</div><div class="stat-value" style="color:#f59e0b">${pedidosPagosNaoEnviados}</div></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Pedido</th><th>Cliente</th><th>Produtos</th><th>Valor</th><th>Status</th><th>Rastreio</th><th>Ação</th></tr></thead>
+      <tbody>${pedidosRows}</tbody>
+    </table></div>`;
+
   const abaCupons = `<div class="vazio" style="padding:64px">
     <div style="font-size:48px;margin-bottom:16px">🎟</div>
     <div style="font-size:18px;font-weight:700;margin-bottom:8px">Cupons de Desconto</div>
@@ -520,6 +583,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
     <button onclick="mudarAba('home')" class="menu-item ativo" id="menu-home"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
     <button onclick="mudarAba('carrinhos')" class="menu-item" id="menu-carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
     <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas WhatsApp</span></button>
+    <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
     <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
   </div>
   <div class="sidebar-footer">Kcique Relógios</div>
@@ -532,10 +596,11 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
   <div id="aba-home" class="aba ativa">${abaHome}</div>
   <div id="aba-carrinhos" class="aba">${abaCarrinhos}</div>
   <div id="aba-ofertas" class="aba">${abaOfertas}</div>
+  <div id="aba-pedidos" class="aba">${abaPedidos}</div>
   <div id="aba-cupons" class="aba">${abaCupons}</div>
 </div>
 <script>
-var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',cupons:'🎟 Cupons de Desconto'};
+var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto'};
 function mudarAba(aba){
   document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
   document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
