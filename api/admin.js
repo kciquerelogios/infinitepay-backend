@@ -51,8 +51,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       await fetch(`${zapiBase}/send-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '🚀
-🚀' })
+        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '\uD83D\uDE80\n\uD83D\uDE80' })
       });
       await new Promise(r => setTimeout(r, 800));
 
@@ -64,16 +63,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           body: JSON.stringify({
             phone: GRUPO_FORNECEDOR,
             image: decodeURIComponent(imgUrl),
-            caption: `pedido ${clienteNome}
-ETIQUETA PDF`
+            caption: 'pedido ' + clienteNome + '\nETIQUETA PDF'
           })
         });
       } else {
         await fetch(`${zapiBase}/send-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: `pedido ${clienteNome}
-ETIQUETA PDF` })
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'pedido ' + clienteNome + '\nETIQUETA PDF' })
         });
       }
       await new Promise(r => setTimeout(r, 800));
@@ -82,8 +79,7 @@ ETIQUETA PDF` })
       await fetch(`${zapiBase}/send-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '🚀
-🚀' })
+        body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: '\uD83D\uDE80\n\uD83D\uDE80' })
       });
       await new Promise(r => setTimeout(r, 500));
 
@@ -104,8 +100,7 @@ ETIQUETA PDF` })
         await fetch(`${zapiBase}/send-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: `Rastreio: ${tracking}
-https://www.melhorrastreio.com.br/rastreio/${tracking}` })
+          body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Rastreio: ' + tracking + '\nhttps://www.melhorrastreio.com.br/rastreio/' + tracking })
         });
       }
 
