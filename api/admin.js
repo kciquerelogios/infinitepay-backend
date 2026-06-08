@@ -23,6 +23,16 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
+  // ===== ACTION: DEBUG PRODUTOS =====
+  if (req.query.action === 'prod-debug') {
+    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5&fields=id,title,image`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d = await r.json();
+    return res.status(200).json({ 
+      total: (d.products||[]).length,
+      produtos: (d.products||[]).map(p => ({ title: p.title, tem_imagem: !!p.image, img: p.image?.src?.substring(0,80) }))
+    });
+  }
+
   // ===== ACTION: DEBUG MELHOR ENVIO =====
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
