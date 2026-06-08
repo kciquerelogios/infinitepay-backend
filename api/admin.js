@@ -115,23 +115,44 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
 
           if (pdfUrl) {
-            // Baixar PDF e enviar como base64
-            const pdfResp = await fetch(pdfUrl, {
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-            });
-            const pdfBuffer = await pdfResp.arrayBuffer();
-            const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
-
-            await fetch(`${zapiBase}/send-document/base64`, {
+            // Gerar link público para download sem autenticação
+            const publicPrintResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-              body: JSON.stringify({
-                phone: GRUPO_FORNECEDOR,
-                base64: 'data:application/pdf;base64,' + pdfBase64,
-                fileName: 'etiqueta-' + (tracking||'') + '.pdf',
-                caption: ''
-              })
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+              body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
             });
+            const publicData = await publicPrintResp.json();
+            console.log('Public print:', JSON.stringify(publicData).substring(0,200));
+            const publicUrl = publicData.url || publicData.link || pdfUrl;
+
+            // Baixar PDF com token Bearer
+            const pdfResp = await fetch(publicUrl, {
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)', Accept: 'application/pdf' }
+            });
+            const contentType = pdfResp.headers.get('content-type') || '';
+            console.log('PDF content-type:', contentType, 'status:', pdfResp.status);
+
+            if (pdfResp.ok && contentType.includes('pdf')) {
+              const pdfBuffer = await pdfResp.arrayBuffer();
+              const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+              await fetch(`${zapiBase}/send-document/base64`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+                body: JSON.stringify({
+                  phone: GRUPO_FORNECEDOR,
+                  base64: 'data:application/pdf;base64,' + pdfBase64,
+                  fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId||'') + '.pdf',
+                  caption: ''
+                })
+              });
+            } else {
+              // Enviar link direto como texto
+              await fetch(`${zapiBase}/send-text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + publicUrl })
+              });
+            }
           } else {
             // Fallback: enviar link de rastreio
             await fetch(`${zapiBase}/send-text`, {
