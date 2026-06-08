@@ -148,8 +148,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?created_at_min=${inicioDia}&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({customers:[]})),
     // Shopify pedidos aguardando pagamento/envio
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-    // Shopify produtos sem estoque
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    // Shopify produtos (estoque + imagens)
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,variants`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
@@ -220,7 +220,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
       });
     });
-    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5);
+    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5).map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
+
+    // Mapa de imagens por título do produto
+    const imagemPorProduto = {};
+    (produtosSemEstoque.products||[]).forEach(p => {
+      if (p.image && p.image.src) imagemPorProduto[p.title] = p.image.src;
+    });
 
     // Sem estoque
     (produtosSemEstoque.products||[]).forEach(p => {
@@ -289,11 +295,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="stat-card">
         <div class="stat-label" style="margin-bottom:16px">🏆 Top Produtos do Mês</div>
-        ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mês</div>' : topProdutos.map(([nome, dados], i) => `
+        ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mês</div>' : topProdutos.map(([nome, dados, img], i) => `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6">
-            <span style="font-size:18px">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:600">${nome.substring(0,40)}${nome.length>40?'...':''}</div>
+            ${img ? `<img src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">` : `<span style="font-size:18px">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>`}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${nome.substring(0,35)}${nome.length>35?'...':''}</div>
               <div style="font-size:12px;color:#6b7280">${dados.count} unid. — R$ ${dados.valor.toFixed(2).replace('.',',')}</div>
             </div>
           </div>`).join('')}
