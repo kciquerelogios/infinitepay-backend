@@ -220,13 +220,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
       });
     });
-    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5).map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
-
     // Mapa de imagens por título do produto
     const imagemPorProduto = {};
     (produtosSemEstoque.products||[]).forEach(p => {
       if (p.image && p.image.src) imagemPorProduto[p.title] = p.image.src;
     });
+
+    topProdutos = Object.entries(prodContagem).sort((a,b) => b[1].count - a[1].count).slice(0, 5).map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
 
     // Sem estoque
     (produtosSemEstoque.products||[]).forEach(p => {
