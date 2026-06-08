@@ -30,16 +30,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     try {
       const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
 
-      // 1. Buscar order ID no Melhor Envio pelo tracking para pegar PDF
-      let meOrderId = null;
-      if (tracking) {
-        const pages = await Promise.all([1,2,3].map(p =>
-          fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
-            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-          }).then(r=>r.json()).catch(()=>({data:[]}))
-        ));
-        const purchases = pages.flatMap(p => p.data || []);
-        for (const purchase of purchases) {
+      // 1. Buscar order ID no Melhor Envio pelo tracking
+      let meOrderId = req.query.meOrderId || null;
+      if (!meOrderId && tracking) {
+        // Buscar só página 1 para evitar timeout
+        const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=1', {
+          headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+        }).then(r=>r.json()).catch(()=>({data:[]}));
+        for (const purchase of (r1.data || [])) {
           for (const order of (purchase.orders || [])) {
             if (order.tracking === tracking) { meOrderId = order.id; break; }
           }
@@ -593,6 +591,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ABA PEDIDOS =====
   const pedidosList = (pedidosRecentes.orders || []);
 
+  // Mapa tracking -> meOrderId das purchases já carregadas
+  const trackingToMeId = {};
+  (etiquetasME.purchases || []).forEach(p => {
+    (p.orders || []).forEach(o => {
+      if (o.tracking && o.id) trackingToMeId[o.tracking] = o.id;
+    });
+  });
+
   const getImgPedido = (titulo) => {
     const base = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
     const p = (produtosSemEstoque.products||[]).find(p => p.title === titulo || p.title === base || p.title.includes(base) || base.includes(p.title));
@@ -670,7 +676,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
           + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
           + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
-          + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
+          + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\',\'' + (trackingToMeId[rastreios[0]]||'') + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
         + '</div>'
       + '</div>'
     + '</div>';
@@ -802,12 +808,12 @@ var min=agora.getFullYear()+'-'+pad(agora.getMonth()+1)+'-'+pad(agora.getDate())
 if(document.getElementById('f-data')){document.getElementById('f-data').min=min;document.getElementById('f-data').value=min;}
 
 // Enviar pedido para fornecedor
-async function enviarFornecedor(nome, tracking, imgUrl) {
+async function enviarFornecedor(nome, tracking, imgUrl, meOrderId) {
   var btn = event.target;
   btn.textContent = '⏳ Enviando...';
   btn.disabled = true;
   try {
-    var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl) });
+    var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl), meOrderId: meOrderId||'' });
     var resp = await fetch('/api/admin?' + params.toString());
     var data = await resp.json();
     if (data.ok) { btn.textContent = '✅ Enviado!'; btn.style.background = '#16a34a'; }
