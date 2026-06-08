@@ -67,39 +67,32 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfData = await pdfResp.json();
           console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
           
-          // Gerar link público (sem mode:public = link privado mas com token no header funciona como download)
-          // O link público gerado via mode:public pode ser acessado sem login
-          const publicResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-            body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
+          // Buscar etiqueta PDF via S3
+          const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
           });
-          const publicData = await publicResp.json();
-          const publicUrl = publicData.url || publicData.link || '';
-          console.log('Link público:', publicUrl);
-
-          // Baixar o PDF do link público sem autenticação
-          if (publicUrl) {
-            const dlResp = await fetch(publicUrl);
-            const dlCt = dlResp.headers.get('content-type') || '';
-            console.log('Download ct:', dlCt, 'status:', dlResp.status);
-            if (dlCt.includes('pdf')) {
-              const buf = await dlResp.arrayBuffer();
-              allPdfUrls = [{ tipo: 'base64', data: Buffer.from(buf).toString('base64') }];
-            } else {
-              // Usar URL S3 do imprimir/pdf
-              const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
-                headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-              });
-              const pdfData2 = await pdfResp2.json();
-              allPdfUrls = Array.isArray(pdfData2) ? pdfData2.map(u => ({ tipo: 'url', data: u })) : [];
-            }
-          } else {
-            const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          const pdfData2 = await pdfResp2.json();
+          const s3Urls = Array.isArray(pdfData2) ? pdfData2 : [];
+          
+          // Tentar gerar DACE via endpoint de geração separado
+          let daceUrl = '';
+          try {
+            const daceResp = await fetch(`https://melhorenvio.com.br/api/v2/me/shipment/generate`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+              body: JSON.stringify({ orders: [meOrderId] })
             });
-            const pdfData2 = await pdfResp2.json();
-            allPdfUrls = Array.isArray(pdfData2) ? pdfData2.map(u => ({ tipo: 'url', data: u })) : [];
+            const daceData = await daceResp.json();
+            console.log('generate response:', JSON.stringify(daceData).substring(0, 200));
+          } catch(e) {}
+
+          // Se URL S3 tem múltiplas páginas, baixar e re-enviar como base64
+          if (s3Urls.length > 0) {
+            // Baixar o PDF do S3 e verificar tamanho (PDF com DACE é maior)
+            const s3Resp = await fetch(s3Urls[0]);
+            const s3Buf = await s3Resp.arrayBuffer();
+            console.log('PDF S3 tamanho:', s3Buf.byteLength, 'bytes');
+            allPdfUrls = s3Urls.map(u => ({ tipo: 'url', data: u }));
           }
         } catch(e) { console.log('Erro PDF:', e.message); }
       }
