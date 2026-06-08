@@ -133,7 +133,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-      Promise.all([1,2,3,4].map(page =>
+      Promise.all([1,2,3,4,5,6,7,8,9,10].map(page =>
         fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]}))
       )).then(pages => ({ data: pages.flatMap(p => p.data||[]), total: pages[0]?.total || 0 })).catch(()=>({})),
     ]).then(([cart, purchases]) => ({
