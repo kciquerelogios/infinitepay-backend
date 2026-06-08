@@ -27,24 +27,37 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      // Ver quantas páginas tem e quantos orders released por página
+      // Buscar todas as purchases e ver todos os status dos orders
       const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
       const d1 = await r1.json();
       const lastPage = d1.last_page || 1;
-      const perPage = d1.per_page || 10;
-      const total = d1.total || 0;
-      // Buscar todas as páginas em paralelo
       const allPages = await Promise.all(
         Array.from({length: lastPage}, (_, i) =>
           fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + (i+1), { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]}))
         )
       );
       const allPurchases = allPages.flatMap(p => p.data || []);
-      const orderIds = [];
+      const statusMap = {};
+      const releasedIds = [];
       allPurchases.forEach(p => {
-        (p.orders||[]).forEach(o => { if (o.status === 'released') orderIds.push(o.id); });
+        (p.orders||[]).forEach(o => {
+          statusMap[o.status] = (statusMap[o.status] || 0) + 1;
+          if (o.status === 'released') releasedIds.push(o.id);
+        });
       });
-      return res.status(200).json({ total_purchases: total, last_page: lastPage, per_page: perPage, total_purchases_fetched: allPurchases.length, orders_released: orderIds.length });
+      // Consultar tracking dos released
+      const trackResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+        body: JSON.stringify({ orders: releasedIds })
+      });
+      const trackData = await trackResp.json();
+      const trackStatusMap = {};
+      Object.values(trackData).forEach(o => {
+        const s = o.tracking ? (o.delivered_at ? 'entregue' : 'em_transito') : 'sem_rastreio';
+        trackStatusMap[s] = (trackStatusMap[s] || 0) + 1;
+      });
+      return res.status(200).json({ status_orders: statusMap, released_total: releasedIds.length, track_status: trackStatusMap });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
