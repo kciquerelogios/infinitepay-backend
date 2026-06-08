@@ -268,6 +268,23 @@ export default async function handler(req, res) {
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
 
   // ===== VERIFICAR E DISPARAR (cron) =====
+  // Limpar chaves de rastreio para reprocessar
+  if (action === 'reset-rastreios') {
+    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const lista = await fetch(`${KV_URL}/keys/rastreio-enviado-*`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({result:[]}));
+      const keys = lista.result || [];
+      let deletados = 0;
+      for (const key of keys) {
+        await fetch(`${KV_URL}/del/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        deletados++;
+      }
+      return res.status(200).json({ success: true, deletados });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (action === 'verificar') {
     try {
       const disparadas = await verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN);
