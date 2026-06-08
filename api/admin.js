@@ -220,16 +220,28 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
       });
     });
-    // Mapa de imagens por título do produto
-    const imagemPorProduto = {};
-    (produtosSemEstoque.products||[]).forEach(p => {
-      if (p.image && p.image.src) imagemPorProduto[p.title] = p.image.src;
-    });
+    // Mapa de imagens por título do produto (busca parcial)
+    const produtosShopify = produtosSemEstoque.products || [];
+    const getImagem = (nomeOrder) => {
+      // Tenta match exato primeiro
+      const exato = produtosShopify.find(p => p.title === nomeOrder);
+      if (exato && exato.image) return exato.image.src;
+      // Tenta match parcial (nome do order começa com título do produto)
+      const parcial = produtosShopify.find(p => nomeOrder.startsWith(p.title) || p.title.startsWith(nomeOrder.split(' - ')[0]));
+      if (parcial && parcial.image) return parcial.image.src;
+      return '';
+    };
 
     topProdutos = Object.entries(prodContagem)
-      .filter(([nome]) => !nome.toLowerCase().includes('frete') && !nome.toLowerCase().includes('sedex') && !nome.toLowerCase().includes('pac') && nome.length > 3)
+      .filter(([nome, dados]) => 
+        !nome.toLowerCase().includes('frete') && 
+        !nome.toLowerCase().includes('sedex') && 
+        !nome.toLowerCase().includes('pac') && 
+        nome.length > 5 &&
+        dados.valor / dados.count > 10  // filtra produtos com valor muito baixo (pedidos teste)
+      )
       .sort((a,b) => b[1].count - a[1].count).slice(0, 5)
-      .map(([nome, dados]) => [nome, dados, imagemPorProduto[nome] || '']);
+      .map(([nome, dados]) => [nome, dados, getImagem(nome)]);
 
     // Sem estoque
     (produtosSemEstoque.products||[]).forEach(p => {
