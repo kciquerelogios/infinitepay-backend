@@ -113,7 +113,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== DATAS =====
   const hoje = new Date();
-  const hojeStr = hoje.toISOString().split('T')[0];
+  // Ajustar para horário de Brasília (UTC-3)
+  const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
+  const hojeStr = hojeBR.toISOString().split('T')[0];
   const inicioDia = hojeStr + 'T00:00:00-03:00';
   const fimDia = hojeStr + 'T23:59:59-03:00';
   const inicioMes = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-01T00:00:00-03:00';
@@ -236,7 +238,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const hojeDate = new Date().toISOString().split('T')[0];
     const cart = etiquetasME.cart || [];
     // Etiquetas hoje = pedidos pagos hoje no Shopify
-    etiquetasHoje = (ordersHoje.orders || []).length;
+    etiquetasHoje = vendas.hoje.count || (ordersHoje.orders || []).length;
     // Carrinho = etiquetas não pagas ainda
     cartME = etiquetasME.total_cart || cart.length;
     // Contar por status real dos orders
