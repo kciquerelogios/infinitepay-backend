@@ -127,7 +127,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   let leads = [], ofertas = [], totalValorLeads = 0;
   let vendas = { hoje: {count:0,valor:0}, semana: {count:0,valor:0}, mes: {count:0,valor:0}, mesAnt: {count:0,valor:0} };
   let topProdutos = [], novosClientes = 0, semEstoque = [], pedidosPendentes = 0, pedidosTransito = 0, devolucoes = 0, ticketMedio = 0;
-  let saldoME = 0, etiquetasHoje = 0, prontoPostar = 0, emTransito = 0, problemaEntrega = 0, entregues = 0, cancelados = 0;
+  let saldoME = 0, etiquetasHoje = 0, prontoPostar = 0, emTransito = 0, problemaEntrega = 0, entregues = 0, cancelados = 0, cartME = 0;
 
   const [leadsResult, ofertasLista, ordersHoje, ordersSemana, ordersMes, ordersMesAnt, clientesHoje, pedidosPagar, produtosSemEstoque, saldoMelhorEnvio, etiquetasME] = await Promise.all([
     // Redis leads
@@ -235,10 +235,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     saldoME = parseFloat(saldoMelhorEnvio.balance || saldoMelhorEnvio?.data?.balance || 0);
     const hojeDate = new Date().toISOString().split('T')[0];
     const cart = etiquetasME.cart || [];
-    // Etiquetas criadas hoje (no carrinho hoje)
-    etiquetasHoje = cart.filter(s => s.created_at && s.created_at.startsWith(hojeDate)).length;
-    // Pronto para postar = no carrinho (cart) - released é calculado abaixo
-    prontoPostar = etiquetasME.total_cart || cart.length;
+    // Etiquetas hoje = pedidos pagos hoje no Shopify
+    etiquetasHoje = vendas.hoje.count;
+    // Carrinho = etiquetas não pagas ainda
+    cartME = etiquetasME.total_cart || cart.length;
     // Contar por status real dos orders
     const purchases = etiquetasME.purchases || [];
     purchases.forEach(p => {
@@ -274,10 +274,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
 
     <div class="section-divider">📦 Melhor Envio</div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:20px">
       <div class="stat-card"><div class="stat-label">💳 Saldo</div><div class="stat-value" style="font-size:18px;color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Baixo!':'disponível'}</div></div>
-      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value" style="font-size:22px">${etiquetasHoje}</div><div class="stat-sub">criadas hoje</div></div>
-      <div class="stat-card" style="border-color:#fef3c7"><div class="stat-label">📦 Pra Postar</div><div class="stat-value" style="font-size:22px;color:#f59e0b">${prontoPostar}</div><div class="stat-sub">etiqueta gerada</div></div>
+      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value" style="font-size:22px">${etiquetasHoje}</div><div class="stat-sub">vendas de hoje</div></div>
+      <div class="stat-card"><div class="stat-label">🛒 Pra Gerar</div><div class="stat-value" style="font-size:22px;color:#9333ea">${cartME}</div><div class="stat-sub">no carrinho ME</div></div>
+      <div class="stat-card" style="border-color:#fef3c7"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="font-size:22px;color:#f59e0b">${prontoPostar}</div><div class="stat-sub">geradas, aguardando postagem</div></div>
       <div class="stat-card" style="border-color:#dbeafe"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value" style="font-size:22px;color:#2563eb">${emTransito}</div><div class="stat-sub">postados</div></div>
       <div class="stat-card" style="border-color:#dcfce7"><div class="stat-label">✅ Entregues</div><div class="stat-value" style="font-size:22px;color:#16a34a">${entregues}</div><div class="stat-sub">total entregue</div></div>
       <div class="stat-card" style="${problemaEntrega>0?'border-color:#fecaca;background:#fef2f2':''}"><div class="stat-label">⚠️ Não Entregue</div><div class="stat-value" style="font-size:22px;color:${problemaEntrega>0?'#ef4444':'#6b7280'}">${problemaEntrega}</div><div class="stat-sub">${cancelados} cancelados</div></div>
