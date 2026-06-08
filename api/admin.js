@@ -54,18 +54,30 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         }
       }
 
-      // 2. Buscar URL do PDF no S3
-      let pdfS3Url = '';
+      // 2. Buscar URL do PDF no S3 (etiqueta + DACE juntos via endpoint de impressão)
+      let allPdfUrls = [];
       if (meOrderId) {
         try {
-          const pdfResp = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
-            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          // Tentar endpoint que gera etiqueta + DACE juntos
+          const pdfResp = await fetch(`https://melhorenvio.com.br/api/v2/me/shipment/print`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+            body: JSON.stringify({ orders: [meOrderId] })
           });
           const pdfData = await pdfResp.json();
-          pdfS3Url = Array.isArray(pdfData) ? pdfData[0] : (pdfData.url || '');
-          console.log('PDF S3 URL:', pdfS3Url ? 'encontrada' : 'nao encontrada');
+          console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
+          
+          // Também buscar via imprimir/pdf
+          const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+          });
+          const pdfData2 = await pdfResp2.json();
+          console.log('imprimir/pdf:', JSON.stringify(pdfData2).substring(0,200));
+          
+          allPdfUrls = Array.isArray(pdfData2) ? pdfData2 : [];
         } catch(e) { console.log('Erro PDF:', e.message); }
       }
+      const pdfS3Url = allPdfUrls[0] || '';
 
       // 3. Enviar mensagens em sequência
       // Foguetes iniciais
