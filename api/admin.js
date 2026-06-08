@@ -115,16 +115,28 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
 
           if (pdfUrl) {
-            // Baixar PDF via endpoint de impressão em arquivo
-            const pdfFileResp = await fetch(`https://melhorenvio.com.br/api/v2/me/shipment/${meOrderId}/print`, {
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/pdf', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-            });
-            const contentType = pdfFileResp.headers.get('content-type') || '';
-            console.log('PDF file content-type:', contentType, 'status:', pdfFileResp.status);
+            // Tentar múltiplos endpoints para baixar PDF
+            const endpoints = [
+              `https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}.pdf`,
+              `https://melhorenvio.com.br/api/v2/me/shipment/print/${meOrderId}.pdf`,
+              `https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}/print.pdf`,
+            ];
+            let pdfBase64 = null;
+            for (const ep of endpoints) {
+              try {
+                const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/pdf,*/*', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+                const ct = r.headers.get('content-type') || '';
+                console.log('Trying', ep, '| ct:', ct, '| status:', r.status);
+                if (r.ok && (ct.includes('pdf') || ct.includes('octet'))) {
+                  const buf = await r.arrayBuffer();
+                  pdfBase64 = Buffer.from(buf).toString('base64');
+                  console.log('PDF found at:', ep, 'size:', buf.byteLength);
+                  break;
+                }
+              } catch(e) { console.log('Error:', ep, e.message); }
+            }
 
-            if (pdfFileResp.ok && (contentType.includes('pdf') || contentType.includes('octet'))) {
-              const pdfBuffer = await pdfFileResp.arrayBuffer();
-              const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+            if (pdfBase64) {
               const zapiResp = await fetch(`${zapiBase}/send-document/base64`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
@@ -135,15 +147,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
                   caption: ''
                 })
               });
-              const zapiData = await zapiResp.json();
-              console.log('Zapi send-document:', JSON.stringify(zapiData).substring(0,200));
+              console.log('Zapi:', JSON.stringify(await zapiResp.json()).substring(0,100));
             } else {
               // Fallback: enviar link
-              const fallbackText = pdfUrl || ('https://melhorenvio.com.br/imprimir/' + meOrderId);
               await fetch(`${zapiBase}/send-text`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + fallbackText })
+                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + pdfUrl })
               });
             }
           } else {
