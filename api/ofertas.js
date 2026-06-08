@@ -128,8 +128,12 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
   const purchases = pages.flatMap(p => p.data || []);
   let enviados = 0;
 
+  console.log('Total purchases carregadas:', purchases.length);
+  let totalReleased = 0, totalComTracking = 0;
   for (const purchase of purchases) {
     for (const order of (purchase.orders || [])) {
+      if (order.status === 'released') totalReleased++;
+      if (order.status === 'released' && order.tracking) totalComTracking++;
       // Só processar released com tracking
       if (order.status !== 'released' || !order.tracking) continue;
 
@@ -243,7 +247,7 @@ Qualquer dúvida estamos aqui! 😊`;
     }
   }
 
-  console.log('Rastreios verificados. Enviados:', enviados);
+  console.log('Rastreios verificados. Released:', totalReleased, '| Com tracking:', totalComTracking, '| Enviados:', enviados);
 }
 
 export default async function handler(req, res) {
