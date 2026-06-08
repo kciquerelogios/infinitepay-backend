@@ -115,27 +115,17 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfUrl = printData.url || printData.link || printData[meOrderId] || '';
 
           if (pdfUrl) {
-            // Gerar link público para download sem autenticação
-            const publicPrintResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-              body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
+            // Baixar PDF diretamente via API de impressão em arquivo
+            const pdfFileResp = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/${meOrderId}/print`, {
+              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/pdf', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
             });
-            const publicData = await publicPrintResp.json();
-            console.log('Public print:', JSON.stringify(publicData).substring(0,200));
-            const publicUrl = publicData.url || publicData.link || pdfUrl;
+            const contentType = pdfFileResp.headers.get('content-type') || '';
+            console.log('PDF file content-type:', contentType, 'status:', pdfFileResp.status);
 
-            // Baixar PDF com token Bearer
-            const pdfResp = await fetch(publicUrl, {
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)', Accept: 'application/pdf' }
-            });
-            const contentType = pdfResp.headers.get('content-type') || '';
-            console.log('PDF content-type:', contentType, 'status:', pdfResp.status);
-
-            if (pdfResp.ok && contentType.includes('pdf')) {
-              const pdfBuffer = await pdfResp.arrayBuffer();
+            if (pdfFileResp.ok && (contentType.includes('pdf') || contentType.includes('octet'))) {
+              const pdfBuffer = await pdfFileResp.arrayBuffer();
               const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
-              await fetch(`${zapiBase}/send-document/base64`, {
+              const zapiResp = await fetch(`${zapiBase}/send-document/base64`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
                 body: JSON.stringify({
@@ -145,12 +135,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
                   caption: ''
                 })
               });
+              const zapiData = await zapiResp.json();
+              console.log('Zapi send-document:', JSON.stringify(zapiData).substring(0,200));
             } else {
-              // Enviar link direto como texto
+              // Fallback: enviar link
+              const fallbackText = pdfUrl || ('https://melhorenvio.com.br/imprimir/' + meOrderId);
               await fetch(`${zapiBase}/send-text`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + publicUrl })
+                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + fallbackText })
               });
             }
           } else {
