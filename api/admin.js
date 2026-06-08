@@ -67,21 +67,40 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfData = await pdfResp.json();
           console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
           
-          // Buscar etiqueta PDF + DACE separadamente
-          const [pdfResp2, daceResp] = await Promise.all([
-            fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+          // Gerar link público (sem mode:public = link privado mas com token no header funciona como download)
+          // O link público gerado via mode:public pode ser acessado sem login
+          const publicResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+            body: JSON.stringify({ orders: [meOrderId], mode: 'public' })
+          });
+          const publicData = await publicResp.json();
+          const publicUrl = publicData.url || publicData.link || '';
+          console.log('Link público:', publicUrl);
+
+          // Baixar o PDF do link público sem autenticação
+          if (publicUrl) {
+            const dlResp = await fetch(publicUrl);
+            const dlCt = dlResp.headers.get('content-type') || '';
+            console.log('Download ct:', dlCt, 'status:', dlResp.status);
+            if (dlCt.includes('pdf')) {
+              const buf = await dlResp.arrayBuffer();
+              allPdfUrls = [{ tipo: 'base64', data: Buffer.from(buf).toString('base64') }];
+            } else {
+              // Usar URL S3 do imprimir/pdf
+              const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+                headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+              });
+              const pdfData2 = await pdfResp2.json();
+              allPdfUrls = Array.isArray(pdfData2) ? pdfData2.map(u => ({ tipo: 'url', data: u })) : [];
+            }
+          } else {
+            const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
               headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-            }).then(r=>r.json()).catch(()=>[]),
-            fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/dace/${meOrderId}`, {
-              headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-            }).then(r=>r.json()).catch(()=>[]),
-          ]);
-          console.log('etiqueta urls:', Array.isArray(pdfResp2) ? pdfResp2.length : JSON.stringify(pdfResp2).substring(0,100));
-          console.log('dace urls:', Array.isArray(daceResp) ? daceResp.length : JSON.stringify(daceResp).substring(0,100));
-          allPdfUrls = [
-            ...(Array.isArray(pdfResp2) ? pdfResp2 : []),
-            ...(Array.isArray(daceResp) ? daceResp : [])
-          ];
+            });
+            const pdfData2 = await pdfResp2.json();
+            allPdfUrls = Array.isArray(pdfData2) ? pdfData2.map(u => ({ tipo: 'url', data: u })) : [];
+          }
         } catch(e) { console.log('Erro PDF:', e.message); }
       }
       const pdfS3Url = allPdfUrls[0] || '';
@@ -135,14 +154,25 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         } catch(e) {}
 
         for (let i = 0; i < allPdfUrls.length; i++) {
-          const url = allPdfUrls[i];
+          const item = allPdfUrls[i];
           const fileName = i === 0
             ? 'etiqueta-' + (trackingFinal||meOrderId||'') + '.pdf'
             : 'dace-' + (trackingFinal||meOrderId||'') + '.pdf';
-          const zapiDocResp = await fetch(`${zapiBase}/send-document/pdf`, {
+          
+          let body;
+          if (typeof item === 'string') {
+            body = { phone: GRUPO_FORNECEDOR, document: item, fileName, caption: '' };
+          } else if (item.tipo === 'base64') {
+            body = { phone: GRUPO_FORNECEDOR, base64: 'data:application/pdf;base64,' + item.data, fileName, caption: '' };
+          } else {
+            body = { phone: GRUPO_FORNECEDOR, document: item.data, fileName, caption: '' };
+          }
+          
+          const endpoint = (item.tipo === 'base64') ? `${zapiBase}/send-document/base64` : `${zapiBase}/send-document/pdf`;
+          const zapiDocResp = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-            body: JSON.stringify({ phone: GRUPO_FORNECEDOR, document: url, fileName, caption: '' })
+            body: JSON.stringify(body)
           });
           const zapiDocData = await zapiDocResp.json();
           console.log('PDF', i+1, 'enviado:', JSON.stringify(zapiDocData).substring(0,100));
