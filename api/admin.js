@@ -136,26 +136,21 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
               } catch(e) { console.log('Error:', ep, e.message); }
             }
 
-            if (pdfBase64) {
-              const zapiResp = await fetch(`${zapiBase}/send-document/base64`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({
-                  phone: GRUPO_FORNECEDOR,
-                  base64: 'data:application/pdf;base64,' + pdfBase64,
-                  fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId||'') + '.pdf',
-                  caption: ''
-                })
-              });
-              console.log('Zapi:', JSON.stringify(await zapiResp.json()).substring(0,100));
-            } else {
-              // Fallback: enviar link
-              await fetch(`${zapiBase}/send-text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + pdfUrl })
-              });
-            }
+            // Melhor Envio não permite download direto do PDF via API
+            // Enviar link de impressão como documento via Z-API
+            const linkEtiqueta = pdfUrl || ('https://melhorenvio.com.br/imprimir/' + meOrderId);
+            const zapiResp = await fetch(`${zapiBase}/send-document`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+              body: JSON.stringify({
+                phone: GRUPO_FORNECEDOR,
+                document: linkEtiqueta,
+                fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId||'') + '.pdf',
+                caption: ''
+              })
+            });
+            const zapiData = await zapiResp.json();
+            console.log('Zapi send-document:', JSON.stringify(zapiData).substring(0,200));
           } else {
             // Fallback: enviar link de rastreio
             await fetch(`${zapiBase}/send-text`, {
