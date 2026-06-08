@@ -27,18 +27,26 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
-      // Ver todos os campos do primeiro item de purchases
-      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=1', { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-      const d1 = await r1.json();
-      const first = (d1.data || [])[0];
-      // Ver orders do primeiro purchase
-      let ordersData = null;
-      if (first && first.id) {
-        const r2 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases/' + first.id, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
-        const txt2 = await r2.text();
-        try { ordersData = JSON.parse(txt2); } catch(e) { ordersData = txt2.substring(0,300); }
+      const endpoints = [
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=released',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=liberados',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=posted',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=dispatched',
+        'https://melhorenvio.com.br/api/v2/me/orders?limit=3&status=shipping',
+      ];
+      const resultados = {};
+      for (const ep of endpoints) {
+        try {
+          const r = await fetch(ep, { headers: { Authorization: `Bearer ${ME_TOKEN2}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+          const text = await r.text();
+          try {
+            const json = JSON.parse(text);
+            const first = (json.data||[])[0];
+            resultados[ep] = { httpStatus: r.status, total: json.total, first_status: first?.status, first_posted_at: first?.posted_at };
+          } catch(e) { resultados[ep] = { httpStatus: r.status, raw: text.substring(0,100) }; }
+        } catch(e) { resultados[ep] = { error: e.message }; }
       }
-      return res.status(200).json({ total: d1.total, campos_first: first ? Object.keys(first) : [], first, primeiro_purchase_detalhe: ordersData });
+      return res.status(200).json(resultados);
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
