@@ -146,11 +146,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
               }
             });
             const ct = pdfFileResp.headers.get('content-type') || '';
-            console.log('imprimir/pdf content-type:', ct, 'status:', pdfFileResp.status);
+            const rawText = await pdfFileResp.text();
+            console.log('imprimir/pdf content-type:', ct, 'status:', pdfFileResp.status, 'raw:', rawText.substring(0,300));
 
-            if (pdfFileResp.ok && (ct.includes('pdf') || ct.includes('octet'))) {
-              const pdfBuffer = await pdfFileResp.arrayBuffer();
-              const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+            let pdfUrl2 = '';
+            try {
+              const pdfJson = JSON.parse(rawText);
+              pdfUrl2 = pdfJson.url || pdfJson.link || pdfJson.pdf || '';
+              console.log('PDF JSON:', JSON.stringify(pdfJson).substring(0,200));
+            } catch(e) {}
+
+            if (ct.includes('pdf') || ct.includes('octet')) {
+              // Arquivo direto
+              const pdfBuffer = Buffer.from(rawText, 'binary');
+              const pdfBase64 = pdfBuffer.toString('base64');
               await fetch(`${zapiBase}/send-document/base64`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
@@ -161,13 +170,24 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
                   caption: ''
                 })
               });
+            } else if (pdfUrl2) {
+              // URL retornada no JSON - baixar e enviar
+              const pdfResp2 = await fetch(pdfUrl2, { headers: { Authorization: `Bearer ${ME_TOKEN}`, 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+              const ct2 = pdfResp2.headers.get('content-type') || '';
+              console.log('PDF URL2 ct:', ct2);
+              if (ct2.includes('pdf') || ct2.includes('octet')) {
+                const buf2 = await pdfResp2.arrayBuffer();
+                const b64 = Buffer.from(buf2).toString('base64');
+                await fetch(`${zapiBase}/send-document/base64`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+                  body: JSON.stringify({ phone: GRUPO_FORNECEDOR, base64: 'data:application/pdf;base64,' + b64, fileName: 'etiqueta-' + (trackingFinal||tracking||meOrderId) + '.pdf', caption: '' })
+                });
+              } else {
+                await fetch(`${zapiBase}/send-text`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN }, body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + pdfUrl2 }) });
+              }
             } else {
-              // Fallback link
-              await fetch(`${zapiBase}/send-text`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
-                body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + (pdfUrl || 'https://melhorenvio.com.br/imprimir/' + meOrderId) })
-              });
+              await fetch(`${zapiBase}/send-text`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN }, body: JSON.stringify({ phone: GRUPO_FORNECEDOR, message: 'Etiqueta: ' + (pdfUrl || 'https://melhorenvio.com.br/imprimir/' + meOrderId) }) });
             }
           } else {
             // Fallback: enviar link de rastreio
