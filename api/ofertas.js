@@ -214,29 +214,40 @@ Qualquer dúvida estamos aqui! 😊`;
           const pedido = (shopData.orders || [])[0];
 
           if (pedido && pedido.id) {
-            // Usar a nova API de fulfillment do Shopify
-            const fulfillResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
-                body: JSON.stringify({
-                  fulfillment: {
-                    tracking_number: tracking,
-                    tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
-                    tracking_company: 'Correios',
-                    notify_customer: false,
-                    line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
-                  }
-                })
-              }
+            // Buscar fulfillment_order aberto
+            const foResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillment_orders.json`,
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
             );
-            const fulfillText = await fulfillResp.text();
-            const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
-            if (fulfillData.fulfillment) {
-              console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
-            } else {
-              console.log('Shopify fulfillment resposta:', fulfillText.substring(0,200));
+            const foText = await foResp.text();
+            const foData = foText ? JSON.parse(foText) : {};
+            const fo = (foData.fulfillment_orders || []).find(f => f.status === 'open');
+            if (fo) {
+              const fulfillResp = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+                  body: JSON.stringify({
+                    fulfillment: {
+                      line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
+                      tracking_info: {
+                        number: tracking,
+                        url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
+                        company: 'Correios'
+                      },
+                      notify_customer: false
+                    }
+                  })
+                }
+              );
+              const fulfillText = await fulfillResp.text();
+              const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
+              if (fulfillData.fulfillment) {
+                console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
+              } else {
+                console.log('Shopify fulfillment resposta:', fulfillText.substring(0,200));
+              }
             }
           }
         } catch(e) { console.error('Erro fulfillment Shopify:', e.message); }
@@ -321,19 +332,36 @@ export default async function handler(req, res) {
 
             if (!pedido || !pedido.id) { semPedido++; continue; }
 
-            // Criar fulfillment
+            // Buscar fulfillment_order do pedido
+            const foResp = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillment_orders.json`,
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+            );
+            const foText = await foResp.text();
+            const foData = foText ? JSON.parse(foText) : {};
+            const fo = (foData.fulfillment_orders || []).find(f => f.status === 'open');
+
+            if (!fo) {
+              console.log('Sem fulfillment_order aberto para pedido:', pedido.order_number);
+              semPedido++;
+              continue;
+            }
+
+            // Criar fulfillment via nova API
             const fulfillResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillments.json`,
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
                 body: JSON.stringify({
                   fulfillment: {
-                    tracking_number: order.tracking,
-                    tracking_url: 'https://www.melhorrastreio.com.br/rastreio/' + order.tracking,
-                    tracking_company: 'Correios',
-                    notify_customer: false,
-                    line_items: pedido.line_items.map(i => ({ id: i.id, quantity: i.quantity }))
+                    line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
+                    tracking_info: {
+                      number: order.tracking,
+                      url: 'https://www.melhorrastreio.com.br/rastreio/' + order.tracking,
+                      company: 'Correios'
+                    },
+                    notify_customer: false
                   }
                 })
               }
@@ -345,7 +373,7 @@ export default async function handler(req, res) {
               console.log('Fulfillment criado:', pedido.order_number, '|', order.tracking);
             } else {
               erros++;
-              console.log('Erro fulfillment:', pedido.order_number, fulfillText.substring(0,150));
+              console.log('Erro fulfillment:', pedido.order_number, fulfillText.substring(0,200));
             }
           } catch(e) { erros++; console.error('Erro:', e.message); }
 
