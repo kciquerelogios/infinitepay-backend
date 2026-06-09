@@ -82,7 +82,7 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
 
   for (const oferta of ofertas) {
     if (oferta.status !== 'agendada') continue;
-    const dataEnvio = new Date(new Date(oferta.dataHora).getTime() + 3 * 60 * 60 * 1000);
+    const dataEnvio = new Date(oferta.dataHora); // dataHora já salvo no horário local do usuário
     const diffMin = (agora - dataEnvio) / 1000 / 60;
     if (diffMin < 0 || diffMin > 2) continue;
 
