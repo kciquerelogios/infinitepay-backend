@@ -101,9 +101,11 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
         const body = oferta.imagem
           ? { phone: grupo, image: oferta.imagem, caption: oferta.texto + (oferta.link ? '\n\n🔗 ' + oferta.link : '') }
           : { phone: grupo, message: oferta.texto + (oferta.link ? '\n\n🔗 ' + oferta.link : '') };
-        await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
+        const zapiJson = await zapiResult.json().catch(()=>({}));
+        console.log('Z-API resultado grupo', grupo.substring(0,20), ':', JSON.stringify(zapiJson).substring(0,100));
         await new Promise(r => setTimeout(r, 1000));
       } catch(e) { erros++; }
     }
