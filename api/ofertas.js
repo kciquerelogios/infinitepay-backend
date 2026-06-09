@@ -79,11 +79,13 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
   const ofertas = await listarOfertas(KV_URL, KV_TOKEN);
   const agora = new Date();
   const disparadas = [];
+  console.log('Verificando ofertas:', ofertas.length, '| Agora UTC:', agora.toISOString());
 
   for (const oferta of ofertas) {
     if (oferta.status !== 'agendada') continue;
     const dataEnvio = new Date(oferta.dataHora); // dataHora já salvo no horário local do usuário
     const diffMin = (agora - dataEnvio) / 1000 / 60;
+    console.log('Oferta:', oferta.id, '| dataHora:', oferta.dataHora, '| dataEnvio:', dataEnvio.toISOString(), '| diffMin:', diffMin.toFixed(1));
     if (diffMin < 0 || diffMin > 2) continue;
 
     let gruposEnviar = GRUPOS_VIP;
