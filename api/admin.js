@@ -968,10 +968,10 @@ async function salvarCupom() {
   if (!codigo) { msg.textContent = '⚠️ Digite o código'; msg.style.color = '#ef4444'; return; }
   msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
   try {
-    var resp = await fetch('/api/cupons?secret=${secret}', {
+    var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo, tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: 'todos', ativo: true })
+      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: 'todos', ativo: true })
     });
     var data = await resp.json();
     if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => window.location.reload(), 1500); }
@@ -979,13 +979,13 @@ async function salvarCupom() {
   } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
 }
 async function toggleCupom(codigo) {
-  var resp = await fetch('/api/cupons?secret=${secret}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', codigo }) });
+  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', codigo: codigo }) });
   var data = await resp.json();
   if (data.ok) window.location.reload();
 }
 async function deletarCupom(codigo) {
   if (!confirm('Deletar cupom ' + codigo + '?')) return;
-  var resp = await fetch('/api/cupons?secret=${secret}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', codigo }) });
+  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', codigo: codigo }) });
   var data = await resp.json();
   if (data.ok) window.location.reload();
 }
