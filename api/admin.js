@@ -197,6 +197,52 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
+  // ===== ACTION: GRUPO VIP ATIVO (público, com CORS) =====
+  if (req.query.action === 'grupo-vip-ativo') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const LIMITE = 1000;
+      const GRUPOS_VIP = [
+        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP'},
+        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GwebJkNxXpMKOjuPKMYZrK'},
+        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/BtiR1tGSzN7BG3Uv7ZiecI'},
+        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/DFNTCOuMSkXCKPou1g7czS'},
+        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/KGPTKigqecm7rgNjpC3j84'},
+        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/EGbNVvJX9i46H3rIJQ79K9'},
+        {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/F1BkukLoCZn0v3ml48XLpq'},
+        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/DGHwIvk8e5G1bcBkc0ywcp'},
+        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/HKNkmPeu9hM7GG2D3wusdK'},
+        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/Kw8EYEd11CxGhcp0HZIXsf'},
+        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DehLBYFhcy08ftgxMEsmln'},
+        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/Iap7UKrnepQFrLPs6aLjpp'},
+        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/JOBou3Nqntv7gp7pdNrBsG'},
+        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/H8sMRaTnHsa4msP0F4jTFw'},
+        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/JPaa65dmlnAKeS0M1OqjNu'},
+        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/CzR4iPTL4lE6YNQ8Aj22rq'},
+      ];
+      // Buscar membros de todos os grupos
+      const membrosArr = await Promise.all(GRUPOS_VIP.map(async g => {
+        try {
+          const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
+          const d = await r.json();
+          return { ...g, membros: d.participants ? d.participants.length : 0 };
+        } catch(e) { return { ...g, membros: 0 }; }
+      }));
+      // Encontrar primeiro grupo com vagas
+      let ativo = membrosArr[membrosArr.length - 1];
+      for (const g of membrosArr) {
+        if (g.membros < LIMITE) { ativo = g; break; }
+      }
+      return res.status(200).json({ grupo: ativo.nome, link: ativo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros });
+    } catch(e) {
+      // Fallback para grupo 1
+      return res.status(200).json({ grupo: '#1', link: 'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP', membros: 0, vagas: 1000 });
+    }
+  }
+
   // ===== ACTION: GRUPOS VIP DASHBOARD =====
   if (req.query.action === 'grupos-vip-dashboard') {
     try {
