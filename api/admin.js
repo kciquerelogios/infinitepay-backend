@@ -773,8 +773,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="font-size:13px">${usos}</td>
       <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}</td>
       <td>
-        <button onclick="toggleCupom('${c.codigo}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'✅ Ativo':'❌ Inativo'}</button>
-        <button onclick="deletarCupom('${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">🗑</button>
+        <button onclick="toggleCupom('${c.id}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'✅ Ativo':'❌ Inativo'}</button>
+        <button onclick="deletarCupom('${c.id}','${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">🗑</button>
       </td>
     </tr>`;
   }).join('');
@@ -978,14 +978,14 @@ async function salvarCupom() {
     else { msg.textContent = '❌ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
   } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
 }
-async function toggleCupom(codigo) {
-  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', codigo: codigo }) });
+async function toggleCupom(id) {
+  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', id: id }) });
   var data = await resp.json();
   if (data.ok) window.location.reload();
 }
-async function deletarCupom(codigo) {
+async function deletarCupom(id, codigo) {
   if (!confirm('Deletar cupom ' + codigo + '?')) return;
-  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', codigo: codigo }) });
+  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', id: id }) });
   var data = await resp.json();
   if (data.ok) window.location.reload();
 }
