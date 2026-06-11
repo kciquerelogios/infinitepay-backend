@@ -266,6 +266,46 @@ Qualquer dúvida estamos aqui! 😊`;
   console.log('Rastreios verificados. Released:', totalReleased, '| Com tracking:', totalComTracking, '| Enviados:', enviados);
 }
 
+async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN) {
+  try {
+    const GRUPOS_VIP = [
+      {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
+      {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
+      {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
+      {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
+      {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
+      {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
+      {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
+      {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
+      {nome:'#17',id:'120363406426269657-group'},
+    ];
+
+    const membros = await Promise.all(GRUPOS_VIP.map(async g => {
+      try {
+        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
+        const d = await r.json();
+        return { nome: g.nome, membros: d.participants ? d.participants.length : 0 };
+      } catch(e) { return { nome: g.nome, membros: 0 }; }
+    }));
+
+    const total = membros.reduce((s, g) => s + g.membros, 0);
+    const hoje = new Date();
+    const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
+    const hojeStr = hojeBR.toISOString().split('T')[0];
+    const chave = `vip-snapshot-${hojeStr}`;
+
+    await fetch(`${KV_URL}/set/${chave}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ total, grupos: membros, ts: new Date().toISOString() })
+    });
+    // TTL 60 dias
+    await fetch(`${KV_URL}/expire/${chave}/5184000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+
+    console.log('Snapshot grupos VIP salvo:', hojeStr, '| Total:', total);
+  } catch(e) { console.error('Erro snapshot grupos:', e.message); }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -403,6 +443,17 @@ export default async function handler(req, res) {
       try {
         await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
       } catch(e) { console.error('Erro rastreios:', e.message); }
+
+      // Salvar snapshot dos grupos VIP à meia-noite (00:00 - 00:02 horário Brasília)
+      try {
+        const agora = new Date();
+        const agoraBR = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
+        const hora = agoraBR.getHours();
+        const minuto = agoraBR.getMinutes();
+        if (hora === 0 && minuto <= 2) {
+          await salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN);
+        }
+      } catch(e) { console.error('Erro snapshot:', e.message); }
 
       return res.status(200).json({ success: true, disparadas, total: disparadas.length });
     } catch(e) {
