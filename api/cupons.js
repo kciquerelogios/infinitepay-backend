@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       criado_em: new Date().toISOString()
     };
     try {
-      await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: JSON.stringify(cupom) }) });
+      await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(cupom) });
       const rpushResp = await fetch(`${KV_URL}/rpush/cupons-lista/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const rpushData = await rpushResp.json();
       console.log('rpush cupom result:', JSON.stringify(rpushData));
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
       let c = d.result;
       while (typeof c === 'string') { try { c = JSON.parse(c); } catch(e) { break; } }
       c.ativo = !c.ativo;
-      await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: JSON.stringify(c) }) });
+      await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(c) });
       return res.status(200).json({ ok: true, ativo: c.ativo });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
