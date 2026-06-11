@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   const subtotalBruto = carrinho.reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
 
   // Montar items para InfinitePay
-  const items = carrinho.map(item => ({
+  let items = carrinho.map(item => ({
     quantity: item.quantidade || 1,
     price: item.preco,
     description: item.nome + (item.cor && item.cor !== 'Default Title' ? ' - Cor: ' + item.cor : '')
@@ -66,12 +66,13 @@ export default async function handler(req, res) {
     });
   }
 
-  // Adicionar item de desconto se houver cupom
-  if (descontoTotal > 0 && cupomValido) {
-    items.push({
-      quantity: 1,
-      price: -descontoTotal,
-      description: `Desconto cupom ${cupomValido.codigo} (${cupomValido.descontoDesc})`
+  // Aplicar desconto proporcional em cada item
+  if (descontoTotal > 0 && cupomValido && subtotalBruto > 0) {
+    items = items.map(item => {
+      if (item.description && item.description.startsWith('Frete')) return item;
+      const proporcao = (item.price * item.quantity) / subtotalBruto;
+      const descontoItem = Math.round(descontoTotal * proporcao);
+      return { ...item, price: Math.max(1, item.price - Math.round(descontoItem / item.quantity)) };
     });
   }
 
