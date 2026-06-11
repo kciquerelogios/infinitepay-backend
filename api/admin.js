@@ -1132,8 +1132,9 @@ async function carregarGruposVip() {
     });
     html += '</div>';
     html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>';
-    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
-    html += '<button onclick="navigator.clipboard.writeText(''+ga.link+'').then(function(){alert('Copiado!')})" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>';
+    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
+    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>';
+    html += '<script>document.getElementById("btn-copiar-link").onclick=function(){navigator.clipboard.writeText(document.getElementById("link-ativo").href).then(function(){alert("Copiado!")})}<\/script>';
     html += '</div></div>';
 
     // Grid de todos os grupos
