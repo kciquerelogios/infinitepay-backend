@@ -76,8 +76,10 @@ export default async function handler(req, res) {
     };
     try {
       await fetch(`${KV_URL}/set/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: JSON.stringify(cupom) }) });
-      await fetch(`${KV_URL}/rpush/cupons-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([id]) });
-      return res.status(200).json({ ok: true, cupom });
+      const rpushResp = await fetch(`${KV_URL}/rpush/cupons-lista/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const rpushData = await rpushResp.json();
+      console.log('rpush cupom result:', JSON.stringify(rpushData));
+      return res.status(200).json({ ok: true, cupom, rpush: rpushData });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
