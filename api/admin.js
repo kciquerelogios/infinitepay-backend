@@ -190,7 +190,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         });
       }
 
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, pdfPending: false });
     } catch(e) {
       console.error('Erro fornecedor:', e.message);
       return res.status(500).json({ error: e.message });
@@ -750,11 +750,72 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
     <div>${pedidosCards}</div>`;
 
-  const abaCupons = `<div class="vazio" style="padding:64px">
-    <div style="font-size:48px;margin-bottom:16px">🎟</div>
-    <div style="font-size:18px;font-weight:700;margin-bottom:8px">Cupons de Desconto</div>
-    <div style="font-size:14px;color:#6b7280">Em breve! Aqui você poderá cadastrar cupons de % off, frete grátis e muito mais.</div>
-  </div>`;
+  // Carregar cupons
+  let cupons = [];
+  try {
+    const cuponsResp = await fetch(`https://infinitepay-backend.vercel.app/api/cupons?action=listar&secret=${secret}`);
+    const cuponsData = await cuponsResp.json();
+    cupons = cuponsData.cupons || [];
+  } catch(e) {}
+
+  const tipoLabel = { percentual: '% Desconto', fixo: 'R$ Fixo', frete_gratis: 'Frete Grátis', percentual_frete: '% + Frete Grátis' };
+  const tipoColor = { percentual: '#2563eb', fixo: '#16a34a', frete_gratis: '#9333ea', percentual_frete: '#f59e0b' };
+
+  const cuponsRows = cupons.map(c => {
+    const validade = c.validade ? new Date(c.validade).toLocaleDateString('pt-BR') : 'Sem validade';
+    const expirado = c.validade && new Date() > new Date(c.validade);
+    const usos = c.limiteUsos ? (c.usosAtuais || 0) + '/' + c.limiteUsos : 'Ilimitado';
+    return `<tr>
+      <td><span style="font-family:monospace;font-size:15px;font-weight:700;background:#f3f4f6;padding:4px 10px;border-radius:6px">${c.codigo}</span></td>
+      <td><span style="background:${tipoColor[c.tipo]}20;color:${tipoColor[c.tipo]};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${tipoLabel[c.tipo]||c.tipo}</span></td>
+      <td style="font-size:13px">${c.tipo === 'frete_gratis' ? '—' : (c.tipo === 'percentual' || c.tipo === 'percentual_frete' ? c.valor + '%' : 'R$ ' + (c.valor||0).toFixed(2).replace('.',','))}</td>
+      <td style="font-size:13px;${expirado?'color:#ef4444':''}">${validade}${expirado?' ⚠️':''}</td>
+      <td style="font-size:13px">${usos}</td>
+      <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}</td>
+      <td>
+        <button onclick="toggleCupom('${c.codigo}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'✅ Ativo':'❌ Inativo'}</button>
+        <button onclick="deletarCupom('${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const abaCupons = `
+    <div class="form-card">
+      <div class="form-title">➕ Criar Novo Cupom</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="field"><label>Código do Cupom</label><input type="text" id="c-codigo" placeholder="ex: KCIQUE10" style="text-transform:uppercase"></div>
+        <div class="field">
+          <label>Tipo de Desconto</label>
+          <select id="c-tipo" onchange="atualizarCampoValor()" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none">
+            <option value="percentual">% de Desconto</option>
+            <option value="fixo">Valor Fixo (R$)</option>
+            <option value="frete_gratis">Frete Grátis</option>
+            <option value="percentual_frete">% Desconto + Frete Grátis</option>
+          </select>
+        </div>
+        <div class="field" id="campo-valor"><label>Valor do Desconto</label><input type="number" id="c-valor" placeholder="ex: 10" min="0" step="0.01"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="field"><label>Validade (opcional)</label><input type="date" id="c-validade"></div>
+        <div class="field"><label>Limite de Usos (opcional)</label><input type="number" id="c-limite" placeholder="Deixe vazio = ilimitado" min="1"></div>
+        <div class="field">
+          <label>Produto Aplicável</label>
+          <select id="c-produto" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none">
+            <option value="todos">Todos os produtos</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-green" onclick="salvarCupom()">💾 Criar Cupom</button>
+      <div id="cupom-msg" style="margin-top:10px;font-size:13px"></div>
+    </div>
+
+    ${cupons.length === 0
+      ? '<div class="vazio">Nenhum cupom cadastrado ainda!</div>'
+      : `<div class="table-wrap"><table>
+          <thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Produto</th><th>Ações</th></tr></thead>
+          <tbody>${cuponsRows}</tbody>
+        </table></div>`
+    }`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -873,12 +934,60 @@ async function enviarFornecedor(nome, tracking, imgUrl, meOrderId) {
   btn.textContent = '⏳ Enviando...';
   btn.disabled = true;
   try {
+    // 1. Buscar dados do pedido via Vercel (rápido)
     var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl), meOrderId: meOrderId||'' });
     var resp = await fetch('/api/admin?' + params.toString());
     var data = await resp.json();
     if (data.ok) { btn.textContent = '✅ Enviado!'; btn.style.background = '#16a34a'; }
-    else { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
+    else if (data.pdfPending) {
+      // 2. Vercel enviou tudo exceto PDF - chamar Railway diretamente para o PDF
+      btn.textContent = '⏳ PDF...';
+      var pdfResp = await fetch('https://kcique-pdf-service-production.up.railway.app/send-pdf?secret=kcique2026&hash=' + data.printHash + '&phone=120363426285950378-group&nome=' + encodeURIComponent(nome) + '&tracking=' + (tracking||''));
+      var pdfData = await pdfResp.json();
+      btn.textContent = pdfData.ok ? '✅ Enviado!' : '⚠️ Sem PDF';
+      btn.style.background = pdfData.ok ? '#16a34a' : '#f59e0b';
+    } else { 
+      btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; 
+    }
   } catch(e) { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
+}
+
+// Cupons
+function atualizarCampoValor() {
+  var tipo = document.getElementById('c-tipo').value;
+  var campo = document.getElementById('campo-valor');
+  campo.style.display = (tipo === 'frete_gratis') ? 'none' : 'block';
+}
+async function salvarCupom() {
+  var msg = document.getElementById('cupom-msg');
+  var codigo = document.getElementById('c-codigo').value.trim().toUpperCase();
+  var tipo = document.getElementById('c-tipo').value;
+  var valor = document.getElementById('c-valor').value;
+  var validade = document.getElementById('c-validade').value;
+  var limite = document.getElementById('c-limite').value;
+  if (!codigo) { msg.textContent = '⚠️ Digite o código'; msg.style.color = '#ef4444'; return; }
+  msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
+  try {
+    var resp = await fetch('/api/cupons?secret=${secret}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo, tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: 'todos', ativo: true })
+    });
+    var data = await resp.json();
+    if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => window.location.reload(), 1500); }
+    else { msg.textContent = '❌ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
+  } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
+}
+async function toggleCupom(codigo) {
+  var resp = await fetch('/api/cupons?secret=${secret}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', codigo }) });
+  var data = await resp.json();
+  if (data.ok) window.location.reload();
+}
+async function deletarCupom(codigo) {
+  if (!confirm('Deletar cupom ' + codigo + '?')) return;
+  var resp = await fetch('/api/cupons?secret=${secret}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', codigo }) });
+  var data = await resp.json();
+  if (data.ok) window.location.reload();
 }
 
 // Carregar membros dos grupos de forma assíncrona
