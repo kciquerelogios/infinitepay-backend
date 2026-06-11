@@ -197,6 +197,99 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
+  // ===== ACTION: GRUPOS VIP DASHBOARD =====
+  if (req.query.action === 'grupos-vip-dashboard') {
+    try {
+      const GRUPOS_VIP = [
+        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP'},
+        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GwebJkNxXpMKOjuPKMYZrK'},
+        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/BtiR1tGSzN7BG3Uv7ZiecI'},
+        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/DFNTCOuMSkXCKPou1g7czS'},
+        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/KGPTKigqecm7rgNjpC3j84'},
+        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/EGbNVvJX9i46H3rIJQ79K9'},
+        {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/F1BkukLoCZn0v3ml48XLpq'},
+        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/DGHwIvk8e5G1bcBkc0ywcp'},
+        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/HKNkmPeu9hM7GG2D3wusdK'},
+        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/Kw8EYEd11CxGhcp0HZIXsf'},
+        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DehLBYFhcy08ftgxMEsmln'},
+        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/Iap7UKrnepQFrLPs6aLjpp'},
+        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/JOBou3Nqntv7gp7pdNrBsG'},
+        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/H8sMRaTnHsa4msP0F4jTFw'},
+        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/JPaa65dmlnAKeS0M1OqjNu'},
+        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/CzR4iPTL4lE6YNQ8Aj22rq'},
+      ];
+      const LIMITE = 1000;
+
+      // Buscar membros de todos os grupos em paralelo
+      const membrosPromises = GRUPOS_VIP.map(async g => {
+        try {
+          const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
+            headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+          });
+          const d = await r.json();
+          return { ...g, membros: d.participants ? d.participants.length : 0 };
+        } catch(e) { return { ...g, membros: 0 }; }
+      });
+      const grupos = await Promise.all(membrosPromises);
+
+      // Encontrar grupo ativo
+      let grupoAtivo = grupos[grupos.length - 1];
+      for (const g of grupos) {
+        if (g.membros < LIMITE) { grupoAtivo = g; break; }
+      }
+
+      const hoje = new Date();
+      const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
+      const hojeStr = hojeBR.toISOString().split('T')[0];
+      const totalAtual = grupos.reduce((s,g) => s+g.membros, 0);
+
+      // Salvar snapshot de hoje
+      const chaveHoje = `vip-snapshot-${hojeStr}`;
+      const snapHojeResp = await fetch(`${KV_URL}/get/${chaveHoje}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const snapHojeData = await snapHojeResp.json();
+      const snapHoje = snapHojeData.result ? JSON.parse(snapHojeData.result) : null;
+
+      // Se não tem snapshot de hoje, salvar agora
+      if (!snapHoje) {
+        await fetch(`${KV_URL}/set/${chaveHoje}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
+        });
+      }
+
+      // Calcular entradas de hoje comparando com snapshot de ontem
+      const ontemStr = new Date(hojeBR.getTime() - 86400000).toISOString().split('T')[0];
+      const chaveOntem = `vip-snapshot-${ontemStr}`;
+      const snapOntemResp = await fetch(`${KV_URL}/get/${chaveOntem}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const snapOntemData = await snapOntemResp.json();
+      const snapOntem = snapOntemData.result ? JSON.parse(snapOntemData.result) : null;
+      const entradasHoje = snapOntem ? Math.max(0, totalAtual - snapOntem.total) : 0;
+
+      // Histórico dos últimos 7 dias
+      const historico = [];
+      for (let i = 6; i >= 0; i--) {
+        const d1 = new Date(hojeBR); d1.setDate(d1.getDate() - i);
+        const d0 = new Date(hojeBR); d0.setDate(d0.getDate() - i - 1);
+        const ds1 = d1.toISOString().split('T')[0];
+        const ds0 = d0.toISOString().split('T')[0];
+        const [r1, r0] = await Promise.all([
+          fetch(`${KV_URL}/get/vip-snapshot-${ds1}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({})),
+          fetch(`${KV_URL}/get/vip-snapshot-${ds0}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({}))
+        ]);
+        const snap1 = r1.result ? JSON.parse(r1.result) : null;
+        const snap0 = r0.result ? JSON.parse(r0.result) : null;
+        const entradas = (snap1 && snap0) ? Math.max(0, snap1.total - snap0.total) : (i===0 ? entradasHoje : 0);
+        historico.push({ data: ds1, entradas });
+      }
+
+      return res.status(200).json({ grupos, grupoAtivo, entradasHoje, historico, totalMembros: totalAtual });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== ACTION: BUSCAR GRUPO =====
   if (req.query.action === 'buscar-grupo') {
     const nome = req.query.nome || '';
@@ -877,6 +970,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
     <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas WhatsApp</span></button>
     <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
     <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
+    <button onclick="mudarAba('grupos-vip')" class="menu-item" id="menu-grupos-vip"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
   </div>
   <div class="sidebar-footer">Kcique Relógios</div>
 </div>
@@ -890,15 +984,20 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
   <div id="aba-ofertas" class="aba">${abaOfertas}</div>
   <div id="aba-pedidos" class="aba">${abaPedidos}</div>
   <div id="aba-cupons" class="aba">${abaCupons}</div>
+  <div id="aba-grupos-vip" class="aba" id="aba-grupos-vip-el">
+    <div id="gvip-loading" style="text-align:center;padding:60px;color:#9ca3af">Carregando dados dos grupos...</div>
+    <div id="gvip-content" style="display:none"></div>
+  </div>
 </div>
 <script>
-var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto'};
+var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP'};
 function mudarAba(aba){
   document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
   document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
   document.getElementById('aba-'+aba).classList.add('ativa');
   document.getElementById('menu-'+aba).classList.add('ativo');
   document.getElementById('page-title').textContent=titulos[aba];
+  if(aba==='grupos-vip') carregarGruposVip();
 }
 if(window.location.hash==='#carrinhos')mudarAba('carrinhos');
 if(window.location.hash==='#ofertas')mudarAba('ofertas');
@@ -988,6 +1087,89 @@ async function deletarCupom(id, codigo) {
   var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', id: id }) });
   var data = await resp.json();
   if (data.ok) window.location.reload();
+}
+
+// Carregar aba Grupos VIP
+var gvipCarregado = false;
+async function carregarGruposVip() {
+  if (gvipCarregado) return;
+  gvipCarregado = true;
+  try {
+    var resp = await fetch('/api/admin?action=grupos-vip-dashboard&secret=${secret}');
+    var data = await resp.json();
+    if (!data.grupos) { document.getElementById('gvip-loading').textContent = 'Erro ao carregar'; return; }
+
+    var LIMITE = 1000;
+    var ga = data.grupoAtivo;
+    var totalMembros = data.totalMembros || 0;
+
+    // Barra de progresso do grupo ativo
+    var pct = Math.min(100, Math.round((ga.membros / LIMITE) * 100));
+    var vagasRestantes = LIMITE - ga.membros;
+
+    // Histórico
+    var historicoHtml = data.historico.map(function(h) {
+      var d = new Date(h.data + 'T12:00:00');
+      var label = d.toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">'
+        + '<span style="font-size:13px;color:#6b7280">' + label + '</span>'
+        + '<span style="font-size:14px;font-weight:600">' + h.entradas + ' entradas</span>'
+        + '</div>';
+    }).join('');
+
+    // Cards dos grupos
+    var gruposHtml = data.grupos.map(function(g, i) {
+      var pctG = Math.min(100, Math.round((g.membros / LIMITE) * 100));
+      var isAtivo = g.id === ga.id;
+      var corBarra = pctG >= 90 ? '#ef4444' : pctG >= 70 ? '#f59e0b' : '#10b981';
+      return '<div style="background:#fff;border:' + (isAtivo ? '2px solid #2563eb' : '1px solid #e8eaf0') + ';border-radius:10px;padding:14px 16px;position:relative">'
+        + (isAtivo ? '<span style="position:absolute;top:10px;right:10px;background:#2563eb;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">ATIVO</span>' : '')
+        + '<div style="font-size:13px;font-weight:700;margin-bottom:6px">' + g.nome + '</div>'
+        + '<div style="font-size:22px;font-weight:700;margin-bottom:6px">' + g.membros.toLocaleString('pt-BR') + '</div>'
+        + '<div style="background:#f3f4f6;border-radius:4px;height:6px;margin-bottom:4px"><div style="background:' + corBarra + ';height:6px;border-radius:4px;width:' + pctG + '%"></div></div>'
+        + '<div style="font-size:11px;color:#9ca3af">' + (LIMITE - g.membros) + ' vagas</div>'
+        + '</div>';
+    }).join('');
+
+    document.getElementById('gvip-content').innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">'
+        + '<div class="stat-card" style="border-color:#2563eb">'
+          + '<div class="stat-label">📲 Grupo Ativo Agora</div>'
+          + '<div class="stat-value">' + ga.nome + '</div>'
+          + '<div class="stat-sub">' + ga.membros + ' membros · ' + vagasRestantes + ' vagas</div>'
+          + '<div style="background:#f3f4f6;border-radius:6px;height:8px;margin-top:10px"><div style="background:#2563eb;height:8px;border-radius:6px;width:' + pct + '%"></div></div>'
+          + '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo →</a>'
+        + '</div>'
+        + '<div class="stat-card">'
+          + '<div class="stat-label">👥 Total de Membros VIP</div>'
+          + '<div class="stat-value">' + totalMembros.toLocaleString('pt-BR') + '</div>'
+          + '<div class="stat-sub">em 17 grupos</div>'
+        + '</div>'
+        + '<div class="stat-card">'
+          + '<div class="stat-label">🔗 Cliques Hoje</div>'
+          + '<div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div>'
+          + '<div class="stat-sub">acessos à página VIP</div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">'
+        + '<div class="stat-card">'
+          + '<div class="stat-label" style="margin-bottom:16px">📅 Cliques dos últimos 7 dias</div>'
+          + historicoHtml
+        + '</div>'
+        + '<div class="stat-card">'
+          + '<div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>'
+          + '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>'
+          + '<button onclick="navigator.clipboard.writeText('' + ga.link + '').then(()=>alert('Copiado!'))" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>'
+        + '</div>'
+      + '</div>'
+      + '<div><div class="stat-label" style="margin-bottom:16px">📊 Status de todos os grupos</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">' + gruposHtml + '</div></div>';
+
+    document.getElementById('gvip-loading').style.display = 'none';
+    document.getElementById('gvip-content').style.display = 'block';
+  } catch(e) {
+    document.getElementById('gvip-loading').textContent = 'Erro: ' + e.message;
+  }
 }
 
 // Carregar membros dos grupos de forma assíncrona
