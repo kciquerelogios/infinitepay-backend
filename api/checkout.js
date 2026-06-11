@@ -5,14 +5,51 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { carrinho, frete, cliente } = req.body;
+  const { carrinho, frete, cliente, cupom } = req.body;
   const HANDLE = process.env.INFINITE_HANDLE;
 
   if (!carrinho || carrinho.length === 0) {
     return res.status(400).json({ erro: 'Carrinho vazio' });
   }
 
-  const precoFrete = frete ? Math.round(frete.preco * 100) : 0;
+  let precoFrete = frete ? Math.round(frete.preco * 100) : 0;
+
+  // Aplicar desconto do cupom
+  let descontoTotal = 0;
+  let cupomValido = null;
+  if (cupom && cupom.codigo) {
+    try {
+      const cupomResp = await fetch(`https://infinitepay-backend.vercel.app/api/cupons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validar', codigo: cupom.codigo, carrinho })
+      });
+      const cupomData = await cupomResp.json();
+      if (cupomData.ok) {
+        cupomValido = cupomData.cupom;
+        descontoTotal = cupomValido.desconto || 0;
+        if (cupomValido.freteGratis) precoFrete = 0;
+        // Incrementar uso do cupom
+        await fetch(`${process.env.KV_REST_API_URL}/get/cupom_${cupom.codigo.toUpperCase()}`, { headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` } })
+          .then(r => r.json())
+          .then(async d => {
+            let c = d.result;
+            while (typeof c === 'string') { try { c = JSON.parse(c); } catch(e) { break; } }
+            if (c) {
+              c.usosAtuais = (c.usosAtuais || 0) + 1;
+              await fetch(`${process.env.KV_REST_API_URL}/set/cupom_${cupom.codigo.toUpperCase()}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: JSON.stringify(c) })
+              });
+            }
+          }).catch(()=>{});
+      }
+    } catch(e) { console.log('Erro cupom:', e.message); }
+  }
+
+  // Calcular subtotal e aplicar desconto proporcional
+  const subtotalBruto = carrinho.reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
 
   // Montar items para InfinitePay
   const items = carrinho.map(item => ({
@@ -26,6 +63,15 @@ export default async function handler(req, res) {
       quantity: 1,
       price: precoFrete,
       description: `Frete ${frete.nome} (${frete.prazo} dias uteis)`
+    });
+  }
+
+  // Adicionar item de desconto se houver cupom
+  if (descontoTotal > 0 && cupomValido) {
+    items.push({
+      quantity: 1,
+      price: -descontoTotal,
+      description: `Desconto cupom ${cupomValido.codigo} (${cupomValido.descontoDesc})`
     });
   }
 
