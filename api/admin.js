@@ -1094,81 +1094,70 @@ var gvipCarregado = false;
 async function carregarGruposVip() {
   if (gvipCarregado) return;
   gvipCarregado = true;
+  var loading = document.getElementById('gvip-loading');
+  var el = document.getElementById('gvip-content');
   try {
     var resp = await fetch('/api/admin?action=grupos-vip-dashboard&secret=${secret}');
     var data = await resp.json();
-    if (!data.grupos) { document.getElementById('gvip-loading').textContent = 'Erro ao carregar'; return; }
+    if (!data.grupos) { loading.textContent = 'Erro ao carregar'; return; }
 
     var LIMITE = 1000;
     var ga = data.grupoAtivo;
-    var totalMembros = data.totalMembros || 0;
-
-    // Barra de progresso do grupo ativo
     var pct = Math.min(100, Math.round((ga.membros / LIMITE) * 100));
-    var vagasRestantes = LIMITE - ga.membros;
+    var vagas = LIMITE - ga.membros;
 
-    // Histórico
-    var historicoHtml = data.historico.map(function(h) {
+    // Cards superiores
+    var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">';
+    html += '<div class="stat-card" style="border-color:#2563eb">';
+    html += '<div class="stat-label">📲 Grupo Ativo Agora</div>';
+    html += '<div class="stat-value">' + ga.nome + '</div>';
+    html += '<div class="stat-sub">' + ga.membros + ' membros · ' + vagas + ' vagas</div>';
+    html += '<div style="background:#f3f4f6;border-radius:6px;height:8px;margin-top:10px"><div style="background:#2563eb;height:8px;border-radius:6px;width:' + pct + '%"></div></div>';
+    html += '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo →</a>';
+    html += '</div>';
+    html += '<div class="stat-card"><div class="stat-label">👥 Total de Membros VIP</div><div class="stat-value">' + data.totalMembros.toLocaleString('pt-BR') + '</div><div class="stat-sub">em 17 grupos</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">📈 Entradas Hoje</div><div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div><div class="stat-sub">novos membros hoje</div></div>';
+    html += '</div>';
+
+    // Historico + link
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">';
+    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:16px">📅 Entradas nos últimos 7 dias</div>';
+    data.historico.forEach(function(h) {
       var d = new Date(h.data + 'T12:00:00');
       var label = d.toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">'
-        + '<span style="font-size:13px;color:#6b7280">' + label + '</span>'
-        + '<span style="font-size:14px;font-weight:600">' + h.entradas + ' entradas</span>'
-        + '</div>';
-    }).join('');
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">';
+      html += '<span style="font-size:13px;color:#6b7280">' + label + '</span>';
+      html += '<span style="font-size:14px;font-weight:600">' + h.entradas + ' entradas</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>';
+    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
+    html += '<button onclick="navigator.clipboard.writeText(''+ga.link+'').then(function(){alert('Copiado!')})" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>';
+    html += '</div></div>';
 
-    // Cards dos grupos
-    var gruposHtml = data.grupos.map(function(g, i) {
+    // Grid de todos os grupos
+    html += '<div><div class="stat-label" style="margin-bottom:16px">📊 Status de todos os grupos</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">';
+    data.grupos.forEach(function(g) {
       var pctG = Math.min(100, Math.round((g.membros / LIMITE) * 100));
       var isAtivo = g.id === ga.id;
-      var corBarra = pctG >= 90 ? '#ef4444' : pctG >= 70 ? '#f59e0b' : '#10b981';
-      return '<div style="background:#fff;border:' + (isAtivo ? '2px solid #2563eb' : '1px solid #e8eaf0') + ';border-radius:10px;padding:14px 16px;position:relative">'
-        + (isAtivo ? '<span style="position:absolute;top:10px;right:10px;background:#2563eb;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">ATIVO</span>' : '')
-        + '<div style="font-size:13px;font-weight:700;margin-bottom:6px">' + g.nome + '</div>'
-        + '<div style="font-size:22px;font-weight:700;margin-bottom:6px">' + g.membros.toLocaleString('pt-BR') + '</div>'
-        + '<div style="background:#f3f4f6;border-radius:4px;height:6px;margin-bottom:4px"><div style="background:' + corBarra + ';height:6px;border-radius:4px;width:' + pctG + '%"></div></div>'
-        + '<div style="font-size:11px;color:#9ca3af">' + (LIMITE - g.membros) + ' vagas</div>'
-        + '</div>';
-    }).join('');
+      var cor = pctG >= 90 ? '#ef4444' : pctG >= 70 ? '#f59e0b' : '#10b981';
+      html += '<div style="background:#fff;border:' + (isAtivo ? '2px solid #2563eb' : '1px solid #e8eaf0') + ';border-radius:10px;padding:12px;position:relative">';
+      if (isAtivo) html += '<span style="position:absolute;top:6px;right:6px;background:#2563eb;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:20px">ATIVO</span>';
+      html += '<div style="font-size:12px;font-weight:700;margin-bottom:4px">' + g.nome + '</div>';
+      html += '<div style="font-size:18px;font-weight:700;margin-bottom:4px">' + g.membros.toLocaleString('pt-BR') + '</div>';
+      html += '<div style="background:#f3f4f6;border-radius:4px;height:5px;margin-bottom:3px"><div style="background:' + cor + ';height:5px;border-radius:4px;width:' + pctG + '%"></div></div>';
+      html += '<div style="font-size:10px;color:#9ca3af">' + (LIMITE - g.membros) + ' vagas</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
 
-    document.getElementById('gvip-content').innerHTML =
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">'
-        + '<div class="stat-card" style="border-color:#2563eb">'
-          + '<div class="stat-label">📲 Grupo Ativo Agora</div>'
-          + '<div class="stat-value">' + ga.nome + '</div>'
-          + '<div class="stat-sub">' + ga.membros + ' membros · ' + vagasRestantes + ' vagas</div>'
-          + '<div style="background:#f3f4f6;border-radius:6px;height:8px;margin-top:10px"><div style="background:#2563eb;height:8px;border-radius:6px;width:' + pct + '%"></div></div>'
-          + '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo →</a>'
-        + '</div>'
-        + '<div class="stat-card">'
-          + '<div class="stat-label">👥 Total de Membros VIP</div>'
-          + '<div class="stat-value">' + totalMembros.toLocaleString('pt-BR') + '</div>'
-          + '<div class="stat-sub">em 17 grupos</div>'
-        + '</div>'
-        + '<div class="stat-card">'
-          + '<div class="stat-label">🔗 Cliques Hoje</div>'
-          + '<div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div>'
-          + '<div class="stat-sub">acessos à página VIP</div>'
-        + '</div>'
-      + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">'
-        + '<div class="stat-card">'
-          + '<div class="stat-label" style="margin-bottom:16px">📅 Cliques dos últimos 7 dias</div>'
-          + historicoHtml
-        + '</div>'
-        + '<div class="stat-card">'
-          + '<div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>'
-          + '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>'
-          + '<button onclick="navigator.clipboard.writeText('' + ga.link + '').then(()=>alert('Copiado!'))" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>'
-        + '</div>'
-      + '</div>'
-      + '<div><div class="stat-label" style="margin-bottom:16px">📊 Status de todos os grupos</div>'
-      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">' + gruposHtml + '</div></div>';
-
-    document.getElementById('gvip-loading').style.display = 'none';
-    document.getElementById('gvip-content').style.display = 'block';
+    loading.style.display = 'none';
+    el.innerHTML = html;
+    el.style.display = 'block';
   } catch(e) {
-    document.getElementById('gvip-loading').textContent = 'Erro: ' + e.message;
+    loading.textContent = 'Erro: ' + e.message;
   }
 }
 
