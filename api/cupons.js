@@ -83,9 +83,10 @@ export default async function handler(req, res) {
   // Listar cupons
   if (req.method === 'GET' && req.query.action === 'listar') {
     try {
-      const r = await fetch(`${KV_URL}/keys/cupom_*`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      // Usar scan para listar chaves com prefixo cupom_
+      const r = await fetch(`${KV_URL}/scan/0/match/cupom_*/count/100`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const d = await r.json();
-      const keys = d.result || [];
+      const keys = (d.result && d.result[1]) ? d.result[1] : [];
       const cupons = await Promise.all(keys.map(async key => {
         const r2 = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         const d2 = await r2.json();
