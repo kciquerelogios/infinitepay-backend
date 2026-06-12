@@ -97,10 +97,14 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
     let erros = 0;
     for (const grupo of gruposEnviar) {
       try {
-        const endpoint = oferta.imagem ? 'send-image' : 'send-text';
+        const isVideo = oferta.imagem && /\.(mp4|mov|avi|webm)(\?|$)/i.test(oferta.imagem);
+        const endpoint = oferta.imagem ? (isVideo ? 'send-video' : 'send-image') : 'send-text';
+        const caption = oferta.texto + (oferta.link ? '\n\n🔗 ' + oferta.link : '');
         const body = oferta.imagem
-          ? { phone: grupo, image: oferta.imagem, caption: oferta.texto + (oferta.link ? '\n\n🔗 ' + oferta.link : '') }
-          : { phone: grupo, message: oferta.texto + (oferta.link ? '\n\n🔗 ' + oferta.link : '') };
+          ? (isVideo
+            ? { phone: grupo, video: oferta.imagem, caption }
+            : { phone: grupo, image: oferta.imagem, caption })
+          : { phone: grupo, message: caption };
         const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
@@ -544,7 +548,7 @@ tr:hover td { background: #f9f9fb; }
   <div class="form-card">
     <h2>➕ Agendar Nova Oferta</h2>
     <div class="field"><label>Texto da mensagem</label><textarea id="f-texto" placeholder="🔥 OFERTA RELÂMPAGO!&#10;&#10;Relógio X por R$ 199,90"></textarea></div>
-    <div class="field"><label>URL da imagem (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/..."></div>
+    <div class="field"><label>URL de imagem ou vídeo (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>
     <div class="field"><label>Link do produto (opcional)</label><input type="url" id="f-link" placeholder="https://kcique.com.br/products/..."></div>
     <div class="field"><label>Data e hora (horário de Brasília)</label><input type="datetime-local" id="f-data"></div>
     <div class="field">
