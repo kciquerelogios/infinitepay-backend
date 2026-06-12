@@ -773,7 +773,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <div class="form-title">➕ Agendar Nova Oferta</div>
       <div class="field"><label>Texto da mensagem</label><textarea id="f-texto" rows="4" placeholder="🔥 OFERTA RELÂMPAGO!&#10;&#10;Relógio X por R$ 199,90"></textarea></div>
       <div class="row-2">
-        <div class="field"><label>URL da imagem (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/..."></div>
+        <div class="field"><label>URL de imagem ou vídeo (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>
         <div class="field"><label>Link do produto (opcional)</label><input type="url" id="f-link" placeholder="https://kcique.com.br/..."></div>
       </div>
       <div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="f-data"></div>
