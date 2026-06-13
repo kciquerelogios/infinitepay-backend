@@ -367,6 +367,25 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
   }
 
+  // ===== ACTION: RASTREAR LOTE =====
+  if (req.query.action === 'rastrear-lote') {
+    const codigos = (req.query.codigos || '').split(',').filter(Boolean);
+    if (!codigos.length) return res.status(400).json({ error: 'codigos required' });
+    try {
+      const resp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+        body: JSON.stringify({ orders: codigos })
+      });
+      const data = await resp.json();
+      const resultado = codigos.map(c => {
+        const info = data[c] || {};
+        return { codigo: c, status: info.status || '?', entregue: !!info.delivered_at, postado: !!info.posted_at, ultima_atualizacao: info.updated_at || '' };
+      });
+      return res.status(200).json({ resultado });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
   // ===== ACTION: DEBUG MELHOR ENVIO =====
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
@@ -910,7 +929,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="font-size:13px">${c.tipo === 'frete_gratis' ? '—' : (c.tipo === 'percentual' || c.tipo === 'percentual_frete' ? c.valor + '%' : 'R$ ' + (c.valor||0).toFixed(2).replace('.',','))}</td>
       <td style="font-size:13px;${expirado?'color:#ef4444':''}">${validade}${expirado?' ⚠️':''}</td>
       <td style="font-size:13px">${usos}</td>
-      <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}</td>
+      <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}${c.qtdMinima ? '<br><span style="font-size:11px;color:#6b7280">Mín: ' + c.qtdMinima + ' itens</span>' : ''}</td>
       <td>
         <button onclick="toggleCupom('${c.id}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'✅ Ativo':'❌ Inativo'}</button>
         <button onclick="deletarCupom('${c.id}','${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">🗑</button>
@@ -934,15 +953,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         </div>
         <div class="field" id="campo-valor"><label>Valor do Desconto</label><input type="number" id="c-valor" placeholder="ex: 10" min="0" step="0.01"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
         <div class="field"><label>Validade (opcional)</label><input type="date" id="c-validade"></div>
-        <div class="field"><label>Limite de Usos (opcional)</label><input type="number" id="c-limite" placeholder="Deixe vazio = ilimitado" min="1"></div>
-        <div class="field">
-          <label>Produto Aplicável</label>
-          <select id="c-produto" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none">
-            <option value="todos">Todos os produtos</option>
-          </select>
-        </div>
+        <div class="field"><label>Limite de Usos (opcional)</label><input type="number" id="c-limite" placeholder="Ilimitado" min="1"></div>
+        <div class="field"><label>Qtd. Mínima de Itens</label><input type="number" id="c-qtd-minima" placeholder="Ex: 3" min="1"></div>
+        <div class="field"><label>Produto (palavra-chave)</label><input type="text" id="c-produto" placeholder="Ex: G-SHOCK ou deixe vazio"></div>
       </div>
       <button class="btn-green" onclick="salvarCupom()">💾 Criar Cupom</button>
       <div id="cupom-msg" style="margin-top:10px;font-size:13px"></div>
@@ -1116,7 +1131,7 @@ async function salvarCupom() {
     var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: 'todos', ativo: true })
+      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: document.getElementById('c-produto').value.trim()||'todos', qtdMinima: document.getElementById('c-qtd-minima').value ? parseInt(document.getElementById('c-qtd-minima').value) : null, ativo: true })
     });
     var data = await resp.json();
     if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => window.location.reload(), 1500); }
