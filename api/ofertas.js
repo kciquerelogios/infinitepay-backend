@@ -216,20 +216,28 @@ Qualquer dúvida estamos aqui! 😊`;
       // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
       if (SHOPIFY_STORE && SHOPIFY_TOKEN) {
         try {
-          // Buscar pedido por telefone (mais confiável pois o checkout exige confirmação de celular)
-          const telLimpo = telefone ? telefone.replace(/^55/, '') : '';
+          // Buscar pedido no Shopify — tentar múltiplos formatos de telefone
+          const telRaw = (order.to && order.to.phone) ? order.to.phone.replace(/[^0-9]/g, '') : (telefone ? telefone.replace(/[^0-9]/g, '') : '');
+          const tel11 = telRaw.startsWith('55') ? telRaw.slice(2) : telRaw; // sem DDI
+          const tel55 = '55' + tel11; // com DDI
           let shopPedido = null;
 
-          // Tentar por telefone primeiro
-          if (telLimpo) {
-            const r1 = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=%2B55${telLimpo}&limit=5&financial_status=paid&status=any`,
-              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-            );
-            const d1 = await r1.json().catch(()=>({}));
-            const pedidos1 = d1.orders || [];
-            shopPedido = pedidos1.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking)));
-            if (!shopPedido) shopPedido = pedidos1[0];
+          // Tentar por telefone com +55
+          if (tel11) {
+            for (const fmt of [`%2B${tel55}`, tel11, tel55]) {
+              const r1 = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=${fmt}&limit=5&financial_status=paid&status=any`,
+                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+              );
+              const d1 = await r1.json().catch(()=>({}));
+              const pp = d1.orders || [];
+              if (pp.length > 0) {
+                shopPedido = pp.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking)));
+                if (!shopPedido) shopPedido = pp[0];
+                console.log('Shopify encontrou por telefone fmt:', fmt, '| pedido:', shopPedido && shopPedido.order_number);
+                break;
+              }
+            }
           }
 
           // Fallback: buscar por email
@@ -242,10 +250,11 @@ Qualquer dúvida estamos aqui! 😊`;
             const pedidos2 = d2.orders || [];
             shopPedido = pedidos2.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking)));
             if (!shopPedido) shopPedido = pedidos2[0];
+            if (shopPedido) console.log('Shopify encontrou por email:', emailDestinatario, '| pedido:', shopPedido.order_number);
           }
 
           if (!shopPedido) {
-            console.log('Pedido nao encontrado no Shopify para tracking:', tracking, 'tel:', telLimpo, 'email:', emailDestinatario);
+            console.log('Pedido nao encontrado no Shopify para tracking:', tracking, 'tel:', tel11, 'email:', emailDestinatario);
           } else {
             // Verificar se tracking já existe
             const jaTemTracking = (shopPedido.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking));
