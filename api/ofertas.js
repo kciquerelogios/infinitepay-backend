@@ -169,7 +169,9 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
             { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
           );
           const shopData = await shopResp.json();
-          const pedido = (shopData.orders || [])[0];
+          // Pegar o pedido mais recente
+          const pedidos = shopData.orders || [];
+          const pedido = pedidos[0];
           if (pedido) {
             telefone = ((pedido.shipping_address && pedido.shipping_address.phone) || pedido.phone || (pedido.billing_address && pedido.billing_address.phone) || '').replace(/[^0-9]/g, '');
           }
@@ -212,50 +214,78 @@ Qualquer dúvida estamos aqui! 😊`;
       enviados++;
 
       // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
-      if (emailDestinatario && SHOPIFY_STORE && SHOPIFY_TOKEN) {
+      if (SHOPIFY_STORE && SHOPIFY_TOKEN) {
         try {
-          const shopResp = await fetch(
-            `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
-            { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-          );
-          const shopText = await shopResp.text();
-          const shopData = shopText ? JSON.parse(shopText) : {};
-          const pedido = (shopData.orders || [])[0];
+          // Buscar pedido por telefone (mais confiável pois o checkout exige confirmação de celular)
+          const telLimpo = telefone ? telefone.replace(/^55/, '') : '';
+          let shopPedido = null;
 
-          if (pedido && pedido.id) {
-            // Buscar fulfillment_order aberto
-            const foResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillment_orders.json`,
+          // Tentar por telefone primeiro
+          if (telLimpo) {
+            const r1 = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=%2B55${telLimpo}&limit=5&financial_status=paid&status=any`,
               { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
             );
-            const foText = await foResp.text();
-            const foData = foText ? JSON.parse(foText) : {};
-            const fo = (foData.fulfillment_orders || []).find(f => f.status === 'open');
-            if (fo) {
-              const fulfillResp = await fetch(
-                `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
-                  body: JSON.stringify({
-                    fulfillment: {
-                      line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
-                      tracking_info: {
-                        number: tracking,
-                        url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
-                        company: 'Correios'
-                      },
-                      notify_customer: false
-                    }
-                  })
-                }
+            const d1 = await r1.json().catch(()=>({}));
+            const pedidos1 = d1.orders || [];
+            shopPedido = pedidos1.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking)));
+            if (!shopPedido) shopPedido = pedidos1[0];
+          }
+
+          // Fallback: buscar por email
+          if (!shopPedido && emailDestinatario) {
+            const r2 = await fetch(
+              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=5&financial_status=paid&status=any`,
+              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+            );
+            const d2 = await r2.json().catch(()=>({}));
+            const pedidos2 = d2.orders || [];
+            shopPedido = pedidos2.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking)));
+            if (!shopPedido) shopPedido = pedidos2[0];
+          }
+
+          if (!shopPedido) {
+            console.log('Pedido nao encontrado no Shopify para tracking:', tracking, 'tel:', telLimpo, 'email:', emailDestinatario);
+          } else {
+            // Verificar se tracking já existe
+            const jaTemTracking = (shopPedido.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking));
+            if (jaTemTracking) {
+              console.log('Tracking ja existe no Shopify:', tracking);
+            } else {
+              // Buscar fulfillment_order aberto
+              const foResp = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${shopPedido.id}/fulfillment_orders.json`,
+                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
               );
-              const fulfillText = await fulfillResp.text();
-              const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
-              if (fulfillData.fulfillment) {
-                console.log('Fulfillment criado no Shopify para pedido:', pedido.order_number);
+              const foData = await foResp.json().catch(()=>({}));
+              const fo = (foData.fulfillment_orders || []).find(f => f.status === 'open');
+              if (fo) {
+                const fulfillResp = await fetch(
+                  `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+                    body: JSON.stringify({
+                      fulfillment: {
+                        line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
+                        tracking_info: {
+                          number: tracking,
+                          url: 'https://www.melhorrastreio.com.br/rastreio/' + tracking,
+                          company: 'Correios'
+                        },
+                        notify_customer: false
+                      }
+                    })
+                  }
+                );
+                const fulfillData = await fulfillResp.json().catch(()=>({}));
+                if (fulfillData.fulfillment) {
+                  console.log('Fulfillment criado no Shopify:', shopPedido.order_number, '|', tracking);
+                } else {
+                  console.log('Erro fulfillment Shopify:', JSON.stringify(fulfillData).substring(0,200));
+                }
               } else {
-                console.log('Shopify fulfillment resposta:', fulfillText.substring(0,200));
+                console.log('Sem fulfillment_order aberto para pedido:', shopPedido.order_number);
               }
             }
           }
@@ -370,19 +400,41 @@ export default async function handler(req, res) {
           if (!email) { semPedido++; continue; }
 
           try {
-            // Buscar pedido no Shopify
-            const shopResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(email)}&limit=3&financial_status=paid&fulfillment_status=unfulfilled`,
-              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-            );
-            const shopText = await shopResp.text();
-            const shopData = shopText ? JSON.parse(shopText) : {};
-            const pedido = (shopData.orders || [])[0];
+            const telOrder = ((order.to && order.to.phone) || '').replace(/[^0-9]/g, '').replace(/^55/, '');
+
+            // Buscar por telefone primeiro
+            let pedido = null;
+            if (telOrder) {
+              const r1 = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=%2B55${telOrder}&limit=5&financial_status=paid&status=any`,
+                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+              );
+              const d1 = await r1.json().catch(()=>({}));
+              const pp1 = d1.orders || [];
+              pedido = pp1.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking)));
+              if (!pedido) pedido = pp1[0];
+            }
+
+            // Fallback por email
+            if (!pedido && email) {
+              const r2 = await fetch(
+                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(email)}&limit=5&financial_status=paid&status=any`,
+                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+              );
+              const d2 = await r2.json().catch(()=>({}));
+              const pp2 = d2.orders || [];
+              pedido = pp2.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking)));
+              if (!pedido) pedido = pp2[0];
+            }
 
             if (!pedido || !pedido.id) { 
-              console.log('Pedido nao encontrado para email:', email);
+              console.log('Pedido nao encontrado para tel:', telOrder, 'email:', email);
               semPedido++; continue; 
             }
+
+            // Se já tem o tracking, pular
+            const jaTemTracking = (pedido.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking));
+            if (jaTemTracking) { console.log('Tracking ja existe no Shopify:', order.tracking); semPedido++; continue; }
 
             // Buscar fulfillment_order do pedido
             const foResp = await fetch(
