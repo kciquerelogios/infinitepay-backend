@@ -10,8 +10,6 @@ export default async function handler(req, res) {
   async function listarCupons() {
     const r = await fetch(`${KV_URL}/lrange/cupons-lista/0/100`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     const d = await r.json();
-    console.log('lrange cupons result:', JSON.stringify(d).substring(0,200));
-    // Normalizar IDs — alguns podem estar salvos como '["cupom_123"]' em vez de 'cupom_123'
     const ids = (d.result || []).map(id => {
       if (typeof id === 'string' && id.startsWith('[')) {
         try { const arr = JSON.parse(id); return Array.isArray(arr) ? arr[0] : id; } catch(e) { return id; }
@@ -28,7 +26,7 @@ export default async function handler(req, res) {
     return cupons.filter(Boolean);
   }
 
-  // ===== VALIDAR CUPOM (público, usado no checkout) =====
+  // ===== VALIDAR CUPOM (público) =====
   if (req.method === 'POST' && req.body && req.body.action === 'validar') {
     const { codigo, carrinho } = req.body;
     if (!codigo) return res.status(400).json({ erro: 'Código inválido' });
@@ -37,20 +35,66 @@ export default async function handler(req, res) {
       const cupom = cupons.find(c => c.codigo === codigo.toUpperCase().trim());
       if (!cupom) return res.status(404).json({ erro: 'Cupom não encontrado' });
       if (!cupom.ativo) return res.status(400).json({ erro: 'Cupom inativo' });
+
+      // Validade
       if (cupom.validade) {
         const val = new Date(cupom.validade); val.setHours(23,59,59);
         if (new Date() > val) return res.status(400).json({ erro: 'Cupom expirado' });
       }
+
+      // Limite de usos
       if (cupom.limiteUsos && (cupom.usosAtuais || 0) >= cupom.limiteUsos) {
         return res.status(400).json({ erro: 'Cupom esgotado' });
       }
-      const subtotal = (carrinho || []).reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
+
+      const itens = carrinho || [];
+      const totalItens = itens.reduce((s, i) => s + (i.quantidade || 1), 0);
+
+      // Validar produto específico
+      if (cupom.produto && cupom.produto !== 'todos') {
+        const termoBusca = cupom.produto.toLowerCase();
+        const temProduto = itens.some(i => (i.nome || '').toLowerCase().includes(termoBusca));
+        if (!temProduto) {
+          return res.status(400).json({ erro: `Cupom válido apenas para produtos "${cupom.produto}"` });
+        }
+      }
+
+      // Validar quantidade mínima
+      if (cupom.qtdMinima && totalItens < cupom.qtdMinima) {
+        return res.status(400).json({ erro: `Cupom requer mínimo de ${cupom.qtdMinima} itens no carrinho` });
+      }
+
+      // Calcular subtotal (só dos produtos elegíveis)
+      let subtotal;
+      if (cupom.produto && cupom.produto !== 'todos') {
+        const termoBusca = cupom.produto.toLowerCase();
+        subtotal = itens
+          .filter(i => (i.nome || '').toLowerCase().includes(termoBusca))
+          .reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
+      } else {
+        subtotal = itens.reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
+      }
+
       let desconto = 0, freteGratis = false, descontoDesc = '';
-      if (cupom.tipo === 'percentual') { desconto = Math.round(subtotal * cupom.valor / 100); descontoDesc = cupom.valor + '% off'; }
-      else if (cupom.tipo === 'fixo') { desconto = Math.min(Math.round(cupom.valor * 100), subtotal); descontoDesc = 'R$ ' + (cupom.valor).toFixed(2).replace('.', ',') + ' off'; }
-      else if (cupom.tipo === 'frete_gratis') { freteGratis = true; descontoDesc = 'Frete grátis'; }
-      else if (cupom.tipo === 'percentual_frete') { desconto = Math.round(subtotal * cupom.valor / 100); freteGratis = true; descontoDesc = cupom.valor + '% off + Frete grátis'; }
-      return res.status(200).json({ ok: true, cupom: { codigo: cupom.codigo, tipo: cupom.tipo, valor: cupom.valor, desconto, freteGratis, descontoDesc } });
+      if (cupom.tipo === 'percentual') {
+        desconto = Math.round(subtotal * cupom.valor / 100);
+        descontoDesc = cupom.valor + '% off';
+      } else if (cupom.tipo === 'fixo') {
+        desconto = Math.min(Math.round(cupom.valor * 100), subtotal);
+        descontoDesc = 'R$ ' + (cupom.valor).toFixed(2).replace('.', ',') + ' off';
+      } else if (cupom.tipo === 'frete_gratis') {
+        freteGratis = true;
+        descontoDesc = 'Frete grátis';
+      } else if (cupom.tipo === 'percentual_frete') {
+        desconto = Math.round(subtotal * cupom.valor / 100);
+        freteGratis = true;
+        descontoDesc = cupom.valor + '% off + Frete grátis';
+      }
+
+      return res.status(200).json({
+        ok: true,
+        cupom: { codigo: cupom.codigo, tipo: cupom.tipo, valor: cupom.valor, desconto, freteGratis, descontoDesc, produto: cupom.produto || 'todos' }
+      });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
@@ -68,7 +112,7 @@ export default async function handler(req, res) {
 
   // Salvar
   if (req.method === 'POST' && req.body && req.body.action === 'salvar') {
-    const { codigo, tipo, valor, validade, limiteUsos, produto } = req.body;
+    const { codigo, tipo, valor, validade, limiteUsos, produto, qtdMinima } = req.body;
     if (!codigo || !tipo) return res.status(400).json({ erro: 'Código e tipo são obrigatórios' });
     const id = 'cupom_' + Date.now();
     const cupom = {
@@ -78,6 +122,7 @@ export default async function handler(req, res) {
       limiteUsos: limiteUsos ? parseInt(limiteUsos) : null,
       usosAtuais: 0,
       produto: produto || 'todos',
+      qtdMinima: qtdMinima ? parseInt(qtdMinima) : null,
       ativo: true,
       criado_em: new Date().toISOString()
     };
@@ -101,7 +146,7 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
-  // Toggle ativo/inativo
+  // Toggle
   if (req.method === 'POST' && req.body && req.body.action === 'toggle') {
     const { id } = req.body;
     try {
