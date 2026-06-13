@@ -49,6 +49,7 @@ export default async function handler(req, res) {
 
       const itens = carrinho || [];
       const totalItens = itens.reduce((s, i) => s + (i.quantidade || 1), 0);
+      console.log('Carrinho recebido:', JSON.stringify(itens.map(i => ({nome: i.nome, preco: i.preco, qtd: i.quantidade}))));
 
       // Validar produto específico
       if (cupom.produto && cupom.produto !== 'todos') {
