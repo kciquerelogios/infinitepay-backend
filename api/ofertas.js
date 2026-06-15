@@ -180,7 +180,7 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
 
       if (!telefone) {
         // Marcar como enviado mesmo sem telefone para nÃ£o tentar sempre
-        await fetch(`${KV_URL}/set/${chave}/sem-tel/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        await fetch(`${KV_URL}/set/${chave}/sem-tel/EX/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         continue;
       }
 
@@ -210,13 +210,11 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
       } catch(e) { console.error('Erro WhatsApp:', e.message); }
 
       // 2. Marcar como enviado no Redis (TTL 30 dias) â€” ANTES do fulfillment para nÃ£o reprocessar
-      // Salvar no Redis com TTL 30 dias (formato URL path igual ao sem-tel)
-      const setResp = await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, {
+      // Salvar no Redis com TTL 30 dias
+      await fetch(`${KV_URL}/set/${chave}/1/EX/2592000`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
-      const setData = await setResp.json().catch(()=>({}));
-      console.log('Redis set rastreio:', chave, '| ok:', setData.result);
       enviados++;
 
       // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
