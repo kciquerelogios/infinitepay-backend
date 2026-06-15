@@ -153,9 +153,8 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
       try {
         const r = await fetch(`${KV_URL}/get/${chave}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         const d = await r.json();
-        console.log('Redis get rastreio:', chave, '| valor:', d.result);
         if (d.result) continue; // jÃ¡ enviou
-      } catch(e) { console.log('Erro get rastreio:', e.message); continue; }
+      } catch(e) { continue; }
 
       // Pegar telefone e nome do destinatÃ¡rio
       const nomeDestinatario = order.to?.name || '';
@@ -211,9 +210,13 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
       } catch(e) { console.error('Erro WhatsApp:', e.message); }
 
       // 2. Marcar como enviado no Redis (TTL 30 dias) â€” ANTES do fulfillment para nÃ£o reprocessar
-      const setResp = await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      // Salvar no Redis com TTL 30 dias (formato URL path igual ao sem-tel)
+      const setResp = await fetch(`${KV_URL}/set/${chave}/1/ex/2592000`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
       const setData = await setResp.json().catch(()=>({}));
-      console.log('Redis set rastreio:', chave, '| resultado:', JSON.stringify(setData));
+      console.log('Redis set rastreio:', chave, '| ok:', setData.result);
       enviados++;
 
       // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
@@ -525,11 +528,10 @@ export default async function handler(req, res) {
     try {
       const disparadas = await verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN);
 
-      // RASTREIOS TEMPORARIAMENTE DESABILITADOS - reativar apÃ³s correÃ§Ã£o do Redis
-      // try {
-      //   await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
-      // } catch(e) { console.error('Erro rastreios:', e.message); }
-      console.log('Rastreios desabilitados temporariamente');
+      // Verificar rastreios novos e enviar WhatsApp
+      try {
+        await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
+      } catch(e) { console.error('Erro rastreios:', e.message); }
 
       // Salvar snapshot dos grupos VIP Ã  meia-noite (00:00 - 00:02 horÃ¡rio BrasÃ­lia)
       try {
