@@ -6,7 +6,9 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
     try {
-      const r = await fetch(`${KV_URL}/get/bundle-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const r = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
       const d = await r.json();
       let config = d.result;
       while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
@@ -250,7 +252,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
     try {
-      const r = await fetch(`${KV_URL}/get/bundle-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const r = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
       const d = await r.json();
       let config = d.result;
       while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
