@@ -197,6 +197,70 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
+  // ===== ACTION: LISTAR TODOS OS PRODUTOS (para selecao de bundle) =====
+  if (req.query.action === 'produtos-lista') {
+    try {
+      let allProducts = [];
+      let pageInfo = null;
+      let hasMore = true;
+      let pages = 0;
+      while (hasMore && pages < 10) {
+        const url = pageInfo
+          ? `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&page_info=${pageInfo}`
+          : `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+        const d = await r.json();
+        allProducts = allProducts.concat(d.products || []);
+        const linkHeader = r.headers.get('link') || '';
+        const match = linkHeader.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+        pageInfo = match ? match[1] : null;
+        hasMore = !!pageInfo;
+        pages++;
+      }
+      const produtos = allProducts.filter(p => p.status === 'active').map(p => ({
+        id: String(p.id),
+        titulo: p.title,
+        imagem: p.image ? p.image.src : '',
+        preco: p.variants && p.variants[0] ? p.variants[0].price : '0'
+      }));
+      return res.status(200).json({ produtos, total: produtos.length });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (público, com CORS) =====
+  if (req.query.action === 'bundle-produtos') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const r = await fetch(`${KV_URL}/get/bundle-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config) config = { produtoIds: [], desconto: 50 };
+      return res.status(200).json(config);
+    } catch(e) {
+      return res.status(200).json({ produtoIds: [], desconto: 50 });
+    }
+  }
+
+  // ===== ACTION: BUNDLE - SALVAR CONFIG (admin) =====
+  if (req.query.action === 'bundle-salvar' && req.method === 'POST') {
+    try {
+      const { produtoIds, desconto } = req.body;
+      const config = { produtoIds: produtoIds || [], desconto: parseFloat(desconto) || 50 };
+      await fetch(`${KV_URL}/set/bundle-config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      return res.status(200).json({ ok: true, config });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== ACTION: GRUPO VIP ATIVO (público, com CORS) =====
   if (req.query.action === 'grupo-vip-ativo') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1032,6 +1096,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
     <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
     <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
     <button onclick="mudarAba('grupos-vip')" class="menu-item" id="menu-grupos-vip"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
+    <button onclick="mudarAba('bundle')" class="menu-item" id="menu-bundle"><span class="menu-icon">🎁</span><span class="menu-label">Bundle Produtos</span></button>
   </div>
   <div class="sidebar-footer">Kcique Relógios</div>
 </div>
@@ -1049,9 +1114,13 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
     <div id="gvip-loading" style="text-align:center;padding:60px;color:#9ca3af">Carregando dados dos grupos...</div>
     <div id="gvip-content" style="display:none"></div>
   </div>
+  <div id="aba-bundle" class="aba">
+    <div id="bundle-loading" style="text-align:center;padding:60px;color:#9ca3af">Carregando produtos...</div>
+    <div id="bundle-content" style="display:none"></div>
+  </div>
 </div>
 <script>
-var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP'};
+var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP',bundle:'🎁 Bundle de Produtos'};
 function mudarAba(aba){
   document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
   document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
@@ -1059,6 +1128,7 @@ function mudarAba(aba){
   document.getElementById('menu-'+aba).classList.add('ativo');
   document.getElementById('page-title').textContent=titulos[aba];
   if(aba==='grupos-vip') carregarGruposVip();
+  if(aba==='bundle') carregarBundle();
 }
 if(window.location.hash==='#carrinhos')mudarAba('carrinhos');
 if(window.location.hash==='#ofertas')mudarAba('ofertas');
@@ -1228,6 +1298,65 @@ async function carregarGruposVip() {
   } catch(e) {
     loading.textContent = 'Erro: ' + e.message;
   }
+}
+
+// Carregar aba Bundle de Produtos
+var bundleCarregado = false;
+async function carregarBundle() {
+  if (bundleCarregado) return;
+  bundleCarregado = true;
+  var loading = document.getElementById('bundle-loading');
+  var el = document.getElementById('bundle-content');
+  try {
+    var resp = await fetch('/api/admin?action=produtos-lista&secret=${secret}');
+    var data = await resp.json();
+    var produtos = data.produtos || [];
+    var configResp2 = await fetch('/api/admin?action=bundle-produtos');
+    var config = await configResp2.json();
+    var selecionados = config.produtoIds || [];
+
+    var html = '<div class="form-card">';
+    html += '<div class="form-title">🎁 Configurar Bundle de Produtos</div>';
+    html += '<div class="field"><label>Valor do desconto (R$)</label><input type="number" id="bundle-desconto" value="' + (config.desconto||50) + '" step="1" min="0" style="width:160px"></div>';
+    html += '<div style="font-size:13px;font-weight:600;color:#374151;margin:16px 0 10px">Selecione os produtos que podem aparecer no bundle:</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:500px;overflow-y:auto;padding:4px">';
+    produtos.forEach(function(p) {
+      var checked = selecionados.indexOf(p.id) !== -1 ? 'checked' : '';
+      html += '<label style="display:flex;align-items:center;gap:10px;padding:10px;border:1.5px solid #e8eaf0;border-radius:10px;cursor:pointer;background:#fff">';
+      html += '<input type="checkbox" class="bundle-prod-check" value="' + p.id + '" ' + checked + ' style="width:18px;height:18px;flex-shrink:0">';
+      if (p.imagem) html += '<img src="' + p.imagem + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">';
+      html += '<span style="font-size:13px;font-weight:500;line-height:1.3">' + p.titulo + '</span>';
+      html += '</label>';
+    });
+    html += '</div>';
+    html += '<button class="btn-green" onclick="salvarBundle()" style="margin-top:18px">💾 Salvar Configuração</button>';
+    html += '<div id="bundle-msg" style="margin-top:10px;font-size:13px"></div>';
+    html += '</div>';
+
+    loading.style.display = 'none';
+    el.innerHTML = html;
+    el.style.display = 'block';
+  } catch(e) {
+    loading.textContent = 'Erro: ' + e.message;
+  }
+}
+
+async function salvarBundle() {
+  var msg = document.getElementById('bundle-msg');
+  var desconto = document.getElementById('bundle-desconto').value;
+  var ids = [];
+  document.querySelectorAll('.bundle-prod-check:checked').forEach(function(el) { ids.push(el.value); });
+  msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
+  try {
+    var resp = await fetch('/api/admin?action=bundle-salvar&secret=${secret}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoIds: ids, desconto: parseFloat(desconto) || 50 })
+    });
+    var data = await resp.json();
+    if (data.ok) { msg.textContent = '✅ Salvo! ' + ids.length + ' produtos selecionados.'; msg.style.color = '#10b981'; }
+    else { msg.textContent = '❌ Erro ao salvar'; msg.style.color = '#ef4444'; }
+  } catch(e) { msg.textContent = '❌ Erro de conexão'; msg.style.color = '#ef4444'; }
 }
 
 // Carregar membros dos grupos de forma assíncrona
