@@ -1,6 +1,110 @@
 export default async function handler(req, res) {
   const { secret } = req.query;
 
+  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (público) =====
+  if (req.query.action === 'bundle-lista') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const _shopifyStore = process.env.SHOPIFY_STORE;
+      const _shopifyToken = process.env.SHOPIFY_TOKEN;
+
+      // Buscar config do bundle
+      const configResp = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
+      const configData = await configResp.json();
+      let config = configData.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config || !config.produtoIds || config.produtoIds.length === 0) {
+        return res.status(200).json({ produtos: [], desconto: 50 });
+      }
+
+      // Buscar detalhes dos produtos selecionados no Shopify
+      const produtos = await Promise.all(config.produtoIds.map(async id => {
+        try {
+          const r = await fetch(`https://${_shopifyStore}/admin/api/2026-04/products/${id}.json`, {
+            headers: { 'X-Shopify-Access-Token': _shopifyToken }
+          });
+          const d = await r.json();
+          const p = d.product;
+          if (!p) return null;
+          return {
+            id: String(p.id),
+            nome: p.title,
+            preco: p.variants && p.variants[0] ? Math.round(parseFloat(p.variants[0].price) * 100) : 0,
+            imagem: p.image ? p.image.src : '',
+            variantes: (p.variants || []).filter(v => v.inventory_quantity > 0 || v.inventory_policy === 'continue').map(v => ({
+              titulo: v.title,
+              preco: Math.round(parseFloat(v.price) * 100),
+              imagem: v.featured_image ? v.featured_image.src : (p.image ? p.image.src : ''),
+              disponivel: v.available !== false
+            }))
+          };
+        } catch(e) { return null; }
+      }));
+
+      return res.status(200).json({
+        produtos: produtos.filter(Boolean),
+        desconto: config.desconto || 50
+      });
+    } catch(e) {
+      return res.status(200).json({ produtos: [], desconto: 50 });
+    }
+  }
+
+  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÁGINA DO PRODUTO (público) =====
+  if (req.query.action === 'bundle-lista') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const _shopStore = process.env.SHOPIFY_STORE;
+      const _shopToken = process.env.SHOPIFY_TOKEN;
+
+      // Buscar config do bundle
+      const r = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config || !config.produtoIds || config.produtoIds.length === 0) {
+        return res.status(200).json({ produtos: [], desconto: 50 });
+      }
+
+      // Buscar detalhes dos produtos selecionados no Shopify
+      const produtosDetalhes = await Promise.all(config.produtoIds.map(async id => {
+        try {
+          const r2 = await fetch(`https://${_shopStore}/admin/api/2026-04/products/${id}.json`, {
+            headers: { 'X-Shopify-Access-Token': _shopToken }
+          });
+          const d2 = await r2.json();
+          const p = d2.product;
+          if (!p) return null;
+          return {
+            id: String(p.id),
+            nome: p.title,
+            preco: p.variants && p.variants[0] ? Math.round(parseFloat(p.variants[0].price) * 100) : 0,
+            imagem: p.image ? p.image.src : '',
+            variantes: (p.variants || []).map(v => ({
+              titulo: v.title,
+              preco: Math.round(parseFloat(v.price) * 100),
+              imagem: v.featured_image ? v.featured_image.src : (p.image ? p.image.src : ''),
+              disponivel: v.available !== false
+            }))
+          };
+        } catch(e) { return null; }
+      }));
+
+      return res.status(200).json({
+        produtos: produtosDetalhes.filter(Boolean),
+        desconto: config.desconto || 50
+      });
+    } catch(e) {
+      return res.status(200).json({ produtos: [], desconto: 50 });
+    }
+  }
+
   // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (público, com CORS) =====
   if (req.query.action === 'bundle-produtos') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -244,6 +348,110 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       return res.status(200).json({ produtos, total: produtos.length });
     } catch(e) {
       return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (público) =====
+  if (req.query.action === 'bundle-lista') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const _shopifyStore = process.env.SHOPIFY_STORE;
+      const _shopifyToken = process.env.SHOPIFY_TOKEN;
+
+      // Buscar config do bundle
+      const configResp = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
+      const configData = await configResp.json();
+      let config = configData.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config || !config.produtoIds || config.produtoIds.length === 0) {
+        return res.status(200).json({ produtos: [], desconto: 50 });
+      }
+
+      // Buscar detalhes dos produtos selecionados no Shopify
+      const produtos = await Promise.all(config.produtoIds.map(async id => {
+        try {
+          const r = await fetch(`https://${_shopifyStore}/admin/api/2026-04/products/${id}.json`, {
+            headers: { 'X-Shopify-Access-Token': _shopifyToken }
+          });
+          const d = await r.json();
+          const p = d.product;
+          if (!p) return null;
+          return {
+            id: String(p.id),
+            nome: p.title,
+            preco: p.variants && p.variants[0] ? Math.round(parseFloat(p.variants[0].price) * 100) : 0,
+            imagem: p.image ? p.image.src : '',
+            variantes: (p.variants || []).filter(v => v.inventory_quantity > 0 || v.inventory_policy === 'continue').map(v => ({
+              titulo: v.title,
+              preco: Math.round(parseFloat(v.price) * 100),
+              imagem: v.featured_image ? v.featured_image.src : (p.image ? p.image.src : ''),
+              disponivel: v.available !== false
+            }))
+          };
+        } catch(e) { return null; }
+      }));
+
+      return res.status(200).json({
+        produtos: produtos.filter(Boolean),
+        desconto: config.desconto || 50
+      });
+    } catch(e) {
+      return res.status(200).json({ produtos: [], desconto: 50 });
+    }
+  }
+
+  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÁGINA DO PRODUTO (público) =====
+  if (req.query.action === 'bundle-lista') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const _kvUrl = process.env.KV_REST_API_URL;
+      const _kvToken = process.env.KV_REST_API_TOKEN;
+      const _shopStore = process.env.SHOPIFY_STORE;
+      const _shopToken = process.env.SHOPIFY_TOKEN;
+
+      // Buscar config do bundle
+      const r = await fetch(`${_kvUrl}/get/bundle-config`, { headers: { Authorization: `Bearer ${_kvToken}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config || !config.produtoIds || config.produtoIds.length === 0) {
+        return res.status(200).json({ produtos: [], desconto: 50 });
+      }
+
+      // Buscar detalhes dos produtos selecionados no Shopify
+      const produtosDetalhes = await Promise.all(config.produtoIds.map(async id => {
+        try {
+          const r2 = await fetch(`https://${_shopStore}/admin/api/2026-04/products/${id}.json`, {
+            headers: { 'X-Shopify-Access-Token': _shopToken }
+          });
+          const d2 = await r2.json();
+          const p = d2.product;
+          if (!p) return null;
+          return {
+            id: String(p.id),
+            nome: p.title,
+            preco: p.variants && p.variants[0] ? Math.round(parseFloat(p.variants[0].price) * 100) : 0,
+            imagem: p.image ? p.image.src : '',
+            variantes: (p.variants || []).map(v => ({
+              titulo: v.title,
+              preco: Math.round(parseFloat(v.price) * 100),
+              imagem: v.featured_image ? v.featured_image.src : (p.image ? p.image.src : ''),
+              disponivel: v.available !== false
+            }))
+          };
+        } catch(e) { return null; }
+      }));
+
+      return res.status(200).json({
+        produtos: produtosDetalhes.filter(Boolean),
+        desconto: config.desconto || 50
+      });
+    } catch(e) {
+      return res.status(200).json({ produtos: [], desconto: 50 });
     }
   }
 
