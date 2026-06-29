@@ -1,6 +1,22 @@
 export default async function handler(req, res) {
   const { secret } = req.query;
 
+  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (público, com CORS) =====
+  if (req.query.action === 'bundle-produtos') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    try {
+      const r = await fetch(`${KV_URL}/get/bundle-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (!config) config = { produtoIds: [], desconto: 50 };
+      return res.status(200).json(config);
+    } catch(e) {
+      return res.status(200).json({ produtoIds: [], desconto: 50 });
+    }
+  }
+
   if (secret !== process.env.REPROCESSAR_SECRET) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(401).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kcique Admin</title>
@@ -1308,11 +1324,13 @@ async function carregarBundle() {
   var loading = document.getElementById('bundle-loading');
   var el = document.getElementById('bundle-content');
   try {
-    var resp = await fetch('/api/admin?action=produtos-lista&secret=${secret}');
+    var [resp, configResp2] = await Promise.all([
+      fetch('/api/admin?action=produtos-lista&secret=${secret}'),
+      fetch('/api/admin?action=bundle-produtos')
+    ]);
     var data = await resp.json();
-    var produtos = data.produtos || [];
-    var configResp2 = await fetch('/api/admin?action=bundle-produtos');
     var config = await configResp2.json();
+    var produtos = data.produtos || [];
     var selecionados = config.produtoIds || [];
 
     var html = '<div class="form-card">';
