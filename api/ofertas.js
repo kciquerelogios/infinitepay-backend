@@ -58,7 +58,7 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
 
 async function salvarOferta(KV_URL, KV_TOKEN, dados) {
   const { texto, imagem, link, dataHora, grupos } = dados;
-  if (!texto || !dataHora) throw new Error('Texto e data obrigatÃ³rios');
+  if (!texto || !dataHora) throw new Error('Texto e data obrigatorios');
   const id = `oferta_${Date.now()}`;
   const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', status: 'agendada', criado_em: new Date().toISOString() };
   await fetch(`${KV_URL}/set/${id}`, {
@@ -83,7 +83,6 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
 
   for (const oferta of ofertas) {
     if (oferta.status !== 'agendada') continue;
-    // dataHora salvo no horÃ¡rio de BrasÃ­lia (UTC-3), converter para UTC adicionando 3h
     const dataEnvio = new Date(new Date(oferta.dataHora).getTime() + 3 * 60 * 60 * 1000);
     const diffMin = (agora - dataEnvio) / 1000 / 60;
     console.log('Oferta:', oferta.id, '| dataHora:', oferta.dataHora, '| dataEnvio:', dataEnvio.toISOString(), '| diffMin:', diffMin.toFixed(1));
@@ -99,14 +98,14 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
       try {
         const isVideo = oferta.imagem && /\.(mp4|mov|avi|webm)(\?|$)/i.test(oferta.imagem);
         const endpoint = oferta.imagem ? (isVideo ? 'send-video' : 'send-image') : 'send-text';
-        const caption = oferta.texto + (oferta.link ? '\n\nðŸ”— ' + oferta.link : '');
+        const caption = oferta.texto + (oferta.link ? '\n\n\uD83D\uDD17 ' + oferta.link : '');
         const body = oferta.imagem
           ? (isVideo
             ? { phone: grupo, video: oferta.imagem, caption }
             : { phone: grupo, image: oferta.imagem, caption })
           : { phone: grupo, message: caption };
         const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
+          method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
         const zapiJson = await zapiResult.json().catch(()=>({}));
         console.log('Z-API resultado grupo', grupo.substring(0,20), ':', JSON.stringify(zapiJson).substring(0,100));
@@ -127,7 +126,6 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
 }
 
 async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN, ME_TOKEN, SHOPIFY_STORE, SHOPIFY_TOKEN) {
-  // Buscar purchases recentes do Melhor Envio (primeiras 5 pÃ¡ginas)
   const pages = await Promise.all([1,2,3,4,5].map(page =>
     fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, {
       headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
@@ -143,25 +141,21 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
     for (const order of (purchase.orders || [])) {
       if (order.status === 'released') totalReleased++;
       if (order.status === 'released' && order.tracking) totalComTracking++;
-      // SÃ³ processar released com tracking
       if (order.status !== 'released' || !order.tracking) continue;
 
       const tracking = order.tracking;
       const chave = 'rastreio-enviado-' + tracking;
 
-      // Verificar se jÃ¡ enviou
       try {
         const r = await fetch(`${KV_URL}/get/${chave}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         const d = await r.json();
-        if (d.result) continue; // jÃ¡ enviou
+        if (d.result) continue;
       } catch(e) { continue; }
 
-      // Pegar telefone e nome do destinatÃ¡rio
       const nomeDestinatario = order.to?.name || '';
       const emailDestinatario = order.to?.email || '';
       let telefone = (order.to?.phone || '').replace(/[^0-9]/g, '');
 
-      // Buscar telefone no Shopify pelo email
       if (!telefone && emailDestinatario) {
         try {
           const shopResp = await fetch(
@@ -169,7 +163,6 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
             { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
           );
           const shopData = await shopResp.json();
-          // Pegar o pedido mais recente
           const pedidos = shopData.orders || [];
           const pedido = pedidos[0];
           if (pedido) {
@@ -179,7 +172,6 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
       }
 
       if (!telefone) {
-        // Marcar como enviado mesmo sem telefone para nÃ£o tentar sempre
         await fetch(`${KV_URL}/set/${chave}/sem-tel/EX/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
         continue;
       }
@@ -187,42 +179,26 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
       if (!telefone.startsWith('55')) telefone = '55' + telefone;
 
       const primeiroNome = nomeDestinatario.split(' ')[0] || 'cliente';
-      const mensagem = `OlÃ¡ ${primeiroNome}! ðŸ˜Š
+      const mensagem = 'Ola ' + primeiroNome + '! \uD83D\uDE0A\n\nSeu pedido da *Kcique Relogios* foi enviado! \u231A\uD83D\uDCE6\n\n\uD83D\uDD0D *Codigo de rastreio:*\n' + tracking + '\n\n\uD83D\uDCE6 *Acompanhe aqui:*\nhttps://www.melhorrastreio.com.br/rastreio/' + tracking + '\n\nQualquer duvida estamos aqui! \uD83D\uDE0A';
 
-Seu pedido da *Kcique RelÃ³gios* foi enviado! âŒšðŸ“¦
-
-ðŸ” *CÃ³digo de rastreio:*
-${tracking}
-
-ðŸ“¦ *Acompanhe aqui:*
-https://www.melhorrastreio.com.br/rastreio/${tracking}
-
-Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
-
-      // 1. Enviar WhatsApp
       try {
         await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
+          headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': ZAPI_CLIENT_TOKEN },
           body: JSON.stringify({ phone: telefone, message: mensagem })
         });
         console.log('WhatsApp enviado para:', telefone, '| Tracking:', tracking);
       } catch(e) { console.error('Erro WhatsApp:', e.message); }
 
-      // 2. Marcar como enviado no Redis (TTL 30 dias) â€” ANTES do fulfillment para nÃ£o reprocessar
-      // Salvar no Redis com TTL 30 dias
       await fetch(`${KV_URL}/set/${chave}/1/EX/2592000`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
       enviados++;
 
-      // 3. Criar fulfillment no Shopify (marcar pedido como enviado)
       if (SHOPIFY_STORE && SHOPIFY_TOKEN) {
         try {
-          // Buscar pedido no Shopify por email (mais confiÃ¡vel)
           let shopPedido = null;
-
           if (emailDestinatario) {
             const r1 = await fetch(
               `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(emailDestinatario)}&limit=10&financial_status=paid&status=any`,
@@ -230,7 +206,6 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
             );
             const d1 = await r1.json().catch(()=>({}));
             const pp = d1.orders || [];
-            // Priorizar pedido que ainda nÃ£o tem fulfillment
             shopPedido = pp.find(p => !p.fulfillment_status || p.fulfillment_status === 'unfulfilled');
             if (!shopPedido) shopPedido = pp.find(p => p.fulfillment_status === 'partial');
             if (!shopPedido) shopPedido = pp[0];
@@ -240,12 +215,10 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
           if (!shopPedido) {
             console.log('Pedido nao encontrado no Shopify | email:', emailDestinatario, '| tracking:', tracking);
           } else {
-            // Verificar se tracking jÃ¡ existe
             const jaTemTracking = (shopPedido.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(tracking));
             if (jaTemTracking) {
               console.log('Tracking ja existe no Shopify:', tracking);
             } else {
-              // Buscar fulfillment_order aberto
               const foResp = await fetch(
                 `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${shopPedido.id}/fulfillment_orders.json`,
                 { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
@@ -285,7 +258,6 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
         } catch(e) { console.error('Erro fulfillment Shopify:', e.message); }
       }
 
-      // Delay para nÃ£o sobrecarregar Z-API
       await new Promise(r => setTimeout(r, 1000));
     }
   }
@@ -295,7 +267,7 @@ Qualquer dÃºvida estamos aqui! ðŸ˜Š`;
 
 async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN) {
   try {
-    const GRUPOS_VIP = [
+    const GRUPOS_VIP_SNAP = [
       {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
       {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
       {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
@@ -306,29 +278,24 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
       {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
       {nome:'#17',id:'120363406426269657-group'},
     ];
-
-    const membros = await Promise.all(GRUPOS_VIP.map(async g => {
+    const membros = await Promise.all(GRUPOS_VIP_SNAP.map(async g => {
       try {
         const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
         const d = await r.json();
         return { nome: g.nome, membros: d.participants ? d.participants.length : 0 };
       } catch(e) { return { nome: g.nome, membros: 0 }; }
     }));
-
     const total = membros.reduce((s, g) => s + g.membros, 0);
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
     const chave = `vip-snapshot-${hojeStr}`;
-
     await fetch(`${KV_URL}/set/${chave}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ total, grupos: membros, ts: new Date().toISOString() })
     });
-    // TTL 60 dias
     await fetch(`${KV_URL}/expire/${chave}/5184000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-
     console.log('Snapshot grupos VIP salvo:', hojeStr, '| Total:', total);
   } catch(e) { console.error('Erro snapshot grupos:', e.message); }
 }
@@ -342,7 +309,7 @@ export default async function handler(req, res) {
   const { secret, action } = req.query;
   if (secret !== process.env.REPROCESSAR_SECRET) {
     if (action !== 'dashboard') return res.status(401).json({ error: 'Unauthorized' });
-    return res.status(401).send(`<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h2>ðŸ”’ Acesso Restrito</h2><form onsubmit="window.location.href='/api/ofertas?action=dashboard&secret='+document.getElementById('s').value;return false" style="margin-top:20px"><input id="s" type="password" placeholder="Senha" style="padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"><button type="submit" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;margin-left:8px;font-size:15px;cursor:pointer">Entrar</button></form></div></body></html>`);
+    return res.status(401).send(`<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h2>Acesso Restrito</h2><form onsubmit="window.location.href='/api/ofertas?action=dashboard&secret='+document.getElementById('s').value;return false" style="margin-top:20px"><input id="s" type="password" placeholder="Senha" style="padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"><button type="submit" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;margin-left:8px;font-size:15px;cursor:pointer">Entrar</button></form></div></body></html>`);
   }
 
   const KV_URL = process.env.KV_REST_API_URL;
@@ -350,10 +317,7 @@ export default async function handler(req, res) {
   const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
 
-  // ===== VERIFICAR E DISPARAR (cron) =====
-  // Limpar chaves de rastreio para reprocessar
   if (action === 'reset-rastreios') {
-    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const lista = await fetch(`${KV_URL}/keys/rastreio-enviado-*`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({result:[]}));
       const keys = lista.result || [];
@@ -363,12 +327,9 @@ export default async function handler(req, res) {
         deletados++;
       }
       return res.status(200).json({ success: true, deletados });
-    } catch(e) {
-      return res.status(500).json({ error: e.message });
-    }
+    } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // DEBUG: testar busca Shopify por email sem enviar nada
   if (action === 'debug-fulfillment') {
     try {
       const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
@@ -376,8 +337,6 @@ export default async function handler(req, res) {
       const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
       const tracking = req.query.tracking;
       if (!tracking) return res.status(400).json({ error: 'tracking required' });
-
-      // Buscar o order no Melhor Envio
       const pages = await Promise.all([1,2,3].map(p =>
         fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
           headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
@@ -386,12 +345,9 @@ export default async function handler(req, res) {
       const allOrders = pages.flatMap(p => (p.data||[]).flatMap(pu => pu.orders||[]));
       const order = allOrders.find(o => o.tracking === tracking);
       if (!order) return res.status(404).json({ error: 'tracking nao encontrado no ME', tracking });
-
       const email = order.to && order.to.email;
       const nome = order.to && order.to.name;
       const tel = order.to && order.to.phone;
-
-      // Buscar no Shopify por email
       let shopResult = null;
       if (email) {
         const r = await fetch(
@@ -401,137 +357,72 @@ export default async function handler(req, res) {
         const d = await r.json().catch(()=>({}));
         shopResult = (d.orders||[]).map(p => ({ id: p.id, order_number: p.order_number, email: p.email, fulfillment_status: p.fulfillment_status, created_at: p.created_at }));
       }
-
       return res.status(200).json({ tracking, me_email: email, me_nome: nome, me_tel: tel, shopify_pedidos: shopResult });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // Sincronizar fulfillments no Shopify sem reenviar WhatsApp
   if (action === 'sync-fulfillments') {
-    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
       const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
       const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
-
-      // Buscar purchases das primeiras 5 pÃ¡ginas
       const pages = await Promise.all([1,2,3,4,5].map(page =>
         fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, {
           headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
         }).then(r => r.json()).catch(() => ({ data: [] }))
       ));
       const purchases = pages.flatMap(p => p.data || []);
-
       let criados = 0, erros = 0, semPedido = 0;
-
       for (const purchase of purchases) {
         for (const order of (purchase.orders || [])) {
           if (order.status !== 'released' || !order.tracking) continue;
           const email = order.to?.email || '';
           if (!email) { semPedido++; continue; }
-
           try {
             const telOrder = ((order.to && order.to.phone) || '').replace(/[^0-9]/g, '').replace(/^55/, '');
-
-            // Buscar por telefone primeiro
             let pedido = null;
             if (telOrder) {
-              const r1 = await fetch(
-                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=%2B55${telOrder}&limit=5&financial_status=paid&status=any`,
-                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-              );
+              const r1 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?phone=%2B55${telOrder}&limit=5&financial_status=paid&status=any`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
               const d1 = await r1.json().catch(()=>({}));
               const pp1 = d1.orders || [];
               pedido = pp1.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking)));
               if (!pedido) pedido = pp1[0];
             }
-
-            // Fallback por email
             if (!pedido && email) {
-              const r2 = await fetch(
-                `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(email)}&limit=5&financial_status=paid&status=any`,
-                { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-              );
+              const r2 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?email=${encodeURIComponent(email)}&limit=5&financial_status=paid&status=any`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
               const d2 = await r2.json().catch(()=>({}));
               const pp2 = d2.orders || [];
               pedido = pp2.find(p => !(p.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking)));
               if (!pedido) pedido = pp2[0];
             }
-
-            if (!pedido || !pedido.id) { 
-              console.log('Pedido nao encontrado para tel:', telOrder, 'email:', email);
-              semPedido++; continue; 
-            }
-
-            // Se jÃ¡ tem o tracking, pular
+            if (!pedido || !pedido.id) { semPedido++; continue; }
             const jaTemTracking = (pedido.fulfillments||[]).some(f => (f.tracking_numbers||[]).includes(order.tracking));
-            if (jaTemTracking) { console.log('Tracking ja existe no Shopify:', order.tracking); semPedido++; continue; }
-
-            // Buscar fulfillment_order do pedido
-            const foResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillment_orders.json`,
-              { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-            );
-            const foText = await foResp.text();
-            const foData = foText ? JSON.parse(foText) : {};
+            if (jaTemTracking) { semPedido++; continue; }
+            const foResp = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${pedido.id}/fulfillment_orders.json`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+            const foData = await foResp.json().catch(()=>({}));
             const fo = (foData.fulfillment_orders || []).find(f => f.status === 'open');
-
-            if (!fo) {
-              console.log('Sem fulfillment_order aberto para pedido:', pedido.order_number);
-              semPedido++;
-              continue;
-            }
-
-            // Criar fulfillment via nova API
-            const fulfillResp = await fetch(
-              `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
-                body: JSON.stringify({
-                  fulfillment: {
-                    line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
-                    tracking_info: {
-                      number: order.tracking,
-                      url: 'https://www.melhorrastreio.com.br/rastreio/' + order.tracking,
-                      company: 'Correios'
-                    },
-                    notify_customer: false
-                  }
-                })
-              }
-            );
-            const fulfillText = await fulfillResp.text();
-            const fulfillData = fulfillText ? JSON.parse(fulfillText) : {};
-            if (fulfillData.fulfillment) {
-              criados++;
-              console.log('Fulfillment criado:', pedido.order_number, '|', order.tracking);
-            } else {
-              erros++;
-              console.log('Erro fulfillment:', pedido.order_number, fulfillText.substring(0,200));
-            }
-          } catch(e) { erros++; console.error('Erro:', e.message); }
-
+            if (!fo) { semPedido++; continue; }
+            const fulfillResp = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+              body: JSON.stringify({ fulfillment: { line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }], tracking_info: { number: order.tracking, url: 'https://www.melhorrastreio.com.br/rastreio/' + order.tracking, company: 'Correios' }, notify_customer: false } })
+            });
+            const fulfillData = await fulfillResp.json().catch(()=>({}));
+            if (fulfillData.fulfillment) { criados++; } else { erros++; }
+          } catch(e) { erros++; }
           await new Promise(r => setTimeout(r, 300));
         }
       }
-
       return res.status(200).json({ success: true, criados, erros, semPedido });
-    } catch(e) {
-      return res.status(500).json({ error: e.message });
-    }
+    } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
   if (action === 'verificar') {
     try {
       const disparadas = await verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN);
-
-      // Verificar rastreios novos e enviar WhatsApp
       try {
         await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
       } catch(e) { console.error('Erro rastreios:', e.message); }
-
-      // Salvar snapshot dos grupos VIP Ã  meia-noite (00:00 - 00:02 horÃ¡rio BrasÃ­lia)
       try {
         const agora = new Date();
         const agoraBR = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
@@ -541,24 +432,17 @@ export default async function handler(req, res) {
           await salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN);
         }
       } catch(e) { console.error('Erro snapshot:', e.message); }
-
       return res.status(200).json({ success: true, disparadas, total: disparadas.length });
-    } catch(e) {
-      return res.status(500).json({ error: e.message });
-    }
+    } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ===== SALVAR OFERTA (POST) =====
   if (action === 'salvar' && req.method === 'POST') {
     try {
       const id = await salvarOferta(KV_URL, KV_TOKEN, req.body);
       return res.status(200).json({ success: true, id });
-    } catch(e) {
-      return res.status(500).json({ error: e.message });
-    }
+    } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
-  // ===== DELETAR OFERTA =====
   if (req.query.del) {
     await fetch(`${KV_URL}/del/${req.query.del}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     await fetch(`${KV_URL}/lrem/ofertas-lista/0/${req.query.del}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([req.query.del]) });
@@ -566,124 +450,5 @@ export default async function handler(req, res) {
     return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/ofertas?action=dashboard&secret=${secret}"></head><body>Redirecionando...</body></html>`);
   }
 
-  // ===== DASHBOARD =====
-  if (action === 'dashboard') {
-    let ofertas = [];
-    try { ofertas = await listarOfertas(KV_URL, KV_TOKEN); } catch(e) {}
-
-    const rows = ofertas.map(o => {
-      const dataStr = new Date(o.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(o.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const statusColor = o.status === 'enviada' ? '#10b981' : o.status === 'erro' ? '#ef4444' : '#f59e0b';
-      const statusLabel = o.status === 'enviada' ? 'âœ… Enviada' : o.status === 'erro' ? 'âŒ Erro' : 'â³ Agendada';
-      return `<tr>
-        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;font-size:13px">
-          ${o.imagem ? `<img src="${o.imagem}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;display:block;margin-bottom:6px">` : ''}
-          <div style="font-weight:600;color:#1a1a2e;margin-bottom:4px">${(o.texto||'').substring(0,80)}${o.texto&&o.texto.length>80?'...':''}</div>
-          ${o.link ? `<a href="${o.link}" target="_blank" style="font-size:11px;color:#2563eb">${o.link.substring(0,50)}</a>` : ''}
-        </td>
-        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;font-size:13px;white-space:nowrap">${dataStr}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;font-size:13px">${o.grupos === 'todos' ? 'Todos (#1 ao #17)' : o.grupos}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6"><span style="background:${statusColor}20;color:${statusColor};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${statusLabel}</span></td>
-        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;white-space:nowrap">
-          <a href="/api/ofertas?action=dashboard&secret=${secret}&del=${o.id}" onclick="return confirm('Remover?')" style="display:inline-flex;align-items:center;padding:6px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;text-decoration:none;font-size:12px">ðŸ—‘ Remover</a>
-        </td>
-      </tr>`;
-    }).join('');
-
-    const gruposCheckboxes = GRUPOS_INFO.map(g => `<label style="display:inline-flex;align-items:center;gap:4px;margin:4px;padding:4px 10px;border:1px solid #e8eaf0;border-radius:6px;cursor:pointer;font-size:13px"><input type="checkbox" value="${g.id}" checked> ${g.nome}</label>`).join('');
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).send(`<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ofertas WhatsApp â€” Kcique</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, sans-serif; background: #f7f8fa; color: #1a1a2e; }
-.header { background: #111; color: #fff; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
-.header h1 { font-size: 18px; font-weight: 700; }
-.container { max-width: 1100px; margin: 0 auto; padding: 24px 32px; }
-.form-card { background: #fff; border-radius: 12px; border: 1px solid #e8eaf0; padding: 24px; margin-bottom: 24px; }
-.form-card h2 { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
-.field { margin-bottom: 16px; }
-.field label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
-.field input, .field textarea { width: 100%; padding: 10px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; }
-.field input:focus, .field textarea:focus { border-color: #2563eb; }
-.field textarea { resize: vertical; min-height: 100px; }
-.btn { padding: 12px 24px; background: #25d366; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
-.btn:hover { background: #1da851; }
-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; border: 1px solid #e8eaf0; overflow: hidden; }
-th { background: #f9f9fb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #e8eaf0; }
-tr:hover td { background: #f9f9fb; }
-.grupos-wrap { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.vazio { text-align: center; padding: 48px; color: #9ca3af; background: #fff; border-radius: 12px; border: 1px solid #e8eaf0; }
-</style>
-</head>
-<body>
-<div class="header">
-  <div><h1>ðŸ“£ Ofertas WhatsApp â€” Kcique</h1></div>
-  <a href="/api/dashboard?secret=${secret}" style="color:#aaa;font-size:13px;text-decoration:none">â† Carrinhos</a>
-</div>
-<div class="container">
-  <div class="form-card">
-    <h2>âž• Agendar Nova Oferta</h2>
-    <div class="field"><label>Texto da mensagem</label><textarea id="f-texto" placeholder="ðŸ”¥ OFERTA RELÃ‚MPAGO!&#10;&#10;RelÃ³gio X por R$ 199,90"></textarea></div>
-    <div class="field"><label>URL de imagem ou vÃ­deo (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>
-    <div class="field"><label>Link do produto (opcional)</label><input type="url" id="f-link" placeholder="https://kcique.com.br/products/..."></div>
-    <div class="field"><label>Data e hora (horÃ¡rio de BrasÃ­lia)</label><input type="datetime-local" id="f-data"></div>
-    <div class="field">
-      <label>Grupos para enviar</label>
-      <div style="margin-bottom:8px"><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="sel-todos" onchange="toggleTodos(this)" checked> Selecionar todos</label></div>
-      <div class="grupos-wrap" id="grupos-wrap">${gruposCheckboxes}</div>
-    </div>
-    <button class="btn" onclick="salvarOferta()">ðŸ“… Agendar Oferta</button>
-    <div id="form-msg" style="margin-top:12px;font-size:13px"></div>
-  </div>
-
-  <div style="font-size:16px;font-weight:700;margin-bottom:16px">Ofertas Agendadas (${ofertas.length})</div>
-  ${ofertas.length === 0
-    ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>'
-    : `<table><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>AÃ§Ã£o</th></tr></thead><tbody>${rows}</tbody></table>`
-  }
-</div>
-<script>
-function toggleTodos(cb) {
-  document.querySelectorAll('#grupos-wrap input').forEach(function(el){ el.checked = cb.checked; });
-}
-async function salvarOferta() {
-  var msg = document.getElementById('form-msg');
-  var texto = document.getElementById('f-texto').value.trim();
-  var dataHora = document.getElementById('f-data').value;
-  if (!texto) { msg.textContent = 'âš ï¸ Digite o texto'; msg.style.color='#ef4444'; return; }
-  if (!dataHora) { msg.textContent = 'âš ï¸ Selecione data e hora'; msg.style.color='#ef4444'; return; }
-  var sel = [];
-  document.querySelectorAll('#grupos-wrap input:checked').forEach(function(el){ sel.push(el.value); });
-  var total = document.querySelectorAll('#grupos-wrap input').length;
-  var grupos = sel.length === total ? 'todos' : sel.join(',');
-  msg.textContent = 'Salvando...'; msg.style.color='#6b7280';
-  try {
-    var resp = await fetch('/api/ofertas?action=salvar&secret=${secret}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texto, imagem: document.getElementById('f-imagem').value.trim(), link: document.getElementById('f-link').value.trim(), dataHora, grupos })
-    });
-    var data = await resp.json();
-    if (data.success) { msg.textContent = 'âœ… Agendada!'; msg.style.color='#10b981'; setTimeout(function(){ window.location.reload(); }, 1500); }
-    else { msg.textContent = 'âŒ ' + (data.error||'Erro'); msg.style.color='#ef4444'; }
-  } catch(e) { msg.textContent = 'âŒ Erro de conexÃ£o'; msg.style.color='#ef4444'; }
-}
-var agora = new Date(); agora.setMinutes(agora.getMinutes()+5);
-var pad = function(n){ return n<10?'0'+n:n; };
-var min = agora.getFullYear()+'-'+pad(agora.getMonth()+1)+'-'+pad(agora.getDate())+'T'+pad(agora.getHours())+':'+pad(agora.getMinutes());
-document.getElementById('f-data').min = min;
-document.getElementById('f-data').value = min;
-</script>
-</body>
-</html>`);
-  }
-
-  return res.status(400).json({ error: 'Action invÃ¡lida. Use ?action=dashboard, ?action=salvar ou ?action=verificar' });
+  return res.status(400).json({ error: 'Action invalida. Use ?action=dashboard, ?action=salvar ou ?action=verificar' });
 }
