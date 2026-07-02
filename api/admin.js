@@ -145,6 +145,90 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
+  // ===== JSON: DASHBOARD HOME =====
+  if (req.query.action === 'dashboard-home') {
+    const hoje = new Date();
+    const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
+    const hojeStr = hojeBR.toISOString().split('T')[0];
+    const inicioDia = hojeStr + 'T00:00:00-03:00';
+    const fimDia = hojeStr + 'T23:59:59-03:00';
+    const inicioMes = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-01T00:00:00-03:00';
+    const mesAnt = new Date(hoje); mesAnt.setMonth(hoje.getMonth()-1);
+    const inicioMesAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth()+1).padStart(2,'0') + '-01T00:00:00-03:00';
+    const fimMesAnt = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0] + 'T00:00:00-03:00';
+    const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+    const inicioSemanaStr = inicioSemana.toISOString().split('T')[0] + 'T00:00:00-03:00';
+
+    const [oH, oS, oM, oMA, saldoME, prodShopify, leadsR, pedPendentes] = await Promise.all([
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioDia}&created_at_max=${fimDia}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioSemanaStr}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMes}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMesAnt}&created_at_max=${fimMesAnt}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+      fetch(`https://infinitepay-backend.vercel.app/api/leads?secret=${secret}`).then(r=>r.json()).catch(()=>({leads:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+    ]);
+
+    const calc = (orders) => ({ count: (orders||[]).length, valor: (orders||[]).reduce((s,o) => s + parseFloat(o.total_price||0), 0) });
+    const vM = calc(oM.orders);
+
+    // Top produtos
+    const prodContagem = {};
+    (oM.orders||[]).forEach(order => {
+      (order.line_items||[]).forEach(item => {
+        if (!prodContagem[item.title]) prodContagem[item.title] = { count: 0, valor: 0 };
+        prodContagem[item.title].count += item.quantity;
+        prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
+      });
+    });
+    const prods = prodShopify.products || [];
+    const getImg = (nome) => {
+      const base = nome.split(' - ')[0].trim();
+      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
+      return p?.image?.src || '';
+    };
+    const topProdutos = Object.entries(prodContagem)
+      .filter(([n]) => !n.toLowerCase().includes('frete') && n.length > 5)
+      .map(([nome, d]) => ({ nome, ...d, imagem: getImg(nome) }))
+      .sort((a,b) => b.valor - a.valor).slice(0, 5);
+
+    return res.status(200).json({
+      vendas: {
+        hoje: calc(oH.orders), semana: calc(oS.orders), mes: vM, mesAnt: calc(oMA.orders),
+        pendentes: (pedPendentes.orders||[]).length,
+        ticketMedio: vM.count > 0 ? vM.valor / vM.count : 0,
+      },
+      melhorEnvio: { saldo: parseFloat(saldoME.balance || 0) },
+      leads: { total: (leadsR.leads||[]).length },
+      topProdutos,
+    });
+  }
+
+  // ===== JSON: PEDIDOS =====
+  if (req.query.action === 'pedidos-json') {
+    const [pedidosR, prodShopify] = await Promise.all([
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    ]);
+    const prods = prodShopify.products || [];
+    const getImg = (nome) => {
+      const base = nome.split(' - ')[0].trim();
+      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
+      return p?.image?.src || '';
+    };
+    const pedidos = (pedidosR.orders||[]).map(o => ({
+      id: o.id, numero: o.order_number,
+      cliente: o.customer ? `${o.customer.first_name||''} ${o.customer.last_name||''}`.trim() : 'Sem nome',
+      produto: (o.line_items||[])[0]?.title || '',
+      valor: o.total_price, financeiro: o.financial_status, fulfillment: o.fulfillment_status || 'unfulfilled',
+      tracking: (o.fulfillments||[])[0]?.tracking_number || '',
+      meOrderId: '', criado_em: o.created_at,
+      imagem: getImg((o.line_items||[])[0]?.title || ''),
+    }));
+    return res.status(200).json({ pedidos });
+  }
+
   // ===== ACTION: ENVIAR PARA FORNECEDOR =====
   if (req.query.action === 'enviar-fornecedor') {
     const { clienteNome, tracking, imgUrl } = req.query;
