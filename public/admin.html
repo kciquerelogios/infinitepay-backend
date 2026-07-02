@@ -1,0 +1,645 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kcique Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;display:flex}
+
+/* SIDEBAR */
+.sidebar{width:220px;background:#1a1d27;border-right:1px solid #2d3148;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100}
+.sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid #2d3148}
+.sidebar-logo-icon{font-size:22px;margin-bottom:4px}
+.sidebar-logo-text{font-size:15px;font-weight:700;color:#fff}
+.sidebar-logo-sub{font-size:11px;color:#6b7280;margin-top:2px}
+.sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;border-radius:0;color:#8b92a5;font-size:13px;font-weight:500;transition:all .15s;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:#22263a;color:#c8cfde}
+.nav-item.active{background:linear-gradient(90deg,#3b4fd820,transparent);color:#7c8ff0;border-left:3px solid #5865f2}
+.nav-item.active .nav-icon{color:#5865f2}
+.nav-icon{font-size:16px;width:20px;flex-shrink:0}
+.sidebar-footer{padding:16px 20px;border-top:1px solid #2d3148;font-size:11px;color:#4a5568}
+
+/* MAIN */
+.main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:#1a1d27;border-bottom:1px solid #2d3148;padding:14px 28px;display:flex;align-items:center;justify-content:space-between}
+.topbar-title{font-size:16px;font-weight:600;color:#fff}
+.topbar-sub{font-size:12px;color:#6b7280;margin-top:2px}
+.content{padding:28px;flex:1;max-width:1000px;width:100%}
+
+/* CARDS */
+.card{background:#1a1d27;border:1px solid #2d3148;border-radius:12px}
+.card-p{padding:20px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat-card{background:#1a1d27;border:1px solid #2d3148;border-radius:12px;padding:20px}
+.stat-label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.stat-val{font-size:24px;font-weight:700;color:#fff;margin-bottom:4px}
+.stat-sub{font-size:12px;color:#6b7280}
+.stat-icon{font-size:20px;margin-bottom:10px}
+
+/* LISTA */
+.list-item{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #1e2235}
+.list-item:last-child{border-bottom:none}
+.list-item:hover{background:#1e2235}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:#0d2e1a;color:#34d399}
+.badge-yellow{background:#2a2310;color:#f59e0b}
+.badge-red{background:#2d0f0f;color:#f87171}
+.badge-blue{background:#0d1a3a;color:#60a5fa}
+.badge-gray{background:#1e2235;color:#8b92a5}
+.badge-purple{background:#1a0d2e;color:#a78bfa}
+
+/* BOTÕES */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+.btn-primary{background:#5865f2;color:#fff}.btn-primary:hover{background:#4752c4}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{background:#22263a;color:#c8cfde;border:1px solid #2d3148}.btn-ghost:hover{background:#2d3148}
+.btn-danger{background:#2d0f0f;color:#f87171;border:1px solid #5a1a1a}.btn-danger:hover{background:#3d1414}
+.btn-sm{padding:5px 12px;font-size:12px}
+
+/* INPUTS */
+.input{width:100%;padding:10px 14px;border:1.5px solid #2d3148;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#0f1117;color:#e2e8f0;transition:border .15s}
+.input:focus{border-color:#5865f2}
+.input::placeholder{color:#4a5568}
+select.input option{background:#1a1d27}
+
+/* SPINNER */
+.spinner{width:28px;height:28px;border:2px solid #2d3148;border-top-color:#5865f2;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px;gap:12px;color:#6b7280;font-size:13px}
+
+/* GRID */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-label{font-size:12px;color:#8b92a5;font-weight:500;margin-bottom:4px}
+
+/* IMG */
+.img-thumb{width:40px;height:40px;border-radius:8px;object-fit:cover;border:1px solid #2d3148;flex-shrink:0;background:#22263a}
+
+/* MISC */
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.line-clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chip{display:inline-block;padding:2px 8px;background:#22263a;border-radius:4px;font-size:11px;color:#8b92a5;margin:2px}
+.section-title{font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.empty{text-align:center;padding:60px;color:#4a5568}
+.empty-icon{font-size:36px;margin-bottom:12px}
+.empty-text{font-size:13px}
+.divider{height:1px;background:#2d3148;margin:0}
+.error-box{background:#2d0f0f;border:1px solid #5a1a1a;border-radius:8px;padding:12px 16px;font-size:13px;color:#f87171}
+textarea.input{resize:vertical;min-height:80px}
+select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+
+@media(max-width:768px){
+  .sidebar{width:60px}.sidebar .nav-label{display:none}.sidebar-logo-text,.sidebar-logo-sub,.sidebar-footer{display:none}
+  .nav-item{padding:14px;justify-content:center}.main{margin-left:60px}
+  .stat-grid{grid-template-columns:1fr 1fr}.content{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon">⌚</div>
+    <div class="sidebar-logo-text">Kcique</div>
+    <div class="sidebar-logo-sub">Painel Administrativo</div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-tab="home" onclick="trocarAba('home',this)">
+      <span class="nav-icon">📊</span><span class="nav-label">Visão Geral</span>
+    </button>
+    <button class="nav-item" data-tab="carrinhos" onclick="trocarAba('carrinhos',this)">
+      <span class="nav-icon">🛒</span><span class="nav-label">Carrinhos</span>
+    </button>
+    <button class="nav-item" data-tab="ofertas" onclick="trocarAba('ofertas',this)">
+      <span class="nav-icon">📣</span><span class="nav-label">Ofertas</span>
+    </button>
+    <button class="nav-item" data-tab="pedidos" onclick="trocarAba('pedidos',this)">
+      <span class="nav-icon">📦</span><span class="nav-label">Pedidos</span>
+    </button>
+    <button class="nav-item" data-tab="cupons" onclick="trocarAba('cupons',this)">
+      <span class="nav-icon">🎟</span><span class="nav-label">Cupons</span>
+    </button>
+    <button class="nav-item" data-tab="grupos" onclick="trocarAba('grupos',this)">
+      <span class="nav-icon">📲</span><span class="nav-label">Grupos VIP</span>
+    </button>
+    <button class="nav-item" data-tab="bundle" onclick="trocarAba('bundle',this)">
+      <span class="nav-icon">🎁</span><span class="nav-label">Bundle</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer" id="sidebar-date"></div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="topbar-title">📊 Visão Geral</div>
+      <div class="topbar-sub" id="topbar-sub">Resumo do dia</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="recarregarAba()">↻ Atualizar</button>
+  </div>
+  <div class="content" id="content">
+    <div class="loading-wrap"><div class="spinner"></div>Carregando...</div>
+  </div>
+</div>
+
+<script>
+const SECRET = new URLSearchParams(location.search).get('secret') || '';
+const API = '/api';
+const fmt = v => 'R$ ' + (v||0).toFixed(2).replace('.',',');
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+const fmtDate = d => d ? new Date(d).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+
+document.getElementById('sidebar-date').textContent = new Date().toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'short'});
+
+let abaAtual = 'home';
+
+function loading() { document.getElementById('content').innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Carregando...</div>'; }
+function erro(msg) { document.getElementById('content').innerHTML = `<div class="error-box">⚠️ ${msg}</div>`; }
+
+const TITULOS = {
+  home: ['📊 Visão Geral', 'Resumo do dia'],
+  carrinhos: ['🛒 Carrinhos Abandonados', 'Clientes que não finalizaram'],
+  ofertas: ['📣 Ofertas WhatsApp', 'Mensagens agendadas para os grupos'],
+  pedidos: ['📦 Pedidos Recentes', 'Últimos 50 pedidos pagos'],
+  cupons: ['🎟 Cupons de Desconto', 'Gerenciar cupons ativos'],
+  grupos: ['📲 Grupos VIP', '17 grupos WhatsApp'],
+  bundle: ['🎁 Bundle de Produtos', 'Configurar oferta combo'],
+};
+
+function trocarAba(aba, el) {
+  abaAtual = aba;
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const [title, sub] = TITULOS[aba] || [aba, ''];
+  document.getElementById('topbar-title').textContent = title;
+  document.getElementById('topbar-sub').textContent = sub;
+  renderAba(aba);
+}
+
+function recarregarAba() { renderAba(abaAtual); }
+
+function renderAba(aba) {
+  const fns = { home: renderHome, carrinhos: renderCarrinhos, ofertas: renderOfertas, pedidos: renderPedidos, cupons: renderCupons, grupos: renderGrupos, bundle: renderBundle };
+  if (fns[aba]) fns[aba]();
+}
+
+function badge(color, text) {
+  return `<span class="badge badge-${color}">${text}</span>`;
+}
+function imgThumb(src) {
+  return src ? `<img src="${src}" class="img-thumb" onerror="this.style.display='none'">` : `<div class="img-thumb"></div>`;
+}
+
+// ===== HOME =====
+async function renderHome() {
+  loading();
+  try {
+    const d = await fetch(`${API}/admin?secret=${SECRET}&action=dashboard-home`).then(r => r.json());
+    if (d.error) throw new Error(d.error);
+    const { vendas = {}, melhorEnvio = {}, leads = {}, topProdutos = [] } = d;
+
+    const statCards = [
+      { label: 'Hoje', val: fmt(vendas.hoje?.valor), sub: (vendas.hoje?.count||0) + ' pedidos', icon: '📈' },
+      { label: 'Esta semana', val: fmt(vendas.semana?.valor), sub: (vendas.semana?.count||0) + ' pedidos', icon: '📅' },
+      { label: 'Este mês', val: fmt(vendas.mes?.valor), sub: (vendas.mes?.count||0) + ' pedidos', icon: '🗓' },
+      { label: 'Mês anterior', val: fmt(vendas.mesAnt?.valor), sub: (vendas.mesAnt?.count||0) + ' pedidos', icon: '📉' },
+    ];
+
+    const opCards = [
+      { label: 'Aguardando Envio', val: vendas.pendentes ?? '-', icon: '⏳' },
+      { label: 'Saldo Melhor Envio', val: fmt(melhorEnvio.saldo), icon: '💰' },
+      { label: 'Carrinhos Abertos', val: leads.total ?? '-', icon: '🛒' },
+      { label: 'Ticket Médio', val: fmt(vendas.ticketMedio), icon: '📊' },
+    ];
+
+    const topHtml = topProdutos.length === 0 ? '' : `
+      <div class="section-title" style="margin-top:28px">Top Produtos do Mês</div>
+      <div class="card">
+        ${topProdutos.map(p => `
+          <div class="list-item">
+            ${imgThumb(p.imagem)}
+            <div style="flex:1;min-width:0">
+              <div class="truncate" style="font-size:13px;font-weight:600;color:#e2e8f0">${p.nome}</div>
+              <div style="font-size:11px;color:#6b7280">${p.count} vendas</div>
+            </div>
+            <div style="font-weight:700;font-size:14px;color:#fff">${fmt(p.valor)}</div>
+          </div>
+        `).join('<div class="divider"></div>')}
+      </div>`;
+
+    document.getElementById('content').innerHTML = `
+      <div class="section-title">Vendas</div>
+      <div class="stat-grid">
+        ${statCards.map(c => `
+          <div class="stat-card">
+            <div class="stat-icon">${c.icon}</div>
+            <div class="stat-label">${c.label}</div>
+            <div class="stat-val">${c.val}</div>
+            <div class="stat-sub">${c.sub}</div>
+          </div>`).join('')}
+      </div>
+      <div class="section-title">Operação</div>
+      <div class="stat-grid">
+        ${opCards.map(c => `
+          <div class="stat-card">
+            <div class="stat-icon">${c.icon}</div>
+            <div class="stat-label">${c.label}</div>
+            <div class="stat-val" style="font-size:20px">${c.val}</div>
+          </div>`).join('')}
+      </div>
+      ${topHtml}`;
+  } catch(e) { erro('Erro ao carregar: ' + e.message); }
+}
+
+// ===== CARRINHOS =====
+let todosLeads = [];
+async function renderCarrinhos() {
+  loading();
+  try {
+    const d = await fetch(`${API}/leads?secret=${SECRET}`).then(r => r.json());
+    todosLeads = (d.leads || []).sort((a,b) => new Date(b.atualizado_em||b.criado_em) - new Date(a.atualizado_em||a.criado_em));
+    renderCarrinhosLista(todosLeads);
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+function renderCarrinhosLista(leads) {
+  const estagioColor = { dados:'gray', endereco:'blue', frete_selecionado:'yellow', pagamento_pendente:'red' };
+  const estagioLabel = { dados:'Dados', endereco:'Endereço', frete_selecionado:'Frete', pagamento_pendente:'Pagando' };
+  const rows = leads.map(l => {
+    const valor = (l.carrinho||[]).reduce((s,i) => s + (i.preco*i.quantidade/100), 0);
+    const chips = (l.carrinho||[]).map(i => `<span class="chip">${(i.nome||'').split(' ').slice(0,3).join(' ')}${i.cor&&i.cor!=='Default Title'?' · '+i.cor:''}</span>`).join('');
+    return `
+      <div class="list-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-weight:600;font-size:14px;color:#e2e8f0">${l.nome||'Sem nome'}</span>
+            ${badge(estagioColor[l.estagio]||'gray', estagioLabel[l.estagio]||l.estagio||'?')}
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:4px">${l.email||''} ${l.telefone?'· '+l.telefone:''}</div>
+          <div>${chips}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:12px">
+          <div style="font-weight:700;font-size:15px;color:#fff;margin-bottom:4px">${fmt(valor)}</div>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:8px">${fmtDate(l.atualizado_em||l.criado_em)}</div>
+          <button onclick="delLead('${l.id}')" style="background:none;border:none;color:#4a5568;cursor:pointer;font-size:18px" title="Remover">×</button>
+        </div>
+      </div>`;
+  }).join('<div class="divider"></div>');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <input class="input" placeholder="Buscar por nome ou email..." oninput="filtrarLeads(this.value)" style="flex:1">
+      <button class="btn btn-ghost" onclick="renderCarrinhos()">↻</button>
+    </div>
+    <div style="color:#6b7280;font-size:13px;margin-bottom:12px">${leads.length} carrinhos</div>
+    ${leads.length === 0 ? '<div class="empty"><div class="empty-icon">🛒</div><div class="empty-text">Nenhum carrinho abandonado</div></div>' :
+      `<div class="card">${rows}</div>`}`;
+}
+
+function filtrarLeads(q) {
+  const filtered = q ? todosLeads.filter(l => (l.nome||l.email||'').toLowerCase().includes(q.toLowerCase())) : todosLeads;
+  renderCarrinhosLista(filtered);
+}
+
+async function delLead(id) {
+  if (!confirm('Remover carrinho?')) return;
+  await fetch(`${API}/admin?secret=${SECRET}&del_lead=${id}`);
+  todosLeads = todosLeads.filter(l => l.id !== id);
+  renderCarrinhosLista(todosLeads);
+}
+
+// ===== OFERTAS =====
+let todasOfertas = [];
+async function renderOfertas() {
+  loading();
+  try {
+    const d = await fetch(`${API}/ofertas?action=dashboard&secret=${SECRET}`).then(r => r.json());
+    todasOfertas = d.ofertas || [];
+    renderOfertasLista();
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+function renderOfertasLista() {
+  const statusColor = { agendada:'blue', enviada:'green', erro:'red' };
+  const rows = [...todasOfertas].reverse().map(o => `
+    <div class="list-item">
+      ${o.imagem ? imgThumb(o.imagem) : ''}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          ${badge(statusColor[o.status]||'gray', o.status)}
+          <span style="font-size:12px;color:#6b7280">${fmtDate(o.dataHora)}</span>
+        </div>
+        <div class="line-clamp" style="font-size:13px;color:#c8cfde">${o.texto||''}</div>
+      </div>
+      <button onclick="delOferta('${o.id}')" style="background:none;border:none;color:#4a5568;cursor:pointer;font-size:20px;flex-shrink:0;margin-left:10px">×</button>
+    </div>`).join('<div class="divider"></div>');
+
+  document.getElementById('content').innerHTML = `
+    <div class="card card-p" style="margin-bottom:20px">
+      <div class="section-title">Agendar nova oferta</div>
+      <div class="form-group">
+        <textarea class="input" id="of-texto" placeholder="Texto da oferta..."></textarea>
+        <div class="form-row">
+          <input class="input" id="of-imagem" placeholder="URL da imagem (opcional)">
+          <input class="input" id="of-link" placeholder="Link (opcional)">
+        </div>
+        <div class="form-row">
+          <div>
+            <div class="form-label">Data e hora (Brasília)</div>
+            <input type="datetime-local" class="input" id="of-data">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn btn-primary" onclick="salvarOferta()" id="btn-of">📅 Agendar</button>
+          </div>
+        </div>
+        <div id="of-msg" style="font-size:13px"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="color:#6b7280;font-size:13px">${todasOfertas.length} ofertas</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="renderOfertas()">↻</button>
+        <button class="btn btn-danger btn-sm" onclick="limparOfertas()">🗑 Limpar enviadas</button>
+      </div>
+    </div>
+    ${todasOfertas.length === 0 ? '<div class="empty"><div class="empty-icon">📣</div><div class="empty-text">Nenhuma oferta agendada</div></div>' :
+      `<div class="card">${rows}</div>`}`;
+}
+
+async function salvarOferta() {
+  const texto = document.getElementById('of-texto').value.trim();
+  const dataHora = document.getElementById('of-data').value;
+  const msg = document.getElementById('of-msg');
+  if (!texto || !dataHora) { msg.innerHTML = '<span style="color:#f87171">⚠️ Preencha texto e data</span>'; return; }
+  const btn = document.getElementById('btn-of');
+  btn.disabled = true; btn.textContent = 'Agendando...';
+  try {
+    const r = await fetch(`${API}/ofertas?action=salvar&secret=${SECRET}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        texto, imagem: document.getElementById('of-imagem').value.trim(),
+        link: document.getElementById('of-link').value.trim(),
+        dataHora: dataHora + ':00-03:00', grupos: 'todos'
+      })
+    });
+    const d = await r.json();
+    if (d.ok) { msg.innerHTML = '<span style="color:#34d399">✅ Agendada!</span>'; renderOfertas(); }
+    else msg.innerHTML = `<span style="color:#f87171">❌ ${d.error||'Erro'}</span>`;
+  } catch(e) { msg.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`; }
+  btn.disabled = false; btn.textContent = '📅 Agendar';
+}
+
+async function delOferta(id) {
+  if (!confirm('Remover oferta?')) return;
+  await fetch(`${API}/admin?secret=${SECRET}&del_oferta=${id}`);
+  todasOfertas = todasOfertas.filter(o => o.id !== id);
+  renderOfertasLista();
+}
+
+async function limparOfertas() {
+  if (!confirm('Deletar todas as enviadas e com erro?')) return;
+  const r = await fetch(`${API}/ofertas?action=limpar_enviadas&secret=${SECRET}`);
+  const d = await r.json();
+  if (d.ok) { alert('✅ ' + d.deletadas + ' removidas'); renderOfertas(); }
+  else alert('❌ ' + (d.error || 'Erro'));
+}
+
+// ===== PEDIDOS =====
+async function renderPedidos() {
+  loading();
+  try {
+    const d = await fetch(`${API}/admin?secret=${SECRET}&action=pedidos-json`).then(r => r.json());
+    const pedidos = d.pedidos || [];
+    const finColor = { paid:'green', pending:'yellow', refunded:'red' };
+    const fulColor = { fulfilled:'green', unfulfilled:'yellow', partial:'blue' };
+    const rows = pedidos.map(p => `
+      <div class="list-item">
+        ${imgThumb(p.imagem)}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:600;font-size:13px;color:#e2e8f0">#${p.numero} · ${p.cliente}</span>
+            ${badge(finColor[p.financeiro]||'gray', p.financeiro)}
+            ${badge(fulColor[p.fulfillment]||'gray', p.fulfillment)}
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:4px">${p.produto} · ${fmtDate(p.criado_em)}</div>
+          ${p.tracking ? `<span style="font-size:11px;font-family:monospace;background:#22263a;padding:2px 8px;border-radius:4px;color:#8b92a5">${p.tracking}</span>` : ''}
+        </div>
+        <div style="flex-shrink:0;text-align:right;margin-left:12px">
+          <div style="font-weight:700;color:#fff;margin-bottom:8px">${fmt(parseFloat(p.valor||0))}</div>
+          <button class="btn btn-ghost btn-sm" onclick="enviarFornecedor('${encodeURIComponent(p.cliente)}','${p.tracking||''}','${encodeURIComponent(p.imagem||'')}','${p.meOrderId||''}')" id="fbtn-${p.id}">📦 Fornecedor</button>
+        </div>
+      </div>`).join('<div class="divider"></div>');
+
+    document.getElementById('content').innerHTML = pedidos.length === 0
+      ? '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">Nenhum pedido</div></div>'
+      : `<div class="card">${rows}</div>`;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+async function enviarFornecedor(nome, tracking, imgUrl, meOrderId) {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '...';
+  await fetch(`${API}/admin?secret=${SECRET}&action=enviar-fornecedor&clienteNome=${nome}&tracking=${tracking}&imgUrl=${imgUrl}&meOrderId=${meOrderId}`);
+  btn.textContent = '✅ Enviado';
+}
+
+// ===== CUPONS =====
+async function renderCupons() {
+  loading();
+  try {
+    const d = await fetch(`${API}/cupons?secret=${SECRET}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'listar', secret: SECRET })
+    }).then(r => r.json());
+    const cupons = d.cupons || [];
+    const rows = cupons.map(c => `
+      <div class="list-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-family:monospace;font-weight:700;font-size:15px;color:#fff">${c.codigo}</span>
+            ${badge(c.ativo?'green':'gray', c.ativo?'Ativo':'Inativo')}
+          </div>
+          <div style="font-size:12px;color:#6b7280">${c.tipo} · ${c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):'Frete grátis'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="toggleCupom('${c.id}')">${c.ativo?'Desativar':'Ativar'}</button>
+          <button onclick="delCupom('${c.id}','${c.codigo}')" style="background:none;border:none;color:#4a5568;cursor:pointer;font-size:20px">×</button>
+        </div>
+      </div>`).join('<div class="divider"></div>');
+
+    document.getElementById('content').innerHTML = `
+      <div class="card card-p" style="margin-bottom:20px">
+        <div class="section-title">Criar novo cupom</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <input class="input" id="cp-codigo" placeholder="CÓDIGO" oninput="this.value=this.value.toUpperCase()">
+          <select class="input" id="cp-tipo">
+            <option value="percentual">% Percentual</option>
+            <option value="fixo">R$ Fixo</option>
+            <option value="frete_gratis">Frete Grátis</option>
+          </select>
+          <input class="input" id="cp-valor" type="number" placeholder="Valor">
+          <input class="input" id="cp-desc" placeholder="Descrição (opcional)">
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-primary" onclick="salvarCupom()" id="btn-cp">Criar Cupom</button>
+          <span id="cp-msg" style="font-size:13px"></span>
+        </div>
+      </div>
+      ${cupons.length === 0 ? '<div class="empty"><div class="empty-icon">🎟</div><div class="empty-text">Nenhum cupom criado</div></div>' :
+        `<div class="card">${rows}</div>`}`;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+async function salvarCupom() {
+  const codigo = document.getElementById('cp-codigo').value.trim();
+  const valor = document.getElementById('cp-valor').value;
+  const msg = document.getElementById('cp-msg');
+  if (!codigo || !valor) { msg.innerHTML = '<span style="color:#f87171">⚠️ Preencha código e valor</span>'; return; }
+  const btn = document.getElementById('btn-cp');
+  btn.disabled = true;
+  const d = await fetch(`${API}/cupons?secret=${SECRET}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'criar', secret: SECRET, codigo, tipo: document.getElementById('cp-tipo').value, valor: parseFloat(valor), descricao: document.getElementById('cp-desc').value })
+  }).then(r => r.json());
+  if (d.ok) { msg.innerHTML = '<span style="color:#34d399">✅ Criado!</span>'; renderCupons(); }
+  else { msg.innerHTML = `<span style="color:#f87171">❌ ${d.error||'Erro'}</span>`; btn.disabled = false; }
+}
+
+async function toggleCupom(id) {
+  await fetch(`${API}/cupons?secret=${SECRET}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'toggle', secret: SECRET, id }) });
+  renderCupons();
+}
+
+async function delCupom(id, codigo) {
+  if (!confirm('Deletar cupom ' + codigo + '?')) return;
+  await fetch(`${API}/cupons?secret=${SECRET}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'deletar', secret: SECRET, id }) });
+  renderCupons();
+}
+
+// ===== GRUPOS VIP =====
+const GRUPOS = [
+  {nome:'#1',code:'Hv2VcG8ysxv7SfG6NlTCGP'},{nome:'#2',code:'GwebJkNxXpMKOjuPKMYZrK'},
+  {nome:'#3',code:'BtiR1tGSzN7BG3Uv7ZiecI'},{nome:'#4',code:'DFNTCOuMSkXCKPou1g7czS'},
+  {nome:'#5',code:'KGPTKigqecm7rgNjpC3j84'},{nome:'#6',code:'EGbNVvJX9i46H3rIJQ79K9'},
+  {nome:'#7',code:'IsQ8zsma0e83xULh9GoSf2'},{nome:'#8',code:'F1BkukLoCZn0v3ml48XLpq'},
+  {nome:'#9',code:'DGHwIvk8e5G1bcBkc0ywcp'},{nome:'#10',code:'HKNkmPeu9hM7GG2D3wusdK'},
+  {nome:'#11',code:'Kw8EYEd11CxGhcp0HZIXsf'},{nome:'#12',code:'DehLBYFhcy08ftgxMEsmln'},
+  {nome:'#13',code:'Iap7UKrnepQFrLPs6aLjpp'},{nome:'#14',code:'JOBou3Nqntv7gp7pdNrBsG'},
+  {nome:'#15',code:'H8sMRaTnHsa4msP0F4jTFw'},{nome:'#16',code:'JPaa65dmlnAKeS0M1OqjNu'},
+  {nome:'#17',code:'CzR4iPTL4lE6YNQ8Aj22rq'},
+];
+
+let dadosGrupos = null;
+function renderGrupos() {
+  const grupoCards = GRUPOS.map(g => {
+    const info = dadosGrupos?.grupos?.find(x => x.nome === g.nome);
+    return `
+      <div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:600;font-size:14px;color:#e2e8f0;margin-bottom:4px">Grupo ${g.nome}</div>
+          <div style="font-size:12px;color:#6b7280">${info ? fmtN(info.membros) + ' membros' : '—'}</div>
+        </div>
+        <a href="https://chat.whatsapp.com/${g.code}" target="_blank" style="color:#34d399;font-size:18px;text-decoration:none">↗</a>
+      </div>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:13px;color:#6b7280">${dadosGrupos ? 'Total: ' + fmtN(dadosGrupos.total) + ' membros' : 'Clique para carregar membros'}</div>
+      <button class="btn btn-primary" onclick="atualizarGrupos()" id="btn-grupos">↻ Atualizar membros</button>
+    </div>
+    <div class="grid-3" style="gap:10px">${grupoCards}</div>`;
+}
+
+async function atualizarGrupos() {
+  const btn = document.getElementById('btn-grupos');
+  btn.disabled = true; btn.textContent = 'Carregando...';
+  try {
+    dadosGrupos = await fetch(`${API}/admin?secret=${SECRET}&action=grupos-vip-dashboard`).then(r => r.json());
+    renderGrupos();
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+// ===== BUNDLE =====
+let produtosBundle = [], selecionadosBundle = [];
+async function renderBundle() {
+  loading();
+  try {
+    const [b, p] = await Promise.all([
+      fetch(`${API}/admin?action=bundle-lista`).then(r => r.json()),
+      fetch(`${API}/admin?secret=${SECRET}&action=produtos-lista`).then(r => r.json()),
+    ]);
+    produtosBundle = p.produtos || [];
+    selecionadosBundle = (b.produtos || []).map(x => (x.id || x).toString());
+    const desconto = b.desconto || 50;
+
+    const cards = produtosBundle.map(p => {
+      const sel = selecionadosBundle.includes(p.id.toString());
+      return `
+        <label style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:8px;cursor:pointer;border:1.5px solid ${sel?'#5865f2':'#2d3148'};background:${sel?'#1a1d3a':'#22263a'};transition:all .1s">
+          <input type="checkbox" ${sel?'checked':''} onchange="toggleBundle('${p.id}')" style="width:15px;height:15px;accent-color:#5865f2;flex-shrink:0">
+          ${p.imagem ? `<img src="${p.imagem}" class="img-thumb">` : ''}
+          <div style="min-width:0">
+            <div class="truncate" style="font-size:13px;font-weight:600;color:#e2e8f0">${p.nome}</div>
+            <div style="font-size:11px;color:#6b7280">${fmt(p.preco/100)}</div>
+          </div>
+        </label>`;
+    }).join('');
+
+    document.getElementById('content').innerHTML = `
+      <div class="card card-p">
+        <div class="section-title">Configurar Bundle</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+          <div class="form-label">Desconto em R$:</div>
+          <input type="number" class="input" id="bundle-desconto" value="${desconto}" style="width:100px">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:400px;overflow-y:auto;margin-bottom:20px;padding-right:4px">
+          ${cards}
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-primary" onclick="salvarBundle()" id="btn-bundle">Salvar Bundle</button>
+          <span id="bundle-sel" style="font-size:13px;color:#6b7280">${selecionadosBundle.length} selecionados</span>
+          <span id="bundle-msg" style="font-size:13px"></span>
+        </div>
+      </div>`;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+
+function toggleBundle(id) {
+  const idStr = id.toString();
+  if (selecionadosBundle.includes(idStr)) selecionadosBundle = selecionadosBundle.filter(x => x !== idStr);
+  else selecionadosBundle.push(idStr);
+  const el = document.getElementById('bundle-sel');
+  if (el) el.textContent = selecionadosBundle.length + ' selecionados';
+}
+
+async function salvarBundle() {
+  const btn = document.getElementById('btn-bundle');
+  const msg = document.getElementById('bundle-msg');
+  const desconto = parseFloat(document.getElementById('bundle-desconto').value);
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  const d = await fetch(`${API}/admin?action=bundle-salvar&secret=${SECRET}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ produtos: selecionadosBundle, desconto })
+  }).then(r => r.json());
+  msg.innerHTML = d.ok ? '<span style="color:#34d399">✅ Salvo!</span>' : '<span style="color:#f87171">❌ Erro</span>';
+  btn.disabled = false; btn.textContent = 'Salvar Bundle';
+}
+
+// INICIAR
+if (!SECRET) {
+  document.getElementById('content').innerHTML = '<div class="empty"><div class="empty-icon">🔐</div><div class="empty-text">Acesse com ?secret=kcique2026</div></div>';
+} else {
+  renderHome();
+}
+</script>
+</body>
+</html>
