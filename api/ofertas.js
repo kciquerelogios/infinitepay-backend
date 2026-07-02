@@ -460,15 +460,42 @@ export default async function handler(req, res) {
   // Limpar ofertas enviadas em batch
   if (req.query.action === 'limpar_enviadas') {
     try {
-      const todas = await listarOfertas(KV_URL, KV_TOKEN);
-      const enviadas = todas.filter(o => o.status === 'enviada' || o.status === 'erro');
+      // Buscar TODOS os IDs da lista (sem limite)
+      const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const listaData = await listaResp.json();
+      const todosIds = listaData.result || [];
+
+      // Buscar cada oferta e separar agendadas das enviadas
+      const agendadasIds = [];
       let deletadas = 0;
-      for (const o of enviadas) {
-        await fetch(`${KV_URL}/del/${o.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-        await fetch(`${KV_URL}/lrem/ofertas-lista/0/${o.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([o.id]) });
-        deletadas++;
+
+      for (const id of todosIds) {
+        try {
+          const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          const d = await r.json();
+          if (!d.result) { deletadas++; continue; } // chave orphan - remover
+          let oferta = d.result;
+          while (typeof oferta === 'string') { try { oferta = JSON.parse(oferta); } catch(e) { break; } }
+          if (oferta && oferta.status === 'agendada') {
+            agendadasIds.push(id);
+          } else {
+            // Deletar chave da oferta enviada/erro
+            await fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+            deletadas++;
+          }
+        } catch(e) { deletadas++; }
       }
-      return res.status(200).json({ ok: true, deletadas });
+
+      // Reescrever a lista só com as agendadas
+      await fetch(`${KV_URL}/del/ofertas-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      for (const id of agendadasIds) {
+        await fetch(`${KV_URL}/rpush/ofertas-lista/${id}`, {
+          method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([id])
+        });
+      }
+
+      return res.status(200).json({ ok: true, deletadas, agendadasMantidas: agendadasIds.length });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
