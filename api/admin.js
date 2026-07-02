@@ -1124,7 +1124,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="font-size:12px;color:#9ca3af;white-space:nowrap">${dataStr}</td>
       <td style="white-space:nowrap">
         ${tel?`<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" class="btn-wpp">💬 WPP</a>`:''}
-        <button onclick="if(confirm('Remover?')){fetch('/api/admin?secret=${secret}&del_lead=${lead.id}').then(function(){this.closest('tr').remove();document.getElementById('page-title').textContent+='';}).catch(function(){});this.closest('tr').style.opacity='0.3';}" class="btn-del">🗑</button>
+        <button onclick="delLead(this,'${lead.id}')" class="btn-del">🗑</button>
       </td>
     </tr>`;
   }).join('');
@@ -1162,7 +1162,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="white-space:nowrap;font-size:13px">${dataStr}</td>
       <td style="font-size:13px">${o.grupos==='todos'?'Todos (#1-#17)':o.grupos}</td>
       <td><span style="background:${sc}20;color:${sc};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${sl}</span></td>
-      <td><button onclick="if(confirm('Remover?')){fetch('/api/admin?secret=${secret}&del_oferta=${o.id}').then(function(){});this.closest('tr').style.opacity='0.3';setTimeout(function(){location.hash='#ofertas';},300);}" class="btn-del">🗑</button></td>
+      <td><button onclick="delOferta(this,'${o.id}')" class="btn-del">🗑</button></td>
     </tr>`;
   }).join('');
 
@@ -1724,6 +1724,23 @@ async function carregarMembrosGrupos(){
   }
 }
 setTimeout(carregarMembrosGrupos,800);
+
+async function delOferta(btn, id) {
+  if (!confirm('Remover oferta?')) return;
+  btn.textContent = '...'; btn.disabled = true;
+  var tr = btn.closest('tr');
+  if (tr) tr.style.opacity = '0.4';
+  await fetch('/api/admin?secret=${secret}&del_oferta=' + id);
+  if (tr) tr.remove();
+}
+async function delLead(btn, id) {
+  if (!confirm('Remover carrinho?')) return;
+  btn.textContent = '...'; btn.disabled = true;
+  var tr = btn.closest('tr');
+  if (tr) tr.style.opacity = '0.4';
+  await fetch('/api/admin?secret=${secret}&del_lead=' + id);
+  if (tr) tr.remove();
+}
 </script>
 </body>
 </html>`);
