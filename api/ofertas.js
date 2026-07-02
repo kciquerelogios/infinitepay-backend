@@ -457,5 +457,22 @@ export default async function handler(req, res) {
     return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/ofertas?action=dashboard&secret=${secret}"></head><body>Redirecionando...</body></html>`);
   }
 
+  // Limpar ofertas enviadas em batch
+  if (req.query.action === 'limpar_enviadas') {
+    try {
+      const todas = await listarOfertas(KV_URL, KV_TOKEN);
+      const enviadas = todas.filter(o => o.status === 'enviada' || o.status === 'erro');
+      let deletadas = 0;
+      for (const o of enviadas) {
+        await fetch(`${KV_URL}/del/${o.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        await fetch(`${KV_URL}/lrem/ofertas-lista/0/${o.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([o.id]) });
+        deletadas++;
+      }
+      return res.status(200).json({ ok: true, deletadas });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Action invalida. Use ?action=dashboard, ?action=salvar ou ?action=verificar' });
 }
