@@ -42,8 +42,11 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
   const listaResp = await fetch(`${KV_URL}/lrange/ofertas-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
   const listaData = await listaResp.json();
   const ids = listaData.result || [];
+  // Buscar apenas as 60 mais recentes para evitar timeout no Vercel
+  const idsRecentes = ids.slice(-60);
+  console.log('Total IDs:', ids.length, '| Processando últimos:', idsRecentes.length);
   const ofertas = [];
-  for (const id of ids) {
+  for (const id of idsRecentes) {
     try {
       const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const d = await r.json();
