@@ -1096,6 +1096,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <button class="btn-green" onclick="salvarOferta()">📅 Agendar Oferta</button>
       <div id="form-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button onclick="limparOfertas()" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗑 Limpar todas enviadas</button>
+    </div>
     ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>Ação</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
 
   // ===== ABA PEDIDOS =====
@@ -1366,9 +1369,11 @@ function toggleTodos(cb){document.querySelectorAll('#grupos-wrap input').forEach
 async function salvarOferta(){
   var msg=document.getElementById('form-msg');
   var texto=document.getElementById('f-texto').value.trim();
-  var dataHora=document.getElementById('f-data').value;
+  var dataHoraRaw=document.getElementById('f-data').value;
+  // Converter para ISO com offset de Brasília (UTC-3) explícito
+  var dataHora = dataHoraRaw ? dataHoraRaw + ':00-03:00' : '';
   if(!texto){msg.textContent='⚠️ Digite o texto';msg.style.color='#ef4444';return;}
-  if(!dataHora){msg.textContent='⚠️ Selecione data e hora';msg.style.color='#ef4444';return;}
+  if(!dataHoraRaw){msg.textContent='⚠️ Selecione data e hora';msg.style.color='#ef4444';return;}
   var sel=[];document.querySelectorAll('#grupos-wrap input:checked').forEach(function(el){sel.push(el.value);});
   var total=document.querySelectorAll('#grupos-wrap input').length;
   var grupos=sel.length===total?'todos':sel.join(',');
@@ -1441,6 +1446,26 @@ async function toggleCupom(id) {
   var data = await resp.json();
   if (data.ok) window.location.reload();
 }
+async function limparOfertas() {
+  if (!confirm('Deletar todas as ofertas enviadas e com erro? As agendadas serão mantidas.')) return;
+  var btn = event.target;
+  btn.disabled = true; btn.textContent = 'Limpando...';
+  try {
+    var resp = await fetch('/api/ofertas?action=limpar_enviadas&secret=${secret}');
+    var data = await resp.json();
+    if (data.ok) {
+      alert('✅ ' + data.deletadas + ' ofertas removidas!');
+      location.reload();
+    } else {
+      alert('Erro: ' + (data.error || 'desconhecido'));
+      btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
+    }
+  } catch(e) {
+    alert('Erro de conexão');
+    btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
+  }
+}
+
 async function deletarCupom(id, codigo) {
   if (!confirm('Deletar cupom ' + codigo + '?')) return;
   var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', id: id }) });
