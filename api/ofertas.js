@@ -82,11 +82,12 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
   console.log('Verificando ofertas:', ofertas.length, '| Agora UTC:', agora.toISOString());
 
   for (const oferta of ofertas) {
-    if (oferta.status !== 'agendada') continue;
-    const dataEnvio = new Date(new Date(oferta.dataHora).getTime() + 3 * 60 * 60 * 1000);
+    console.log('Oferta:', oferta.id, '| status:', oferta.status, '| dataHora:', oferta.dataHora, '| imagem:', oferta.imagem ? 'sim' : 'nao');
+    if (oferta.status !== 'agendada') { console.log('  -> PULANDO: status=' + oferta.status); continue; }
+    const dataEnvio = new Date(oferta.dataHora);
     const diffMin = (agora - dataEnvio) / 1000 / 60;
-    console.log('Oferta:', oferta.id, '| dataHora:', oferta.dataHora, '| dataEnvio:', dataEnvio.toISOString(), '| diffMin:', diffMin.toFixed(1));
-    if (diffMin < 0 || diffMin > 2) continue;
+    console.log('  -> diffMin:', diffMin.toFixed(1), '| agoraUTC:', agora.toISOString(), '| dataEnvioUTC:', dataEnvio.toISOString());
+    if (diffMin < 0 || diffMin > 2) { console.log('  -> PULANDO: fora da janela'); continue; }
 
     let gruposEnviar = GRUPOS_VIP;
     if (oferta.grupos && oferta.grupos !== 'todos') {
@@ -108,9 +109,12 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
           method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
         const zapiJson = await zapiResult.json().catch(()=>({}));
-        console.log('Z-API resultado grupo', grupo.substring(0,20), ':', JSON.stringify(zapiJson).substring(0,100));
-        await new Promise(r => setTimeout(r, 1000));
-      } catch(e) { erros++; }
+        // Verificar se Z-API retornou erro na resposta
+        const zapiOk = zapiResult.ok && !zapiJson.error && zapiJson.zaapId !== undefined || zapiJson.messageId !== undefined || zapiJson.id !== undefined;
+        console.log('Z-API grupo', grupo.substring(0,20), '| status:', zapiResult.status, '| ok:', zapiOk, '| resp:', JSON.stringify(zapiJson).substring(0,120));
+        if (!zapiOk) erros++;
+        await new Promise(r => setTimeout(r, 1500));
+      } catch(e) { erros++; console.log('Z-API erro catch:', e.message); }
     }
 
     oferta.status = erros === 0 ? 'enviada' : 'erro';
