@@ -136,6 +136,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 <input id="s" type="password" placeholder="Senha de acesso"><button type="submit">Entrar</button></form></div></body></html>`);
   }
 
+  // CORS global
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
@@ -147,6 +153,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== JSON: DASHBOARD HOME =====
   if (req.query.action === 'dashboard-home') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
@@ -207,6 +214,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== JSON: PEDIDOS =====
   if (req.query.action === 'pedidos-json') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const [pedidosR, prodShopify] = await Promise.all([
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
