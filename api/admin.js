@@ -844,18 +844,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== DELETAR LEAD =====
   if (req.query.del_lead) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     await fetch(`${KV_URL}/del/${req.query.del_lead}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     await fetch(`${KV_URL}/lrem/leads-lista/0/${req.query.del_lead}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([req.query.del_lead]) });
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/admin?secret=${secret}#carrinhos"></head><body></body></html>`);
+    return res.status(200).json({ ok: true });
   }
 
   // ===== DELETAR OFERTA =====
   if (req.query.del_oferta) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     await fetch(`${KV_URL}/del/${req.query.del_oferta}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     await fetch(`${KV_URL}/lrem/ofertas-lista/0/${req.query.del_oferta}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([req.query.del_oferta]) });
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(`<html><head><meta http-equiv="refresh" content="0;url=/api/admin?secret=${secret}#ofertas"></head><body></body></html>`);
+    return res.status(200).json({ ok: true });
   }
 
   // ===== DATAS =====
@@ -1124,7 +1124,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="font-size:12px;color:#9ca3af;white-space:nowrap">${dataStr}</td>
       <td style="white-space:nowrap">
         ${tel?`<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" class="btn-wpp">💬 WPP</a>`:''}
-        <a href="/api/admin?secret=${secret}&del_lead=${lead.id}" onclick="return confirm('Remover?')" class="btn-del">🗑</a>
+        <button onclick="if(confirm('Remover?')){fetch('/api/admin?secret=${secret}&del_lead=${lead.id}').then(function(){this.closest('tr').remove();document.getElementById('page-title').textContent+='';}).catch(function(){});this.closest('tr').style.opacity='0.3';}" class="btn-del">🗑</button>
       </td>
     </tr>`;
   }).join('');
@@ -1162,7 +1162,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="white-space:nowrap;font-size:13px">${dataStr}</td>
       <td style="font-size:13px">${o.grupos==='todos'?'Todos (#1-#17)':o.grupos}</td>
       <td><span style="background:${sc}20;color:${sc};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${sl}</span></td>
-      <td><a href="/api/admin?secret=${secret}&del_oferta=${o.id}" onclick="return confirm('Remover?')" class="btn-del">🗑</a></td>
+      <td><button onclick="if(confirm('Remover?')){fetch('/api/admin?secret=${secret}&del_oferta=${o.id}').then(function(){});this.closest('tr').style.opacity='0.3';setTimeout(function(){location.hash='#ofertas';},300);}" class="btn-del">🗑</button></td>
     </tr>`;
   }).join('');
 
