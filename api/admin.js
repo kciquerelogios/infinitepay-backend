@@ -708,10 +708,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
       const grupos = await Promise.all(membrosPromises);
 
-      // Encontrar grupo ativo
+      // Encontrar grupo mais vazio (menor número de membros com vagas)
       let grupoAtivo = grupos[grupos.length - 1];
+      let menorMembros = Infinity;
       for (const g of grupos) {
-        if (g.membros < LIMITE) { grupoAtivo = g; break; }
+        if (g.membros < LIMITE && g.membros < menorMembros) {
+          menorMembros = g.membros;
+          grupoAtivo = g;
+        }
       }
 
       const hoje = new Date();
