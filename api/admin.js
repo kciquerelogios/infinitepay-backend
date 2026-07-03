@@ -586,44 +586,47 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     if (req.method === 'OPTIONS') return res.status(200).end();
+    const GRUPOS_LINKS = [
+      {nome:'#1',link:'https://chat.whatsapp.com/Kod3Idcbdlf5Q09mdpfl8w'},
+      {nome:'#2',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
+      {nome:'#3',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
+      {nome:'#4',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
+      {nome:'#5',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
+      {nome:'#6',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
+      {nome:'#7',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+      {nome:'#8',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
+      {nome:'#9',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
+      {nome:'#10',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
+      {nome:'#11',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
+      {nome:'#12',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
+      {nome:'#13',link:'https://chat.whatsapp.com/GLAtyB662tc8bC3dwdwjVI'},
+      {nome:'#14',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
+      {nome:'#15',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
+      {nome:'#16',link:'https://chat.whatsapp.com/F4HBnF9rlUoL03Pa6DU9tq'},
+      {nome:'#17',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
+    ];
     try {
       const LIMITE = 1000;
-      const GRUPOS_VIP = [
-        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP'},
-        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GwebJkNxXpMKOjuPKMYZrK'},
-        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/BtiR1tGSzN7BG3Uv7ZiecI'},
-        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/DFNTCOuMSkXCKPou1g7czS'},
-        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/KGPTKigqecm7rgNjpC3j84'},
-        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/EGbNVvJX9i46H3rIJQ79K9'},
-        {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
-        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/F1BkukLoCZn0v3ml48XLpq'},
-        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/DGHwIvk8e5G1bcBkc0ywcp'},
-        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/HKNkmPeu9hM7GG2D3wusdK'},
-        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/Kw8EYEd11CxGhcp0HZIXsf'},
-        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DehLBYFhcy08ftgxMEsmln'},
-        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/Iap7UKrnepQFrLPs6aLjpp'},
-        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/JOBou3Nqntv7gp7pdNrBsG'},
-        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/H8sMRaTnHsa4msP0F4jTFw'},
-        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/JPaa65dmlnAKeS0M1OqjNu'},
-        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/CzR4iPTL4lE6YNQ8Aj22rq'},
-      ];
-      // Buscar membros de todos os grupos
-      const membrosArr = await Promise.all(GRUPOS_VIP.map(async g => {
-        try {
-          const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
-          const d = await r.json();
-          return { ...g, membros: d.participants ? d.participants.length : 0 };
-        } catch(e) { return { ...g, membros: 0 }; }
-      }));
+      // Usar snapshot do Redis em vez de buscar ao vivo no Z-API
+      const hoje = new Date();
+      const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
+      const hojeStr = hojeBR.toISOString().split('T')[0];
+      const snapResp = await fetch(`${KV_URL}/get/vip-snapshot-${hojeStr}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const snapData = await snapResp.json();
+      let grupos = snapData.result;
+      while (typeof grupos === 'string') { try { grupos = JSON.parse(grupos); } catch(e) { break; } }
+      if (!grupos || !Array.isArray(grupos)) throw new Error('sem snapshot');
       // Encontrar primeiro grupo com vagas
-      let ativo = membrosArr[membrosArr.length - 1];
-      for (const g of membrosArr) {
+      let ativo = null;
+      for (const g of grupos) {
         if (g.membros < LIMITE) { ativo = g; break; }
       }
-      return res.status(200).json({ grupo: ativo.nome, link: ativo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros });
+      if (!ativo) ativo = grupos[grupos.length - 1];
+      const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
+      return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros });
     } catch(e) {
-      // Fallback para grupo 1
-      return res.status(200).json({ grupo: '#1', link: 'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP', membros: 0, vagas: 1000 });
+      // Sem snapshot — fallback para grupo #1
+      return res.status(200).json({ grupo: '#1', link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000 });
     }
   }
 
@@ -631,23 +634,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   if (req.query.action === 'grupos-vip-dashboard') {
     try {
       const GRUPOS_VIP = [
-        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Hv2VcG8ysxv7SfG6NlTCGP'},
-        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GwebJkNxXpMKOjuPKMYZrK'},
-        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/BtiR1tGSzN7BG3Uv7ZiecI'},
-        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/DFNTCOuMSkXCKPou1g7czS'},
-        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/KGPTKigqecm7rgNjpC3j84'},
-        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/EGbNVvJX9i46H3rIJQ79K9'},
+        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Kod3Idcbdlf5Q09mdpfl8w'},
+        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
+        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
+        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
+        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
+        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
         {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
-        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/F1BkukLoCZn0v3ml48XLpq'},
-        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/DGHwIvk8e5G1bcBkc0ywcp'},
-        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/HKNkmPeu9hM7GG2D3wusdK'},
-        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/Kw8EYEd11CxGhcp0HZIXsf'},
-        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DehLBYFhcy08ftgxMEsmln'},
-        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/Iap7UKrnepQFrLPs6aLjpp'},
-        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/JOBou3Nqntv7gp7pdNrBsG'},
-        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/H8sMRaTnHsa4msP0F4jTFw'},
-        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/JPaa65dmlnAKeS0M1OqjNu'},
-        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/CzR4iPTL4lE6YNQ8Aj22rq'},
+        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
+        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
+        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
+        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
+        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
+        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/GLAtyB662tc8bC3dwdwjVI'},
+        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
+        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
+        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/F4HBnF9rlUoL03Pa6DU9tq'},
+        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
       ];
       const LIMITE = 1000;
 
