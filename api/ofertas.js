@@ -431,11 +431,12 @@ export default async function handler(req, res) {
         await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
       } catch(e) { console.error('Erro rastreios:', e.message); }
       try {
+        // Salvar snapshot uma vez por dia — verifica se já existe hoje
         const agora = new Date();
         const agoraBR = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
-        const hora = agoraBR.getHours();
-        const minuto = agoraBR.getMinutes();
-        if (hora === 0 && minuto <= 2) {
+        const hojeStr = agoraBR.toISOString().split('T')[0];
+        const snapCheck = await fetch(`${KV_URL}/get/vip-snapshot-${hojeStr}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r => r.json()).catch(() => ({}));
+        if (!snapCheck.result) {
           await salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN);
         }
       } catch(e) { console.error('Erro snapshot:', e.message); }
