@@ -607,26 +607,68 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     ];
     try {
       const LIMITE = 1000;
-      // Usar snapshot do Redis em vez de buscar ao vivo no Z-API
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
-      const hojeStr = hojeBR.toISOString().split('T')[0];
-      const snapResp = await fetch(`${KV_URL}/get/vip-snapshot-${hojeStr}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-      const snapData = await snapResp.json();
-      let grupos = snapData.result;
-      while (typeof grupos === 'string') { try { grupos = JSON.parse(grupos); } catch(e) { break; } }
-      if (!grupos || !Array.isArray(grupos)) throw new Error('sem snapshot');
-      // Encontrar primeiro grupo com vagas
+
+      // Tentar snapshot dos últimos 3 dias
+      let grupos = null;
+      for (let i = 0; i <= 2; i++) {
+        const d = new Date(hojeBR); d.setDate(d.getDate() - i);
+        const ds = d.toISOString().split('T')[0];
+        const r = await fetch(`${KV_URL}/get/vip-snapshot-${ds}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        const j = await r.json();
+        let snap = j.result;
+        while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
+        if (snap && snap.grupos && Array.isArray(snap.grupos)) { grupos = snap.grupos; break; }
+        // Compatibilidade: snapshot pode ser array direto
+        if (snap && Array.isArray(snap)) { grupos = snap; break; }
+      }
+
+      if (!grupos) throw new Error('sem snapshot');
+
+      // Encontrar grupo com menos membros (mais vazio) com vagas
       let ativo = null;
+      let menorMembros = Infinity;
       for (const g of grupos) {
-        if (g.membros < LIMITE) { ativo = g; break; }
+        if (g.membros < LIMITE && g.membros < menorMembros) {
+          menorMembros = g.membros;
+          ativo = g;
+        }
       }
       if (!ativo) ativo = grupos[grupos.length - 1];
       const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
-      return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros });
+      return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
     } catch(e) {
-      // Sem snapshot — fallback para grupo #1
-      return res.status(200).json({ grupo: '#1', link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000 });
+      // Sem snapshot — buscar ao vivo no Z-API
+      try {
+        const GRUPOS_IDS = [
+          {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
+          {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
+          {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
+          {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
+          {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
+          {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
+          {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
+          {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
+          {nome:'#17',id:'120363406426269657-group'},
+        ];
+        const membrosArr = await Promise.all(GRUPOS_IDS.map(async g => {
+          try {
+            const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
+            const d = await r.json();
+            return { nome: g.nome, membros: d.participants ? d.participants.length : 0 };
+          } catch(e) { return { nome: g.nome, membros: 0 }; }
+        }));
+        let ativo = null; let menorMembros = Infinity;
+        for (const g of membrosArr) {
+          if (g.membros < 1000 && g.membros < menorMembros) { menorMembros = g.membros; ativo = g; }
+        }
+        if (!ativo) ativo = membrosArr[membrosArr.length - 1];
+        const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
+        return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: 1000 - ativo.membros, fonte: 'live' });
+      } catch(e2) {
+        return res.status(200).json({ grupo: '#1', link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000, fonte: 'fallback' });
+      }
     }
   }
 
