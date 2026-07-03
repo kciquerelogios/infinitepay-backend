@@ -128,6 +128,11 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     if (req.method === 'OPTIONS') return res.status(200).end();
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
+    const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+    const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
     const GRUPOS_LINKS = [
       {nome:'#1',link:'https://chat.whatsapp.com/Kod3Idcbdlf5Q09mdpfl8w'},
       {nome:'#2',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
