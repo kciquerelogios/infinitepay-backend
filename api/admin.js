@@ -676,6 +676,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
 
   // ===== ACTION: GRUPOS VIP DASHBOARD =====
+  // ===== DEFINIR GRUPO ATIVO MANUAL =====
+  if (req.query.action === 'set-grupo-ativo') {
+    const { nome, link } = req.body || {};
+    if (!nome || !link) return res.status(400).json({ error: 'nome e link obrigatórios' });
+    await fetch(`${KV_URL}/set/grupo-ativo-manual`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, link, atualizado_em: new Date().toISOString() })
+    });
+    return res.status(200).json({ ok: true, nome, link });
+  }
+
   if (req.query.action === 'grupos-vip-dashboard') {
     try {
       const GRUPOS_LINKS = [
@@ -1676,8 +1688,12 @@ async function carregarGruposVip() {
     });
     html += '</div>';
     html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>';
-    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:12px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
-    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link</button>';
+    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+    html += '<input id="input-link-ativo" value="' + ga.link + '" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px" placeholder="Novo link do grupo">';
+    html += '<button onclick="atualizarLinkAtivo()" style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Salvar link</button>';
+    html += '</div>';
+    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link /api/grupo</button>';
     html += '</div></div>';
 
     // Grid de todos os grupos
@@ -1692,7 +1708,8 @@ async function carregarGruposVip() {
       html += '<div style="font-size:12px;font-weight:700;margin-bottom:4px">' + g.nome + '</div>';
       html += '<div style="font-size:18px;font-weight:700;margin-bottom:4px">' + g.membros.toLocaleString('pt-BR') + '</div>';
       html += '<div style="background:#f3f4f6;border-radius:4px;height:5px;margin-bottom:3px"><div style="background:' + cor + ';height:5px;border-radius:4px;width:' + pctG + '%"></div></div>';
-      html += '<div style="font-size:10px;color:#9ca3af">' + (LIMITE - g.membros) + ' vagas</div>';
+      html += '<div style="font-size:10px;color:#9ca3af;margin-bottom:6px">' + (LIMITE - g.membros) + ' vagas</div>';
+      if (!isAtivo) html += '<button onclick="definirGrupoAtivo(\'' + g.nome + '\',\'' + (g.link||'') + '\')" style="width:100%;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer">Definir ativo</button>';
       html += '</div>';
     });
     html += '</div></div>';
@@ -1792,6 +1809,38 @@ async function carregarMembrosGrupos(){
   }
 }
 setTimeout(carregarMembrosGrupos,800);
+
+async function definirGrupoAtivo(nome, link) {
+  var novoLink = prompt('Link do grupo ' + nome + ':', link);
+  if (!novoLink) return;
+  var r = await fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ nome, link: novoLink })
+  });
+  var d = await r.json();
+  if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
+  else alert('❌ Erro: ' + (d.error||'desconhecido'));
+}
+
+async function atualizarLinkAtivo() {
+  var input = document.getElementById('input-link-ativo');
+  var linkAtivo = document.getElementById('link-ativo');
+  if (!input || !input.value.trim()) return;
+  var novoLink = input.value.trim();
+  // Buscar grupo ativo atual para saber o nome
+  var r = await fetch('/api/admin?secret=${secret}&action=grupos-vip-dashboard');
+  var d = await r.json();
+  var nome = d.grupoAtivo ? d.grupoAtivo.nome : '#1';
+  var r2 = await fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ nome, link: novoLink })
+  });
+  var d2 = await r2.json();
+  if (d2.ok) {
+    if (linkAtivo) { linkAtivo.href = novoLink; linkAtivo.textContent = novoLink; }
+    alert('✅ Link atualizado!');
+  }
+}
 
 async function delOferta(btn, id) {
   if (!confirm('Remover oferta?')) return;
