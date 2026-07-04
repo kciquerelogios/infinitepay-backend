@@ -134,7 +134,7 @@ export default async function handler(req, res) {
     const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
     const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
     const GRUPOS_LINKS = [
-      {nome:'#1',link:'https://chat.whatsapp.com/Kod3Idcbdlf5Q09mdpfl8w'},
+      {nome:'#1',link:'https://chat.whatsapp.com/FyN2AqbnmSRA3LSGOyGA4A?s=cl&p=a&ilr=1'},
       {nome:'#2',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
       {nome:'#3',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
       {nome:'#4',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
@@ -678,38 +678,46 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ACTION: GRUPOS VIP DASHBOARD =====
   if (req.query.action === 'grupos-vip-dashboard') {
     try {
-      const GRUPOS_VIP = [
-        {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/Kod3Idcbdlf5Q09mdpfl8w'},
-        {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
-        {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
-        {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
-        {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
-        {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
-        {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
-        {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
-        {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
-        {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
-        {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
-        {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
-        {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
-        {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
-        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
-        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
-        {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
+      const GRUPOS_LINKS = [
+        {nome:'#1',link:'https://chat.whatsapp.com/FyN2AqbnmSRA3LSGOyGA4A?s=cl&p=a&ilr=1'},
+        {nome:'#2',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
+        {nome:'#3',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
+        {nome:'#4',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
+        {nome:'#5',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
+        {nome:'#6',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
+        {nome:'#7',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+        {nome:'#8',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
+        {nome:'#9',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
+        {nome:'#10',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
+        {nome:'#11',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
+        {nome:'#12',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
+        {nome:'#13',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
+        {nome:'#14',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
+        {nome:'#15',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
+        {nome:'#16',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
+        {nome:'#17',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
       ];
       const LIMITE = 1000;
 
-      // Buscar membros de todos os grupos em paralelo
-      const membrosPromises = GRUPOS_VIP.map(async g => {
-        try {
-          const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
-            headers: { 'client-token': ZAPI_CLIENT_TOKEN }
-          });
-          const d = await r.json();
-          return { ...g, membros: d.participants ? d.participants.length : 0 };
-        } catch(e) { return { ...g, membros: 0 }; }
-      });
-      const grupos = await Promise.all(membrosPromises);
+      // Usar snapshot do Redis (instantâneo) em vez de buscar ao vivo
+      const hoje = new Date();
+      const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
+      let grupos = null;
+      for (let i = 0; i <= 2; i++) {
+        const d = new Date(hojeBR); d.setDate(d.getDate() - i);
+        const ds = d.toISOString().split('T')[0];
+        const r = await fetch(`${KV_URL}/get/vip-snapshot-${ds}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        const j = await r.json();
+        let snap = j.result;
+        while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
+        if (snap && snap.grupos) { grupos = snap.grupos; break; }
+      }
+      // Se não tem snapshot, retornar erro amigável
+      if (!grupos) {
+        return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: 0, historico: [], totalMembros: 0, aviso: 'Snapshot não disponível. Aguarde o cron rodar.' });
+      }
+      // Adicionar links aos grupos do snapshot
+      grupos = grupos.map(g => ({ ...g, link: (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
 
       // Encontrar o PRIMEIRO grupo em ordem que ainda tem vagas
       let grupoAtivo = grupos[grupos.length - 1];
@@ -728,24 +736,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const snapHojeData = await snapHojeResp.json();
       const snapHoje = snapHojeData.result ? JSON.parse(snapHojeData.result) : null;
 
-      // Sempre atualizar snapshot de hoje com dados ao vivo
-      await fetch(`${KV_URL}/set/${chaveHoje}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
-      });
-      // Se não tem snapshot de ontem, criar com dados atuais como base
-      if (!snapOntemData.result) {
-        const ontemChave = `vip-snapshot-${ontemStr}`;
-        const ontemExist = await fetch(`${KV_URL}/get/${ontemChave}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({}));
-        if (!ontemExist.result) {
-          await fetch(`${KV_URL}/set/${ontemChave}`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
-          });
-        }
-      }
+      // Snapshot salvo pelo cron (ofertas.js)
 
       // Calcular entradas de hoje comparando com snapshot de ontem
       const ontemStr = new Date(hojeBR.getTime() - 86400000).toISOString().split('T')[0];
