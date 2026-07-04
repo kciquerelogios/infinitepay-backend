@@ -328,6 +328,18 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return res.status(200).json({ pedidos });
   }
 
+  // ===== DEFINIR GRUPO ATIVO MANUAL =====
+  if (req.query.action === 'set-grupo-ativo') {
+    const { nome, link } = req.body || {};
+    if (!nome || !link) return res.status(400).json({ error: 'nome e link obrigatórios' });
+    await fetch(`${KV_URL}/set/grupo-ativo-manual`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, link, atualizado_em: new Date().toISOString() })
+    });
+    return res.status(200).json({ ok: true, nome, link });
+  }
+
   // ===== ACTION: ENVIAR PARA FORNECEDOR =====
   if (req.query.action === 'enviar-fornecedor') {
     const { clienteNome, tracking, imgUrl } = req.query;
@@ -674,19 +686,6 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== ACTION: GRUPO VIP ATIVO (público, com CORS) =====
 
-
-  // ===== ACTION: GRUPOS VIP DASHBOARD =====
-  // ===== DEFINIR GRUPO ATIVO MANUAL =====
-  if (req.query.action === 'set-grupo-ativo') {
-    const { nome, link } = req.body || {};
-    if (!nome || !link) return res.status(400).json({ error: 'nome e link obrigatórios' });
-    await fetch(`${KV_URL}/set/grupo-ativo-manual`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, link, atualizado_em: new Date().toISOString() })
-    });
-    return res.status(200).json({ ok: true, nome, link });
-  }
 
   if (req.query.action === 'grupos-vip-dashboard') {
     try {
