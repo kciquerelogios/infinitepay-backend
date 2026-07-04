@@ -736,8 +736,6 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         if (g.membros < LIMITE) { grupoAtivo = g; break; }
       }
 
-      const hoje = new Date();
-      const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
       const hojeStr = hojeBR.toISOString().split('T')[0];
       const totalAtual = grupos.reduce((s,g) => s+g.membros, 0);
 
