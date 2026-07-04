@@ -75,11 +75,12 @@ export default async function handler(req, res) {
         user_data,
         ...(custom_data ? { custom_data } : {}),
       }],
-      test_event_code: process.env.META_TEST_CODE || undefined,
+      test_event_code: process.env.META_TEST_CODE || 'TEST73050',
     };
 
-    // Remover test_event_code se não definido
+    // Só remover se realmente vazio
     if (!payload.test_event_code) delete payload.test_event_code;
+    console.log('test_event_code:', payload.test_event_code);
 
     const response = await fetch(`${API_URL}?access_token=${ACCESS_TOKEN}`, {
       method: 'POST',
