@@ -737,13 +737,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const snapHojeData = await snapHojeResp.json();
       const snapHoje = snapHojeData.result ? JSON.parse(snapHojeData.result) : null;
 
-      // Se não tem snapshot de hoje, salvar agora
-      if (!snapHoje) {
-        await fetch(`${KV_URL}/set/${chaveHoje}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
-        });
+      // Sempre atualizar snapshot de hoje com dados ao vivo
+      await fetch(`${KV_URL}/set/${chaveHoje}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
+      });
+      // Se não tem snapshot de ontem, criar com dados atuais como base
+      if (!snapOntemData.result) {
+        const ontemChave = `vip-snapshot-${ontemStr}`;
+        const ontemExist = await fetch(`${KV_URL}/get/${ontemChave}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r=>r.json()).catch(()=>({}));
+        if (!ontemExist.result) {
+          await fetch(`${KV_URL}/set/${ontemChave}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ total: totalAtual, grupos: grupos.map(g=>({nome:g.nome,membros:g.membros})), ts: new Date().toISOString() })
+          });
+        }
       }
 
       // Calcular entradas de hoje comparando com snapshot de ontem
@@ -751,8 +761,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const chaveOntem = `vip-snapshot-${ontemStr}`;
       const snapOntemResp = await fetch(`${KV_URL}/get/${chaveOntem}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const snapOntemData = await snapOntemResp.json();
-      const snapOntem = snapOntemData.result ? JSON.parse(snapOntemData.result) : null;
-      const entradasHoje = snapOntem ? Math.max(0, totalAtual - snapOntem.total) : 0;
+      let snapOntem = null;
+      if (snapOntemData.result) {
+        try {
+          snapOntem = typeof snapOntemData.result === 'string' ? JSON.parse(snapOntemData.result) : snapOntemData.result;
+          if (typeof snapOntem === 'string') snapOntem = JSON.parse(snapOntem);
+        } catch(e) {}
+      }
+      const entradasHoje = snapOntem ? Math.max(0, totalAtual - (snapOntem.total || 0)) : 0;
 
       // Histórico dos últimos 7 dias
       const historico = [];
