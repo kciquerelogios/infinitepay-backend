@@ -1536,31 +1536,13 @@ async function salvarOferta(){
     var data=await resp.json();
     if(data.success){
       msg.textContent='✅ Agendada!';msg.style.color='#10b981';
-      // Limpar formulário sem recarregar
       document.getElementById('f-texto').value='';
       document.getElementById('f-imagem').value='';
       document.getElementById('f-link').value='';
-      // Resetar data para +5min
       var agora2=new Date();agora2.setMinutes(agora2.getMinutes()+5);
       var pad2=function(n){return n<10?'0'+n:String(n);};
-      var novaData=agora2.getFullYear()+'-'+pad2(agora2.getMonth()+1)+'-'+pad2(agora2.getDate())+'T'+pad2(agora2.getHours())+':'+pad2(agora2.getMinutes());
-      document.getElementById('f-data').value=novaData;
-      // Adicionar na tabela sem recarregar
-      var tbody=document.querySelector('#tab-ofertas tbody');
-      if(tbody && data.oferta){
-        var o=data.oferta;
-        var dataExib=new Date(o.dataHora).toLocaleDateString('pt-BR')+' '+new Date(o.dataHora).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-        var tr=document.createElement('tr');
-        tr.id='oferta-'+o.id;
-        tr.innerHTML='<td>'+(o.imagem?'<img src="'+o.imagem+'" style="width:40px;height:40px;object-fit:cover;border-radius:6px">':'—')+'</td>'
-          +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+o.texto+'</td>'
-          +'<td>'+dataExib+'</td>'
-          +'<td>'+o.grupos+'</td>'
-          +'<td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">agendada</span></td>'
-          +'<td><button onclick="delOferta(this,''+o.id+'')" class="btn-del">🗑</button></td>';
-        tbody.insertBefore(tr, tbody.firstChild);
-      }
-      setTimeout(function(){msg.textContent='';},3000);
+      document.getElementById('f-data').value=agora2.getFullYear()+'-'+pad2(agora2.getMonth()+1)+'-'+pad2(agora2.getDate())+'T'+pad2(agora2.getHours())+':'+pad2(agora2.getMinutes());
+      setTimeout(function(){msg.textContent='';mudarAba('ofertas');},1500);
     }
     else{msg.textContent='❌ '+(data.error||'Erro');msg.style.color='#ef4444';}
   }catch(e){msg.textContent='❌ Erro de conexão';msg.style.color='#ef4444';}
