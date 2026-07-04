@@ -149,7 +149,7 @@ export default async function handler(req, res) {
       {nome:'#13',link:'https://chat.whatsapp.com/GLAtyB662tc8bC3dwdwjVI'},
       {nome:'#14',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
       {nome:'#15',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
-      {nome:'#16',link:'https://chat.whatsapp.com/CgmcNCOryuWARmNSbmMz2d'},
+      {nome:'#16',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
       {nome:'#17',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
     ];
     try {
@@ -699,7 +699,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/GLAtyB662tc8bC3dwdwjVI'},
         {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
         {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
-        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/CgmcNCOryuWARmNSbmMz2d'},
+        {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
         {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
       ];
       const LIMITE = 1000;
