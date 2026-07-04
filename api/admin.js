@@ -1248,7 +1248,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
       <button onclick="limparOfertas()" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗑 Limpar todas enviadas</button>
     </div>
-    ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>Ação</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
+    ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table id="tab-ofertas"><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>Ação</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
 
   // ===== ABA PEDIDOS =====
   const pedidosList = (pedidosRecentes.orders || []);
@@ -1280,6 +1280,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const endStr = addr ? (addr.address1||'') + (addr.address2 ? ' '+addr.address2 : '') + ', ' + (addr.city||'') + '/' + (addr.province_code||'') + ' — CEP ' + (addr.zip||'') : '—';
     const financial = order.financial_status;
     const fulfillment = order.fulfillment_status;
+    const notaPedido = order.note || '';
+    const origemMatch = notaPedido.match(/Origem: ([^|\n]+)/);
+    const origem = origemMatch ? origemMatch[1].trim() : '—';
 
     let statusColor = '#f59e0b', statusLabel = 'Pago';
     if (fulfillment === 'fulfilled') { statusColor = '#16a34a'; statusLabel = '✅ Enviado'; }
@@ -1312,6 +1315,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           + '<span style="font-size:13px;color:#1a1a2e;font-weight:500">' + nome + '</span>'
           + '<span style="background:' + statusColor + '20;color:' + statusColor + ';padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600">' + statusLabel + '</span>'
           + (rastreios.length > 0 ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">📦 ' + rastreios[0] + '</span>' : '')
+          + (origem !== '—' ? '<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">📍 ' + origem + '</span>' : '')
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:8px">'
           + '<span style="font-weight:700;font-size:16px">R$ ' + parseFloat(order.total_price||0).toFixed(2).replace('.',',') + '</span>'
@@ -1530,7 +1534,34 @@ async function salvarOferta(){
   try{
     var resp=await fetch('/api/ofertas?action=salvar&secret=${secret}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:document.getElementById('f-imagem').value.trim(),link:document.getElementById('f-link').value.trim(),dataHora,grupos})});
     var data=await resp.json();
-    if(data.success){msg.textContent='✅ Agendada!';msg.style.color='#10b981';setTimeout(function(){window.location.reload();},1500);}
+    if(data.success){
+      msg.textContent='✅ Agendada!';msg.style.color='#10b981';
+      // Limpar formulário sem recarregar
+      document.getElementById('f-texto').value='';
+      document.getElementById('f-imagem').value='';
+      document.getElementById('f-link').value='';
+      // Resetar data para +5min
+      var agora2=new Date();agora2.setMinutes(agora2.getMinutes()+5);
+      var pad2=function(n){return n<10?'0'+n:String(n);};
+      var novaData=agora2.getFullYear()+'-'+pad2(agora2.getMonth()+1)+'-'+pad2(agora2.getDate())+'T'+pad2(agora2.getHours())+':'+pad2(agora2.getMinutes());
+      document.getElementById('f-data').value=novaData;
+      // Adicionar na tabela sem recarregar
+      var tbody=document.querySelector('#tab-ofertas tbody');
+      if(tbody && data.oferta){
+        var o=data.oferta;
+        var dataExib=new Date(o.dataHora).toLocaleDateString('pt-BR')+' '+new Date(o.dataHora).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        var tr=document.createElement('tr');
+        tr.id='oferta-'+o.id;
+        tr.innerHTML='<td>'+(o.imagem?'<img src="'+o.imagem+'" style="width:40px;height:40px;object-fit:cover;border-radius:6px">':'—')+'</td>'
+          +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+o.texto+'</td>'
+          +'<td>'+dataExib+'</td>'
+          +'<td>'+o.grupos+'</td>'
+          +'<td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">agendada</span></td>'
+          +'<td><button onclick="delOferta(this,''+o.id+'')" class="btn-del">🗑</button></td>';
+        tbody.insertBefore(tr, tbody.firstChild);
+      }
+      setTimeout(function(){msg.textContent='';},3000);
+    }
     else{msg.textContent='❌ '+(data.error||'Erro');msg.style.color='#ef4444';}
   }catch(e){msg.textContent='❌ Erro de conexão';msg.style.color='#ef4444';}
 }
