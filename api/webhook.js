@@ -158,6 +158,42 @@ export default async function handler(req, res) {
 
     console.log('Pedido criado no Shopify:', shopifyData.order.id);
 
+    // ===== META CAPI: Purchase =====
+    try {
+      const valorTotal = parseFloat(payload.amount || 0) / 100;
+      const metaPayload = {
+        event_name: 'Purchase',
+        event_id: 'purchase_' + (shopifyData.order.id || Date.now()),
+        event_source_url: 'https://kcique.com.br/pages/checkout',
+        email: cliente?.email,
+        phone: cliente?.telefone,
+        nome: cliente?.nome,
+        ip: req.headers['x-forwarded-for'] || '',
+        user_agent: req.headers['user-agent'] || '',
+        cidade: cliente?.cidade,
+        estado: cliente?.estado,
+        cep: cliente?.cep,
+        pais: 'BR',
+        custom_data: {
+          value: valorTotal,
+          currency: 'BRL',
+          order_id: String(shopifyData.order.id),
+          content_ids: lineItems.map(i => String(i.variant_id || i.product_id || '')),
+          contents: lineItems.map(i => ({ id: String(i.variant_id || ''), quantity: i.quantity, item_price: parseFloat(i.price) })),
+          num_items: lineItems.reduce((s, i) => s + i.quantity, 0),
+        }
+      };
+      await fetch('https://infinitepay-backend.vercel.app/api/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metaPayload)
+      });
+      console.log('Meta CAPI Purchase enviado:', valorTotal, 'BRL');
+    } catch(e) {
+      console.error('Meta CAPI erro:', e.message);
+    }
+    // ===== FIM META CAPI =====
+
     // Adicionar no carrinho do Melhor Envio
     if (cliente && frete && MELHORENVIO_TOKEN) {
       try {
@@ -258,35 +294,20 @@ export default async function handler(req, res) {
         headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
       });
     }
-// Deletar lead de abandono se existir (cliente pagou!)
+
+    // Deletar lead de abandono se existir (cliente pagou!)
     if (cliente && cliente.email && process.env.KV_REST_API_URL) {
-      try {
-        const KV_URL = process.env.KV_REST_API_URL;
-        const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-        // Buscar todos os leads da lista
-        const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/-1`, {
-          headers: { Authorization: `Bearer ${KV_TOKEN}` }
-        });
-        const listaData = await listaResp.json();
-        const todos = listaData.result || [];
-        // Filtrar os que pertencem a este email
-        const emailLead = `lead-${cliente.email}`;
-        const leadsDoCliente = todos.filter(id => id.startsWith(emailLead));
-        // Deletar cada um
-        for (const id of leadsDoCliente) {
-          await fetch(`${KV_URL}/del/${id}`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${KV_TOKEN}` }
-          });
-          await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${KV_TOKEN}` }
-          });
-          console.log('Lead removido após pagamento:', id);
-        }
-      } catch(e) {
-        console.log('Erro ao remover leads:', e.message);
-      }
+      const leadId = `lead-${cliente.email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+      await fetch(`${process.env.KV_REST_API_URL}/del/${leadId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+      });
+      // Remover da lista também
+      await fetch(`${process.env.KV_REST_API_URL}/lrem/leads-lista/0/${leadId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+      });
+      console.log('Lead removido após pagamento:', leadId);
     }
 
     return res.status(200).json({ success: true, message: null });
