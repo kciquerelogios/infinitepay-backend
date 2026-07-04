@@ -447,7 +447,8 @@ export default async function handler(req, res) {
   if (action === 'salvar' && req.method === 'POST') {
     try {
       const id = await salvarOferta(KV_URL, KV_TOKEN, req.body);
-      return res.status(200).json({ success: true, id });
+      const oferta = { id, ...req.body, status: 'agendada', criado_em: new Date().toISOString() };
+      return res.status(200).json({ success: true, id, oferta });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
