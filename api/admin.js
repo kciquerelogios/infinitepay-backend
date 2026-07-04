@@ -1688,7 +1688,7 @@ async function carregarGruposVip() {
     html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
     html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
     html += '<input id="input-link-ativo" value="' + ga.link + '" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px" placeholder="Novo link do grupo">';
-    html += '<button onclick="atualizarLinkAtivo()" style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Salvar link</button>';
+    html += '<button class="btn-salvar-link" style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Salvar link</button>';
     html += '</div>';
     html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link /api/grupo</button>';
     html += '</div></div>';
@@ -1706,7 +1706,7 @@ async function carregarGruposVip() {
       html += '<div style="font-size:18px;font-weight:700;margin-bottom:4px">' + g.membros.toLocaleString('pt-BR') + '</div>';
       html += '<div style="background:#f3f4f6;border-radius:4px;height:5px;margin-bottom:3px"><div style="background:' + cor + ';height:5px;border-radius:4px;width:' + pctG + '%"></div></div>';
       html += '<div style="font-size:10px;color:#9ca3af;margin-bottom:6px">' + (LIMITE - g.membros) + ' vagas</div>';
-      if (!isAtivo) html += '<button onclick="definirGrupoAtivo(\'' + g.nome + '\',\'' + (g.link||'') + '\')" style="width:100%;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer">Definir ativo</button>';
+      if (!isAtivo) html += '<button class="btn-def-ativo" data-nome="' + g.nome + '" data-link="' + encodeURIComponent(g.link||'') + '" style="width:100%;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer">Definir ativo</button>';
       html += '</div>';
     });
     html += '</div></div>';
@@ -1714,12 +1714,41 @@ async function carregarGruposVip() {
     loading.style.display = 'none';
     el.innerHTML = html;
     el.style.display = 'block';
-    // Adicionar event listener após inserir HTML
+    // Adicionar event listeners após inserir HTML
     var btnCopiar = document.getElementById('btn-copiar-link');
     if (btnCopiar) {
       btnCopiar.onclick = function() {
-        var linkEl = document.getElementById('link-ativo');
-        if (linkEl) navigator.clipboard.writeText(linkEl.href).then(function(){ alert('Copiado!'); });
+        navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){ alert('Link copiado! Use este link fixo nos seus anúncios.'); });
+      };
+    }
+    // Delegação de eventos para botões "Definir ativo"
+    el.querySelectorAll('.btn-def-ativo').forEach(function(btn) {
+      btn.onclick = function() {
+        var nome = btn.getAttribute('data-nome');
+        var link = decodeURIComponent(btn.getAttribute('data-link'));
+        var novoLink = prompt('Novo link para o grupo ' + nome + ':', link);
+        if (!novoLink) return;
+        fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ nome: nome, link: novoLink })
+        }).then(function(r){ return r.json(); }).then(function(d){
+          if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
+          else alert('Erro: ' + (d.error||'desconhecido'));
+        });
+      };
+    });
+    // Campo de atualizar link
+    var btnSalvarLink = el.querySelector('.btn-salvar-link');
+    if (btnSalvarLink) {
+      btnSalvarLink.onclick = function() {
+        var input = document.getElementById('input-link-ativo');
+        if (!input || !input.value.trim()) return;
+        fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ nome: data.grupoAtivo.nome, link: input.value.trim() })
+        }).then(function(r){ return r.json(); }).then(function(d){
+          if (d.ok) { alert('✅ Link atualizado!'); carregarGruposVip(); }
+        });
       };
     }
   } catch(e) {
