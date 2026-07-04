@@ -148,7 +148,7 @@ export default async function handler(req, res) {
       {nome:'#12',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
       {nome:'#13',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
       {nome:'#14',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
-      {nome:'#15',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
+      {nome:'#15',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
       {nome:'#16',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
       {nome:'#17',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
     ];
@@ -173,16 +173,11 @@ export default async function handler(req, res) {
 
       if (!grupos) throw new Error('sem snapshot');
 
-      // Encontrar grupo com menos membros (mais vazio) com vagas
-      let ativo = null;
-      let menorMembros = Infinity;
+      // Encontrar o PRIMEIRO grupo em ordem que ainda tem vagas
+      let ativo = grupos[grupos.length - 1];
       for (const g of grupos) {
-        if (g.membros < LIMITE && g.membros < menorMembros) {
-          menorMembros = g.membros;
-          ativo = g;
-        }
+        if (g.membros < LIMITE) { ativo = g; break; }
       }
-      if (!ativo) ativo = grupos[grupos.length - 1];
       const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
       return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
     } catch(e) {
@@ -698,7 +693,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
         {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
         {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
-        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/Kuzzy2aKk78L3kGRxu58bc'},
+        {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
         {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
         {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
       ];
@@ -716,14 +711,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
       const grupos = await Promise.all(membrosPromises);
 
-      // Encontrar grupo mais vazio (menor número de membros com vagas)
+      // Encontrar o PRIMEIRO grupo em ordem que ainda tem vagas
       let grupoAtivo = grupos[grupos.length - 1];
-      let menorMembros = Infinity;
       for (const g of grupos) {
-        if (g.membros < LIMITE && g.membros < menorMembros) {
-          menorMembros = g.membros;
-          grupoAtivo = g;
-        }
+        if (g.membros < LIMITE) { grupoAtivo = g; break; }
       }
 
       const hoje = new Date();
