@@ -1883,8 +1883,8 @@ async function atualizarLinkAtivo() {
   });
   var d2 = await r2.json();
   if (d2.ok) {
-    if (linkAtivo) { linkAtivo.href = novoLink; linkAtivo.textContent = novoLink; }
     alert('✅ Link atualizado!');
+    carregarGruposVip();
   }
 }
 
