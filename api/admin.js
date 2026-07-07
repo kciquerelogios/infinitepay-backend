@@ -1591,12 +1591,21 @@ function atualizarCampoValor() {
   campo.style.display = (tipo === 'frete_gratis') ? 'none' : 'block';
 }
 async function salvarCupom() {
+  // Buscar campos do formulário ativo no DOM atual
+  var form = document.querySelector('[id="c-codigo"]')?.closest('form') || document.getElementById('content-cupons') || document.body;
   var msg = document.getElementById('cupom-msg');
-  var codigo = document.getElementById('c-codigo').value.trim().toUpperCase();
-  var tipo = document.getElementById('c-tipo').value;
-  var valor = document.getElementById('c-valor').value;
-  var validade = document.getElementById('c-validade').value;
-  var limite = document.getElementById('c-limite').value;
+  var codigoEl = document.getElementById('c-codigo');
+  var tipoEl = document.getElementById('c-tipo');
+  var valorEl = document.getElementById('c-valor');
+  var validadeEl = document.getElementById('c-validade');
+  var limiteEl = document.getElementById('c-limite');
+  if (!codigoEl || !tipoEl) { if(msg) msg.textContent = '⚠️ Formulário não encontrado'; return; }
+  var codigo = codigoEl.value.trim().toUpperCase();
+  var tipo = tipoEl.value;
+  var valor = valorEl ? valorEl.value : '0';
+  var validade = validadeEl ? validadeEl.value : '';
+  var limite = limiteEl ? limiteEl.value : '';
+  console.log('salvarCupom:', codigo, tipo, valor);
   if (!codigo) { msg.textContent = '⚠️ Digite o código'; msg.style.color = '#ef4444'; return; }
   msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
   try {
