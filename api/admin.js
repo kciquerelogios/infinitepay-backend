@@ -154,6 +154,17 @@ export default async function handler(req, res) {
     ];
     try {
       const LIMITE = 1000;
+
+      // PRIORIDADE 1: verificar grupo definido manualmente no dashboard
+      const manualResp = await fetch(`${KV_URL}/get/grupo-ativo-manual`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const manualData = await manualResp.json();
+      let manual = manualData.result;
+      while (typeof manual === 'string') { try { manual = JSON.parse(manual); } catch(e) { break; } }
+      if (manual && manual.link) {
+        return res.status(200).json({ grupo: manual.nome, link: manual.link, membros: 0, vagas: 1000, fonte: 'manual' });
+      }
+
+      // PRIORIDADE 2: snapshot automático dos últimos 3 dias
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
 
