@@ -1615,7 +1615,7 @@ async function salvarCupom() {
       body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: document.getElementById('c-produto').value.trim()||'todos', qtdMinima: document.getElementById('c-qtd-minima').value ? parseInt(document.getElementById('c-qtd-minima').value) : null, ativo: true })
     });
     var data = await resp.json();
-    if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => window.location.reload(), 1500); }
+    if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => mudarAba('cupons'), 1500); }
     else { msg.textContent = '❌ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
   } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
 }
