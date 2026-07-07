@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
   async function listarCupons() {
-    const r = await fetch(`${KV_URL}/lrange/cupons-lista/0/100`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const r = await fetch(`${KV_URL}/lrange/cupons-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     const d = await r.json();
     const ids = (d.result || []).map(id => {
       if (typeof id === 'string' && id.startsWith('[')) {
