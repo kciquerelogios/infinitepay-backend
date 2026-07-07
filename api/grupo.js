@@ -11,15 +11,18 @@ export default async function handler(req, res) {
     const r = await fetch(`${KV_URL}/get/grupo-ativo-manual`, {
       headers: { Authorization: `Bearer ${KV_TOKEN}` }
     });
-    
+
     if (!r.ok) return res.redirect(302, FALLBACK);
-    
+
     const j = await r.json();
     let dados = j.result;
     if (!dados) return res.redirect(302, FALLBACK);
     while (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch(e) { break; } }
 
     if (dados && dados.link) {
+      // Redirect sem cache para sempre pegar o link mais recente
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
       return res.redirect(302, dados.link);
     }
   } catch(e) {
