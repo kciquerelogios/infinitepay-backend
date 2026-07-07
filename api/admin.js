@@ -741,10 +741,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       // Adicionar links aos grupos do snapshot
       grupos = grupos.map(g => ({ ...g, link: (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
 
-      // Encontrar o PRIMEIRO grupo em ordem que ainda tem vagas
-      let grupoAtivo = grupos[grupos.length - 1];
-      for (const g of grupos) {
-        if (g.membros < LIMITE) { grupoAtivo = g; break; }
+      // Verificar se há grupo definido manualmente
+      const manualR = await fetch(`${KV_URL}/get/grupo-ativo-manual`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const manualJ = await manualR.json();
+      let manualGrupo = manualJ.result;
+      while (typeof manualGrupo === 'string') { try { manualGrupo = JSON.parse(manualGrupo); } catch(e) { break; } }
+      let grupoAtivo;
+      if (manualGrupo && manualGrupo.link) {
+        const gSnap = grupos.find(g => g.nome === manualGrupo.nome);
+        grupoAtivo = gSnap ? { ...gSnap, link: manualGrupo.link } : { nome: manualGrupo.nome, link: manualGrupo.link, membros: 0 };
+      } else {
+        grupoAtivo = grupos[grupos.length - 1];
+        for (const g of grupos) {
+          if (g.membros < LIMITE) { grupoAtivo = g; break; }
+        }
       }
 
       const hojeStr = hojeBR.toISOString().split('T')[0];
