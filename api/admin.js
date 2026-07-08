@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   const { secret } = req.query;
 
-  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (público) =====
+  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (pÃºblico) =====
   if (req.query.action === 'bundle-lista') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÁGINA DO PRODUTO (público) =====
+  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÃGINA DO PRODUTO (pÃºblico) =====
   if (req.query.action === 'bundle-lista') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (público, com CORS) =====
+  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (pÃºblico, com CORS) =====
   if (req.query.action === 'bundle-produtos') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ===== ACTION: GRUPO VIP ATIVO (público, sem secret) =====
+  // ===== ACTION: GRUPO VIP ATIVO (pÃºblico, sem secret) =====
   if (req.query.action === 'grupo-vip-ativo') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -164,11 +164,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ grupo: manual.nome, link: manual.link, membros: 0, vagas: 1000, fonte: 'manual' });
       }
 
-      // PRIORIDADE 2: snapshot automático dos últimos 3 dias
+      // PRIORIDADE 2: snapshot automÃ¡tico dos Ãºltimos 3 dias
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
 
-      // Tentar snapshot dos últimos 3 dias
+      // Tentar snapshot dos Ãºltimos 3 dias
       let grupos = null;
       for (let i = 0; i <= 2; i++) {
         const d = new Date(hojeBR); d.setDate(d.getDate() - i);
@@ -192,7 +192,7 @@ export default async function handler(req, res) {
       const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
       return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
     } catch(e) {
-      // Sem snapshot — buscar ao vivo no Z-API
+      // Sem snapshot â€” buscar ao vivo no Z-API
       try {
         const GRUPOS_IDS = [
           {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
@@ -233,7 +233,7 @@ export default async function handler(req, res) {
 h1{font-size:24px;margin-bottom:8px}p{color:#888;font-size:13px;margin-bottom:24px}
 input{width:100%;padding:12px 16px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;font-size:15px;outline:none;margin-bottom:12px}
 input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d366;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}
-</style></head><body><div class="login"><h1>⌚ Kcique Admin</h1><p>Painel de controle da loja</p>
+</style></head><body><div class="login"><h1>âŒš Kcique Admin</h1><p>Painel de controle da loja</p>
 <form onsubmit="window.location.href='/api/admin?secret='+document.getElementById('s').value;return false">
 <input id="s" type="password" placeholder="Senha de acesso"><button type="submit">Entrar</button></form></div></body></html>`);
   }
@@ -342,7 +342,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== DEFINIR GRUPO ATIVO MANUAL =====
   if (req.query.action === 'set-grupo-ativo') {
     const { nome, link } = req.body || {};
-    if (!nome || !link) return res.status(400).json({ error: 'nome e link obrigatórios' });
+    if (!nome || !link) return res.status(400).json({ error: 'nome e link obrigatÃ³rios' });
     await fetch(`${KV_URL}/set/grupo-ativo-manual`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
@@ -360,7 +360,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const zapiBase = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}`;
 
     try {
-      // 1. Buscar meOrderId se não veio
+      // 1. Buscar meOrderId se nÃ£o veio
       if (!meOrderId) {
         const pages = await Promise.all([1,2,3].map(p =>
           fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
@@ -382,7 +382,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         }
       }
 
-      // 2. Buscar URL do PDF no S3 (etiqueta + DACE juntos via endpoint de impressão)
+      // 2. Buscar URL do PDF no S3 (etiqueta + DACE juntos via endpoint de impressÃ£o)
       let allPdfUrls = [];
       if (meOrderId) {
         try {
@@ -395,12 +395,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const pdfData = await pdfResp.json();
           console.log('shipment/print:', JSON.stringify(pdfData).substring(0,200));
           
-          // Baixar PDF completo (etiqueta + DACE) via serviço Railway
+          // Baixar PDF completo (etiqueta + DACE) via serviÃ§o Railway
           const PDF_SERVICE = 'https://kcique-pdf-service-production.up.railway.app';
           const PDF_SECRET = 'kcique2026';
 
           try {
-            // Pegar link de impressão do Melhor Envio
+            // Pegar link de impressÃ£o do Melhor Envio
             const printResp = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/print', {
               method: 'POST',
               headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
@@ -424,7 +424,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
             }
           } catch(e) {
             console.log('Erro PDF service Railway:', e.message);
-            // Fallback: URL S3 via API (só etiqueta sem DACE)
+            // Fallback: URL S3 via API (sÃ³ etiqueta sem DACE)
             const pdfResp2 = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
               headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
             });
@@ -437,7 +437,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
       const pdfS3Url = allPdfUrls[0] || '';
 
-      // 3. Enviar mensagens em sequência
+      // 3. Enviar mensagens em sequÃªncia
       // Foguetes iniciais
       await fetch(`${zapiBase}/send-text`, {
         method: 'POST',
@@ -557,7 +557,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
-  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (público) =====
+  // ===== ACTION: BUNDLE COMPLETO - retorna produtos prontos para exibir (pÃºblico) =====
   if (req.query.action === 'bundle-lista') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -609,7 +609,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
-  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÁGINA DO PRODUTO (público) =====
+  // ===== ACTION: BUNDLE - LISTA COMPLETA PARA PÃGINA DO PRODUTO (pÃºblico) =====
   if (req.query.action === 'bundle-lista') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -661,7 +661,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
-  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (público, com CORS) =====
+  // ===== ACTION: BUNDLE - LISTAR PRODUTOS SELECIONADOS (pÃºblico, com CORS) =====
   if (req.query.action === 'bundle-produtos') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -695,7 +695,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
-  // ===== ACTION: GRUPO VIP ATIVO (público, com CORS) =====
+  // ===== ACTION: GRUPO VIP ATIVO (pÃºblico, com CORS) =====
 
 
   if (req.query.action === 'grupos-vip-dashboard') {
@@ -721,7 +721,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       ];
       const LIMITE = 1000;
 
-      // Usar snapshot do Redis (instantâneo) em vez de buscar ao vivo
+      // Usar snapshot do Redis (instantÃ¢neo) em vez de buscar ao vivo
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
       let grupos = null;
@@ -734,14 +734,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
         if (snap && snap.grupos) { grupos = snap.grupos; break; }
       }
-      // Se não tem snapshot, retornar erro amigável
+      // Se nÃ£o tem snapshot, retornar erro amigÃ¡vel
       if (!grupos) {
-        return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: 0, historico: [], totalMembros: 0, aviso: 'Snapshot não disponível. Aguarde o cron rodar.' });
+        return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: 0, historico: [], totalMembros: 0, aviso: 'Snapshot nÃ£o disponÃ­vel. Aguarde o cron rodar.' });
       }
       // Adicionar links aos grupos do snapshot
       grupos = grupos.map(g => ({ ...g, link: (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
 
-      // Verificar se há grupo definido manualmente
+      // Verificar se hÃ¡ grupo definido manualmente
       const manualR = await fetch(`${KV_URL}/get/grupo-ativo-manual`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const manualJ = await manualR.json();
       let manualGrupo = manualJ.result;
@@ -782,7 +782,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
       const entradasHoje = snapOntem ? Math.max(0, totalAtual - (snapOntem.total || 0)) : 0;
 
-      // Histórico dos últimos 7 dias
+      // HistÃ³rico dos Ãºltimos 7 dias
       const historico = [];
       for (let i = 6; i >= 0; i--) {
         const d1 = new Date(hojeBR); d1.setDate(d1.getDate() - i);
@@ -815,7 +815,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const d = await r.json();
       const chats = Array.isArray(d) ? d : (d.chats || d.result || []);
       const grupos = chats.filter(c => (c.isGroup || (c.id && c.id.includes('-group'))) && (!nome || (c.name||c.title||c.subject||'').toLowerCase().includes(nome.toLowerCase())));
-      return res.status(200).json({ total: grupos.length, grupos: grupos.map(g => ({ id: g.id, phone: g.phone, chatId: g.chatId, nome: g.name||g.title||g.subject||'—', raw_keys: Object.keys(g) })) });
+      return res.status(200).json({ total: grupos.length, grupos: grupos.map(g => ({ id: g.id, phone: g.phone, chatId: g.chatId, nome: g.name||g.title||g.subject||'â€”', raw_keys: Object.keys(g) })) });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
@@ -945,7 +945,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   // ===== DATAS =====
   const hoje = new Date();
-  // Ajustar para horário de Brasília (UTC-3)
+  // Ajustar para horÃ¡rio de BrasÃ­lia (UTC-3)
   const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
   const hojeStr = hojeBR.toISOString().split('T')[0];
   const inicioDia = hojeStr + 'T00:00:00-03:00';
@@ -972,9 +972,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioDia}&created_at_max=${fimDia}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify pedidos semana
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioSemanaStr}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-    // Shopify pedidos mês
+    // Shopify pedidos mÃªs
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMes}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-    // Shopify pedidos mês anterior
+    // Shopify pedidos mÃªs anterior
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMesAnt}&created_at_max=${fimMesAnt}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify novos clientes hoje
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?created_at_min=${inicioDia}&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({customers:[]})),
@@ -986,7 +986,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
-    // Melhor Envio - carrinho (pending) e purchases (em trânsito)
+    // Melhor Envio - carrinho (pending) e purchases (em trÃ¢nsito)
     Promise.all([
       fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
       fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(async r => {
@@ -1042,7 +1042,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     pedidosPendentes = (pedidosPagar.orders||[]).length;
     ticketMedio = vendas.mes.count > 0 ? vendas.mes.valor / vendas.mes.count : 0;
 
-    // Devoluções
+    // DevoluÃ§Ãµes
     devolucoes = (ordersMes.orders||[]).filter(o => o.refunds && o.refunds.length > 0).length;
 
     // Top produtos
@@ -1054,10 +1054,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         prodContagem[item.title].valor += parseFloat(item.price) * item.quantity;
       });
     });
-    // Mapa de imagens por título do produto (busca parcial)
+    // Mapa de imagens por tÃ­tulo do produto (busca parcial)
     const produtosShopify = produtosSemEstoque.products || [];
     const getImagem = (nomeOrder) => {
-      // Remove variante " - Cor: X" para comparar só o título base
+      // Remove variante " - Cor: X" para comparar sÃ³ o tÃ­tulo base
       const nomeBase = nomeOrder.split(' - Cor:')[0].split(' - ')[0].trim();
       // Tenta match exato
       const exato = produtosShopify.find(p => p.title === nomeOrder || p.title === nomeBase);
@@ -1096,7 +1096,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const cart = etiquetasME.cart || [];
     // Etiquetas hoje = pedidos pagos hoje no Shopify
     etiquetasHoje = vendas.hoje.count || (ordersHoje.orders || []).length;
-    // Carrinho = etiquetas não pagas ainda
+    // Carrinho = etiquetas nÃ£o pagas ainda
     cartME = etiquetasME.total_cart || cart.length;
     // Contar por status real dos orders
     const purchases = etiquetasME.purchases || [];
@@ -1111,64 +1111,64 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
   } catch(e) { console.error('ME error:', e.message); }
 
-  // Comparativo mês
+  // Comparativo mÃªs
   const variacaoMes = vendas.mesAnt.valor > 0 ? ((vendas.mes.valor - vendas.mesAnt.valor) / vendas.mesAnt.valor * 100).toFixed(1) : null;
-  const variacaoSinal = variacaoMes > 0 ? '▲' : '▼';
+  const variacaoSinal = variacaoMes > 0 ? 'â–²' : 'â–¼';
   const variacaoCor = variacaoMes > 0 ? '#10b981' : '#ef4444';
 
   // ===== ABA HOME =====
   const abaHome = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">💰 Vendas Hoje</div><div class="stat-value">R$ ${vendas.hoje.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.hoje.count} pedido${vendas.hoje.count!==1?'s':''}</div></div>
-      <div class="stat-card"><div class="stat-label">📅 Esta Semana</div><div class="stat-value">R$ ${vendas.semana.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.semana.count} pedidos</div></div>
-      <div class="stat-card"><div class="stat-label">📆 Este Mês</div><div class="stat-value">R$ ${vendas.mes.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${variacaoMes !== null ? `<span style="color:${variacaoCor}">${variacaoSinal} ${Math.abs(variacaoMes)}% vs mês ant.</span>` : `${vendas.mes.count} pedidos`}</div></div>
-      <div class="stat-card"><div class="stat-label">🎯 Ticket Médio</div><div class="stat-value">R$ ${ticketMedio.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.mes.count} pedidos no mês</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ’° Vendas Hoje</div><div class="stat-value">R$ ${vendas.hoje.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.hoje.count} pedido${vendas.hoje.count!==1?'s':''}</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ“… Esta Semana</div><div class="stat-value">R$ ${vendas.semana.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.semana.count} pedidos</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ“† Este MÃªs</div><div class="stat-value">R$ ${vendas.mes.valor.toFixed(2).replace('.',',')}</div><div class="stat-sub">${variacaoMes !== null ? `<span style="color:${variacaoCor}">${variacaoSinal} ${Math.abs(variacaoMes)}% vs mÃªs ant.</span>` : `${vendas.mes.count} pedidos`}</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸŽ¯ Ticket MÃ©dio</div><div class="stat-value">R$ ${ticketMedio.toFixed(2).replace('.',',')}</div><div class="stat-sub">${vendas.mes.count} pedidos no mÃªs</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div></div>
-      <div class="stat-card"><div class="stat-label">↩️ Devoluções no Mês</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
-      <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
-      <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ“¦ Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div></div>
+      <div class="stat-card"><div class="stat-label">â†©ï¸ DevoluÃ§Ãµes no MÃªs</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ‘¥ Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ›’ Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
     </div>
 
-    <div class="section-divider">📦 Melhor Envio</div>
+    <div class="section-divider">ðŸ“¦ Melhor Envio</div>
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">💳 Saldo</div><div class="stat-value" style="font-size:18px;color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'⚠️ Baixo!':'disponível'}</div></div>
-      <div class="stat-card"><div class="stat-label">📬 Etiquetas Hoje</div><div class="stat-value" style="font-size:22px">${etiquetasHoje}</div><div class="stat-sub">vendas de hoje</div></div>
-      <div class="stat-card"><div class="stat-label">🛒 Pra Gerar</div><div class="stat-value" style="font-size:22px;color:#9333ea">${cartME}</div><div class="stat-sub">no carrinho ME</div></div>
-      <div class="stat-card" style="border-color:#fef3c7"><div class="stat-label">📦 Pronto p/ Postar</div><div class="stat-value" style="font-size:22px;color:#f59e0b">${prontoPostar}</div><div class="stat-sub">geradas, aguardando postagem</div></div>
-      <div class="stat-card" style="border-color:#dbeafe"><div class="stat-label">🚚 Em Trânsito</div><div class="stat-value" style="font-size:22px;color:#2563eb">${emTransito}</div><div class="stat-sub">postados</div></div>
-      <div class="stat-card" style="border-color:#dcfce7"><div class="stat-label">✅ Entregues</div><div class="stat-value" style="font-size:22px;color:#16a34a">${entregues}</div><div class="stat-sub">total entregue</div></div>
-      <div class="stat-card" style="${problemaEntrega>0?'border-color:#fecaca;background:#fef2f2':''}"><div class="stat-label">⚠️ Não Entregue</div><div class="stat-value" style="font-size:22px;color:${problemaEntrega>0?'#ef4444':'#6b7280'}">${problemaEntrega}</div><div class="stat-sub">${cancelados} cancelados</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ’³ Saldo</div><div class="stat-value" style="font-size:18px;color:${saldoME<50?'#ef4444':'#10b981'}">R$ ${saldoME.toFixed(2).replace('.',',')}</div><div class="stat-sub">${saldoME<50?'âš ï¸ Baixo!':'disponÃ­vel'}</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ“¬ Etiquetas Hoje</div><div class="stat-value" style="font-size:22px">${etiquetasHoje}</div><div class="stat-sub">vendas de hoje</div></div>
+      <div class="stat-card"><div class="stat-label">ðŸ›’ Pra Gerar</div><div class="stat-value" style="font-size:22px;color:#9333ea">${cartME}</div><div class="stat-sub">no carrinho ME</div></div>
+      <div class="stat-card" style="border-color:#fef3c7"><div class="stat-label">ðŸ“¦ Pronto p/ Postar</div><div class="stat-value" style="font-size:22px;color:#f59e0b">${prontoPostar}</div><div class="stat-sub">geradas, aguardando postagem</div></div>
+      <div class="stat-card" style="border-color:#dbeafe"><div class="stat-label">ðŸšš Em TrÃ¢nsito</div><div class="stat-value" style="font-size:22px;color:#2563eb">${emTransito}</div><div class="stat-sub">postados</div></div>
+      <div class="stat-card" style="border-color:#dcfce7"><div class="stat-label">âœ… Entregues</div><div class="stat-value" style="font-size:22px;color:#16a34a">${entregues}</div><div class="stat-sub">total entregue</div></div>
+      <div class="stat-card" style="${problemaEntrega>0?'border-color:#fecaca;background:#fef2f2':''}"><div class="stat-label">âš ï¸ NÃ£o Entregue</div><div class="stat-value" style="font-size:22px;color:${problemaEntrega>0?'#ef4444':'#6b7280'}">${problemaEntrega}</div><div class="stat-sub">${cancelados} cancelados</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="stat-card">
-        <div class="stat-label" style="margin-bottom:16px">🏆 Top Produtos do Mês</div>
-        ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mês</div>' : topProdutos.map(([nome, dados, img], i) => `
+        <div class="stat-label" style="margin-bottom:16px">ðŸ† Top Produtos do MÃªs</div>
+        ${topProdutos.length === 0 ? '<div style="color:#9ca3af;font-size:13px">Nenhum pedido este mÃªs</div>' : topProdutos.map(([nome, dados, img], i) => `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6">
-            ${img ? `<img src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">` : `<span style="font-size:18px;width:40px;text-align:center">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>`}
+            ${img ? `<img src="${img}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">` : `<span style="font-size:18px;width:40px;text-align:center">${['ðŸ¥‡','ðŸ¥ˆ','ðŸ¥‰','4ï¸âƒ£','5ï¸âƒ£'][i]}</span>`}
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome.substring(0,35)}${nome.length>35?'...':''}</div>
-              <div style="font-size:12px;color:#6b7280">${dados.count} unid. — R$ ${dados.valor.toFixed(2).replace('.',',')}</div>
+              <div style="font-size:12px;color:#6b7280">${dados.count} unid. â€” R$ ${dados.valor.toFixed(2).replace('.',',')}</div>
             </div>
           </div>`).join('')}
       </div>
 
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="stat-card">
-          <div class="stat-label" style="margin-bottom:12px">⚠️ Produtos Sem Estoque</div>
+          <div class="stat-label" style="margin-bottom:12px">âš ï¸ Produtos Sem Estoque</div>
           ${semEstoque.length === 0
-            ? '<div style="color:#10b981;font-size:13px;font-weight:600">✅ Tudo em estoque!</div>'
-            : `<div style="max-height:120px;overflow-y:auto">${semEstoque.slice(0,10).map(p => `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #f3f4f6;color:#dc2626">${p.produto}${p.variante!=='Default Title'?' — '+p.variante:''}</div>`).join('')}${semEstoque.length>10?`<div style="font-size:11px;color:#9ca3af;margin-top:4px">+${semEstoque.length-10} outros</div>`:''}</div>`}
+            ? '<div style="color:#10b981;font-size:13px;font-weight:600">âœ… Tudo em estoque!</div>'
+            : `<div style="max-height:120px;overflow-y:auto">${semEstoque.slice(0,10).map(p => `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #f3f4f6;color:#dc2626">${p.produto}${p.variante!=='Default Title'?' â€” '+p.variante:''}</div>`).join('')}${semEstoque.length>10?`<div style="font-size:11px;color:#9ca3af;margin-top:4px">+${semEstoque.length-10} outros</div>`:''}</div>`}
         </div>
 
         <div class="stat-card">
-          <div class="stat-label" style="margin-bottom:12px">📣 Grupos VIP WhatsApp</div>
+          <div class="stat-label" style="margin-bottom:12px">ðŸ“£ Grupos VIP WhatsApp</div>
           <div style="font-size:32px;font-weight:700">17 grupos</div>
           <div id="grupos-membros" style="margin-top:8px;font-size:13px;color:#6b7280">Carregando membros...</div>
-          <button onclick="mudarAba('ofertas')" style="margin-top:12px;padding:8px 16px;background:#f0fff4;color:#16a34a;border:1px solid #16a34a;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">Agendar oferta →</button>
+          <button onclick="mudarAba('ofertas')" style="margin-top:12px;padding:8px 16px;background:#f0fff4;color:#16a34a;border:1px solid #16a34a;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">Agendar oferta â†’</button>
         </div>
       </div>
     </div>`;
@@ -1176,11 +1176,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ABA CARRINHOS =====
   const agora = new Date();
   const badgeMap = {
-    'email': '<span class="badge" style="background:#f3f4f6;color:#374151">⚪ Só email</span>',
-    'dados_parciais': '<span class="badge" style="background:#fef3c7;color:#92400e">🟡 Dados parciais</span>',
-    'endereco': '<span class="badge" style="background:#dbeafe;color:#1e40af">🔵 Endereço</span>',
-    'pagamento_pendente': '<span class="badge" style="background:#fef3c7;color:#92400e">⏳ Aguardando</span>',
-    'abandonou_pagamento': '<span class="badge" style="background:#fee2e2;color:#991b1b">🔴 Abandonou</span>'
+    'email': '<span class="badge" style="background:#f3f4f6;color:#374151">âšª SÃ³ email</span>',
+    'dados_parciais': '<span class="badge" style="background:#fef3c7;color:#92400e">ðŸŸ¡ Dados parciais</span>',
+    'endereco': '<span class="badge" style="background:#dbeafe;color:#1e40af">ðŸ”µ EndereÃ§o</span>',
+    'pagamento_pendente': '<span class="badge" style="background:#fef3c7;color:#92400e">â³ Aguardando</span>',
+    'abandonou_pagamento': '<span class="badge" style="background:#fee2e2;color:#991b1b">ðŸ”´ Abandonou</span>'
   };
   const abandonouCount = leads.filter(l => {
     let e = l.estagio;
@@ -1193,23 +1193,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const leadsRows = leads.map(lead => {
     const valor = (lead.carrinho || []).reduce((s, i) => s + (i.preco * i.quantidade / 100), 0);
     const tel = (lead.telefone || '').replace(/\D/g, '');
-    const produtos = (lead.carrinho || []).map(i => `<div>• ${i.nome}${i.cor && i.cor !== 'Default Title' ? ' — ' + i.cor : ''} (x${i.quantidade})</div>`).join('') || '<div style="color:#9ca3af">Sem produtos</div>';
+    const produtos = (lead.carrinho || []).map(i => `<div>â€¢ ${i.nome}${i.cor && i.cor !== 'Default Title' ? ' â€” ' + i.cor : ''} (x${i.quantidade})</div>`).join('') || '<div style="color:#9ca3af">Sem produtos</div>';
     const data = new Date(new Date(lead.criado_em).getTime() - 3 * 60 * 60 * 1000);
     const dataStr = data.toLocaleDateString('pt-BR') + ' ' + data.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-    const msg = encodeURIComponent(`Olá ${(lead.nome||'').split(' ')[0]}! 😊 Vi que você estava olhando nossos relógios na Kcique. Posso te ajudar?`);
+    const msg = encodeURIComponent(`OlÃ¡ ${(lead.nome||'').split(' ')[0]}! ðŸ˜Š Vi que vocÃª estava olhando nossos relÃ³gios na Kcique. Posso te ajudar?`);
     let estagio = lead.estagio;
     if (estagio === 'pagamento_pendente' && (lead.atualizado_em || lead.criado_em)) {
       if ((agora - new Date(lead.atualizado_em || lead.criado_em)) / 60000 >= 10) estagio = 'abandonou_pagamento';
     }
     return `<tr>
-      <td><div style="font-weight:600">${lead.nome||'—'}</div><div style="font-size:12px;color:#6b7280">${lead.email}</div><div style="font-size:12px;color:#6b7280">${lead.telefone||'—'}</div></td>
+      <td><div style="font-weight:600">${lead.nome||'â€”'}</div><div style="font-size:12px;color:#6b7280">${lead.email}</div><div style="font-size:12px;color:#6b7280">${lead.telefone||'â€”'}</div></td>
       <td>${badgeMap[estagio]||`<span class="badge">${estagio}</span>`}</td>
       <td style="font-size:13px">${produtos}</td>
       <td><strong>R$ ${valor.toFixed(2).replace('.', ',')}</strong>${lead.frete?`<br><span style="font-size:11px;color:#6b7280">+ ${lead.frete.nome}</span>`:''}</td>
       <td style="font-size:12px;color:#9ca3af;white-space:nowrap">${dataStr}</td>
       <td style="white-space:nowrap">
-        ${tel?`<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" class="btn-wpp">💬 WPP</a>`:''}
-        <button onclick="delLead(this,'${lead.id}')" class="btn-del">🗑</button>
+        ${tel?`<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" class="btn-wpp">ðŸ’¬ WPP</a>`:''}
+        <button onclick="delLead(this,'${lead.id}')" class="btn-del">ðŸ—‘</button>
       </td>
     </tr>`;
   }).join('');
@@ -1220,7 +1220,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <div class="stat-card"><div class="stat-label">Abandonaram Pagamento</div><div class="stat-value">${abandonouCount}</div></div>
       <div class="stat-card"><div class="stat-label">Valor Potencial</div><div class="stat-value">R$ ${totalValorLeads.toFixed(2).replace('.',',')}</div></div>
     </div>
-    ${leads.length === 0 ? '<div class="vazio">Nenhum carrinho abandonado ainda! 🎉</div>' : `<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Estágio</th><th>Produtos</th><th>Valor</th><th>Data</th><th>Ação</th></tr></thead><tbody>${leadsRows}</tbody></table></div>`}`;
+    ${leads.length === 0 ? '<div class="vazio">Nenhum carrinho abandonado ainda! ðŸŽ‰</div>' : `<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>EstÃ¡gio</th><th>Produtos</th><th>Valor</th><th>Data</th><th>AÃ§Ã£o</th></tr></thead><tbody>${leadsRows}</tbody></table></div>`}`;
 
   // ===== ABA OFERTAS =====
   const GRUPOS_INFO = [
@@ -1238,7 +1238,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const ofertasRows = ofertas.map(o => {
     const dataStr = new Date(o.dataHora).toLocaleDateString('pt-BR') + ' ' + new Date(o.dataHora).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
     const sc = o.status==='enviada'?'#10b981':o.status==='erro'?'#ef4444':'#f59e0b';
-    const sl = o.status==='enviada'?'✅ Enviada':o.status==='erro'?'❌ Erro':'⏳ Agendada';
+    const sl = o.status==='enviada'?'âœ… Enviada':o.status==='erro'?'âŒ Erro':'â³ Agendada';
     return `<tr>
       <td>${o.imagem?`<img src="${o.imagem}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;display:block;margin-bottom:4px">`:''}
         <div style="font-weight:600;font-size:13px">${(o.texto||'').substring(0,60)}${o.texto&&o.texto.length>60?'...':''}</div>
@@ -1247,7 +1247,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <td style="white-space:nowrap;font-size:13px">${dataStr}</td>
       <td style="font-size:13px">${o.grupos==='todos'?'Todos (#1-#17)':o.grupos}</td>
       <td><span style="background:${sc}20;color:${sc};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${sl}</span></td>
-      <td><button onclick="delOferta(this,'${o.id}')" class="btn-del">🗑</button></td>
+      <td><button onclick="delOferta(this,'${o.id}')" class="btn-del">ðŸ—‘</button></td>
     </tr>`;
   }).join('');
 
@@ -1258,30 +1258,30 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <div class="stat-card"><div class="stat-label">Enviadas</div><div class="stat-value">${ofertas.filter(o=>o.status==='enviada').length}</div></div>
     </div>
     <div class="form-card">
-      <div class="form-title">➕ Agendar Nova Oferta</div>
-      <div class="field"><label>Texto da mensagem</label><textarea id="f-texto" rows="4" placeholder="🔥 OFERTA RELÂMPAGO!&#10;&#10;Relógio X por R$ 199,90"></textarea></div>
+      <div class="form-title">âž• Agendar Nova Oferta</div>
+      <div class="field"><label>Texto da mensagem</label><textarea id="f-texto" rows="4" placeholder="ðŸ”¥ OFERTA RELÃ‚MPAGO!&#10;&#10;RelÃ³gio X por R$ 199,90"></textarea></div>
       <div class="row-2">
-        <div class="field"><label>URL de imagem ou vídeo (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>
+        <div class="field"><label>URL de imagem ou vÃ­deo (opcional)</label><input type="url" id="f-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>
         <div class="field"><label>Link do produto (opcional)</label><input type="url" id="f-link" placeholder="https://kcique.com.br/..."></div>
       </div>
-      <div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="f-data"></div>
+      <div class="field"><label>Data e hora (BrasÃ­lia)</label><input type="datetime-local" id="f-data"></div>
       <div class="field">
         <label>Grupos</label>
         <div style="margin-bottom:8px"><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="sel-todos" onchange="toggleTodos(this)" checked> Selecionar todos</label></div>
         <div class="grupos-wrap" id="grupos-wrap">${gruposCheckboxes}</div>
       </div>
-      <button class="btn-green" onclick="salvarOferta()">📅 Agendar Oferta</button>
+      <button class="btn-green" onclick="salvarOferta()">ðŸ“… Agendar Oferta</button>
       <div id="form-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-      <button onclick="limparOfertas()" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗑 Limpar todas enviadas</button>
+      <button onclick="limparOfertas()" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">ðŸ—‘ Limpar todas enviadas</button>
     </div>
-    ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table id="tab-ofertas"><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>Ação</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
+    ${ofertas.length === 0 ? '<div class="vazio">Nenhuma oferta agendada ainda!</div>' : `<div class="table-wrap"><table id="tab-ofertas"><thead><tr><th>Oferta</th><th>Data/Hora</th><th>Grupos</th><th>Status</th><th>AÃ§Ã£o</th></tr></thead><tbody>${ofertasRows}</tbody></table></div>`}`;
 
   // ===== ABA PEDIDOS =====
   const pedidosList = (pedidosRecentes.orders || []);
 
-  // Mapa tracking -> meOrderId das purchases já carregadas
+  // Mapa tracking -> meOrderId das purchases jÃ¡ carregadas
   const trackingToMeId = {};
   (etiquetasME.purchases || []).forEach(p => {
     (p.orders || []).forEach(o => {
@@ -1305,33 +1305,33 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const rastreios = (order.fulfillments||[]).flatMap(f => f.tracking_numbers||[]);
     const nome = (order.customer ? ((order.customer.first_name||'') + ' ' + (order.customer.last_name||'')).trim() : '') || 'Cliente';
     const addr = order.shipping_address;
-    const endStr = addr ? (addr.address1||'') + (addr.address2 ? ' '+addr.address2 : '') + ', ' + (addr.city||'') + '/' + (addr.province_code||'') + ' — CEP ' + (addr.zip||'') : '—';
+    const endStr = addr ? (addr.address1||'') + (addr.address2 ? ' '+addr.address2 : '') + ', ' + (addr.city||'') + '/' + (addr.province_code||'') + ' â€” CEP ' + (addr.zip||'') : 'â€”';
     const financial = order.financial_status;
     const fulfillment = order.fulfillment_status;
     const notaPedido = order.note || '';
     const origemMatch = notaPedido.match(/Origem: ([^|\n]+)/);
-    const origem = origemMatch ? origemMatch[1].trim() : '—';
+    const origem = origemMatch ? origemMatch[1].trim() : 'â€”';
 
     let statusColor = '#f59e0b', statusLabel = 'Pago';
-    if (fulfillment === 'fulfilled') { statusColor = '#16a34a'; statusLabel = '✅ Enviado'; }
-    else if (financial === 'refunded') { statusColor = '#ef4444'; statusLabel = '↩️ Reembolso'; }
+    if (fulfillment === 'fulfilled') { statusColor = '#16a34a'; statusLabel = 'âœ… Enviado'; }
+    else if (financial === 'refunded') { statusColor = '#ef4444'; statusLabel = 'â†©ï¸ Reembolso'; }
     else if (financial === 'pending') { statusColor = '#9ca3af'; statusLabel = 'Pendente'; }
-    else { statusLabel = '💳 Pago'; }
+    else { statusLabel = 'ðŸ’³ Pago'; }
 
     const msgRastreio = rastreios.length > 0
-      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Seu pedido foi enviado!\n\n📦 Rastreie: https://www.melhorrastreio.com.br/rastreio/' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
+      ? encodeURIComponent('OlÃ¡ ' + nome.split(' ')[0] + '! ðŸ˜Š Seu pedido foi enviado!\n\nðŸ“¦ Rastreie: https://www.melhorrastreio.com.br/rastreio/' + rastreios[0] + '\n\nQualquer dÃºvida estamos aqui! â€” Kcique RelÃ³gios âŒš')
       : '';
-    const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
+    const msgWpp = encodeURIComponent('OlÃ¡ ' + nome.split(' ')[0] + '! Aqui Ã© da Kcique RelÃ³gios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
       const img = getImgPedido(item.title);
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
         + (img
           ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
-          : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px">⌚</div>')
+          : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px">âŒš</div>')
         + '<div>'
         + '<div style="font-size:14px;font-weight:600">' + item.title + '</div>'
-        + '<div style="font-size:12px;color:#6b7280;margin-top:2px">x' + item.quantity + ' — R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + '</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-top:2px">x' + item.quantity + ' â€” R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + '</div>'
         + '</div></div>';
     }).join('');
 
@@ -1342,35 +1342,35 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           + '<span style="font-size:12px;color:#9ca3af">' + dataStr + '</span>'
           + '<span style="font-size:13px;color:#1a1a2e;font-weight:500">' + nome + '</span>'
           + '<span style="background:' + statusColor + '20;color:' + statusColor + ';padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600">' + statusLabel + '</span>'
-          + (rastreios.length > 0 ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">📦 ' + rastreios[0] + '</span>' : '')
-          + (origem !== '—' ? '<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">📍 ' + origem + '</span>' : '')
+          + (rastreios.length > 0 ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px">ðŸ“¦ ' + rastreios[0] + '</span>' : '')
+          + (origem !== 'â€”' ? '<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">ðŸ“ ' + origem + '</span>' : '')
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:8px">'
           + '<span style="font-weight:700;font-size:16px">R$ ' + parseFloat(order.total_price||0).toFixed(2).replace('.',',') + '</span>'
-          + '<span style="color:#9ca3af;font-size:12px">▼</span>'
+          + '<span style="color:#9ca3af;font-size:12px">â–¼</span>'
         + '</div>'
       + '</div>'
       + '<div id="p' + order.id + '" style="display:none;padding:20px">'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">'
-          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">👤 Cliente</div>'
+          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">ðŸ‘¤ Cliente</div>'
             + '<div style="font-weight:600">' + nome + '</div>'
             + '<div style="font-size:13px;color:#6b7280">' + (order.email||'') + '</div>'
-            + '<div style="font-size:13px;color:#6b7280">' + (tel ? '+55 '+tel : '—') + '</div>'
+            + '<div style="font-size:13px;color:#6b7280">' + (tel ? '+55 '+tel : 'â€”') + '</div>'
           + '</div>'
-          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">📍 Entrega</div>'
+          + '<div><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:6px">ðŸ“ Entrega</div>'
             + '<div style="font-size:13px;line-height:1.7">' + endStr + '</div>'
           + '</div>'
         + '</div>'
-        + '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">🛍 Produtos</div>' + produtosHtml + '</div>'
+        + '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">ðŸ› Produtos</div>' + produtosHtml + '</div>'
         + (rastreios.length > 0
-          ? '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">📦 Rastreio</div>'
-            + rastreios.map(r => '<a href="https://www.melhorrastreio.com.br/rastreio/'+r+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#dbeafe;color:#1e40af;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;margin-right:6px">'+r+' →</a>').join('')
+          ? '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px">ðŸ“¦ Rastreio</div>'
+            + rastreios.map(r => '<a href="https://www.melhorrastreio.com.br/rastreio/'+r+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#dbeafe;color:#1e40af;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;margin-right:6px">'+r+' â†’</a>').join('')
             + '</div>'
-          : '<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;color:#92400e">⚠️ Sem código de rastreio ainda</div>')
+          : '<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;color:#92400e">âš ï¸ Sem cÃ³digo de rastreio ainda</div>')
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-          + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
-          + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
-          + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\',\'' + (trackingToMeId[rastreios[0]]||'') + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
+          + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">ðŸ’¬ WhatsApp</a>' : '')
+          + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">ðŸ“¦ Enviar Rastreio</a>' : '')
+          + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\',\'' + (trackingToMeId[rastreios[0]]||'') + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">ðŸš€ Fornecedor</button>'
         + '</div>'
       + '</div>'
     + '</div>';
@@ -1378,9 +1378,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   const abaPedidos = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">Últimos 50 Pedidos</div><div class="stat-value">${pedidosList.length}</div></div>
-      <div class="stat-card"><div class="stat-label">✅ Enviados</div><div class="stat-value" style="color:#16a34a">${pedidosFulfilled}</div></div>
-      <div class="stat-card"><div class="stat-label">⏳ Pagos Não Enviados</div><div class="stat-value" style="color:#f59e0b">${pedidosPagosNaoEnviados}</div></div>
+      <div class="stat-card"><div class="stat-label">Ãšltimos 50 Pedidos</div><div class="stat-value">${pedidosList.length}</div></div>
+      <div class="stat-card"><div class="stat-label">âœ… Enviados</div><div class="stat-value" style="color:#16a34a">${pedidosFulfilled}</div></div>
+      <div class="stat-card"><div class="stat-label">â³ Pagos NÃ£o Enviados</div><div class="stat-value" style="color:#f59e0b">${pedidosPagosNaoEnviados}</div></div>
     </div>
     <div>${pedidosCards}</div>`;
 
@@ -1392,7 +1392,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     cupons = cuponsData.cupons || [];
   } catch(e) {}
 
-  const tipoLabel = { percentual: '% Desconto', fixo: 'R$ Fixo', frete_gratis: 'Frete Grátis', percentual_frete: '% + Frete Grátis' };
+  const tipoLabel = { percentual: '% Desconto', fixo: 'R$ Fixo', frete_gratis: 'Frete GrÃ¡tis', percentual_frete: '% + Frete GrÃ¡tis' };
   const tipoColor = { percentual: '#2563eb', fixo: '#16a34a', frete_gratis: '#9333ea', percentual_frete: '#f59e0b' };
 
   const cuponsRows = cupons.map(c => {
@@ -1402,29 +1402,29 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return `<tr>
       <td><span style="font-family:monospace;font-size:15px;font-weight:700;background:#f3f4f6;padding:4px 10px;border-radius:6px">${c.codigo}</span></td>
       <td><span style="background:${tipoColor[c.tipo]}20;color:${tipoColor[c.tipo]};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${tipoLabel[c.tipo]||c.tipo}</span></td>
-      <td style="font-size:13px">${c.tipo === 'frete_gratis' ? '—' : (c.tipo === 'percentual' || c.tipo === 'percentual_frete' ? c.valor + '%' : 'R$ ' + (c.valor||0).toFixed(2).replace('.',','))}</td>
-      <td style="font-size:13px;${expirado?'color:#ef4444':''}">${validade}${expirado?' ⚠️':''}</td>
+      <td style="font-size:13px">${c.tipo === 'frete_gratis' ? 'â€”' : (c.tipo === 'percentual' || c.tipo === 'percentual_frete' ? c.valor + '%' : 'R$ ' + (c.valor||0).toFixed(2).replace('.',','))}</td>
+      <td style="font-size:13px;${expirado?'color:#ef4444':''}">${validade}${expirado?' âš ï¸':''}</td>
       <td style="font-size:13px">${usos}</td>
-      <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}${c.qtdMinima ? '<br><span style="font-size:11px;color:#6b7280">Mín: ' + c.qtdMinima + ' itens</span>' : ''}</td>
+      <td style="font-size:13px">${c.produto === 'todos' ? 'Todos' : c.produto}${c.qtdMinima ? '<br><span style="font-size:11px;color:#6b7280">MÃ­n: ' + c.qtdMinima + ' itens</span>' : ''}</td>
       <td>
-        <button onclick="toggleCupom('${c.id}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'✅ Ativo':'❌ Inativo'}</button>
-        <button onclick="deletarCupom('${c.id}','${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">🗑</button>
+        <button onclick="toggleCupom('${c.id}')" style="padding:4px 10px;background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#16a34a':'#dc2626'};border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">${c.ativo?'âœ… Ativo':'âŒ Inativo'}</button>
+        <button onclick="deletarCupom('${c.id}','${c.codigo}')" style="margin-left:6px;padding:4px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:12px;cursor:pointer">ðŸ—‘</button>
       </td>
     </tr>`;
   }).join('');
 
   const abaCupons = `
     <div class="form-card">
-      <div class="form-title">➕ Criar Novo Cupom</div>
+      <div class="form-title">âž• Criar Novo Cupom</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="field"><label>Código do Cupom</label><input type="text" id="c-codigo" placeholder="ex: KCIQUE10" style="text-transform:uppercase"></div>
+        <div class="field"><label>CÃ³digo do Cupom</label><input type="text" id="c-codigo" placeholder="ex: KCIQUE10" style="text-transform:uppercase"></div>
         <div class="field">
           <label>Tipo de Desconto</label>
           <select id="c-tipo" onchange="atualizarCampoValor()" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none">
             <option value="percentual">% de Desconto</option>
             <option value="fixo">Valor Fixo (R$)</option>
-            <option value="frete_gratis">Frete Grátis</option>
-            <option value="percentual_frete">% Desconto + Frete Grátis</option>
+            <option value="frete_gratis">Frete GrÃ¡tis</option>
+            <option value="percentual_frete">% Desconto + Frete GrÃ¡tis</option>
           </select>
         </div>
         <div class="field" id="campo-valor"><label>Valor do Desconto</label><input type="number" id="c-valor" placeholder="ex: 10" min="0" step="0.01"></div>
@@ -1432,17 +1432,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
         <div class="field"><label>Validade (opcional)</label><input type="date" id="c-validade"></div>
         <div class="field"><label>Limite de Usos (opcional)</label><input type="number" id="c-limite" placeholder="Ilimitado" min="1"></div>
-        <div class="field"><label>Qtd. Mínima de Itens</label><input type="number" id="c-qtd-minima" placeholder="Ex: 3" min="1"></div>
+        <div class="field"><label>Qtd. MÃ­nima de Itens</label><input type="number" id="c-qtd-minima" placeholder="Ex: 3" min="1"></div>
         <div class="field"><label>Produto (palavra-chave)</label><input type="text" id="c-produto" placeholder="Ex: G-SHOCK ou deixe vazio"></div>
       </div>
-      <button class="btn-green" onclick="salvarCupom()">💾 Criar Cupom</button>
+      <button class="btn-green" onclick="salvarCupom()">ðŸ’¾ Criar Cupom</button>
       <div id="cupom-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
 
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button onclick="limparCupons()" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">ðŸ—‘ Limpar todos os cupons</button>
+    </div>
     ${cupons.length === 0
       ? '<div class="vazio">Nenhum cupom cadastrado ainda!</div>'
       : `<div class="table-wrap"><table>
-          <thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Produto</th><th>Ações</th></tr></thead>
+          <thead><tr><th>CÃ³digo</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Produto</th><th>AÃ§Ãµes</th></tr></thead>
           <tbody>${cuponsRows}</tbody>
         </table></div>`
     }`;
@@ -1500,22 +1503,22 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 </head>
 <body>
 <div class="sidebar">
-  <div class="sidebar-logo">⌚ <span>Kcique Admin</span></div>
+  <div class="sidebar-logo">âŒš <span>Kcique Admin</span></div>
   <div class="sidebar-menu">
-    <button onclick="mudarAba('home')" class="menu-item ativo" id="menu-home"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
-    <button onclick="mudarAba('carrinhos')" class="menu-item" id="menu-carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
-    <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas WhatsApp</span></button>
-    <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
-    <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
-    <button onclick="mudarAba('grupos-vip')" class="menu-item" id="menu-grupos-vip"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
-    <button onclick="mudarAba('bundle')" class="menu-item" id="menu-bundle"><span class="menu-icon">🎁</span><span class="menu-label">Bundle Produtos</span></button>
+    <button onclick="mudarAba('home')" class="menu-item ativo" id="menu-home"><span class="menu-icon">ðŸ“Š</span><span class="menu-label">VisÃ£o Geral</span></button>
+    <button onclick="mudarAba('carrinhos')" class="menu-item" id="menu-carrinhos"><span class="menu-icon">ðŸ›’</span><span class="menu-label">Carrinhos</span></button>
+    <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">ðŸ“£</span><span class="menu-label">Ofertas WhatsApp</span></button>
+    <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">ðŸ“¦</span><span class="menu-label">Pedidos</span></button>
+    <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">ðŸŽŸ</span><span class="menu-label">Cupons</span></button>
+    <button onclick="mudarAba('grupos-vip')" class="menu-item" id="menu-grupos-vip"><span class="menu-icon">ðŸ“²</span><span class="menu-label">Grupos VIP</span></button>
+    <button onclick="mudarAba('bundle')" class="menu-item" id="menu-bundle"><span class="menu-icon">ðŸŽ</span><span class="menu-label">Bundle Produtos</span></button>
   </div>
-  <div class="sidebar-footer">Kcique Relógios</div>
+  <div class="sidebar-footer">Kcique RelÃ³gios</div>
 </div>
 <div class="main">
   <div class="page-title">
-    <span id="page-title">📊 Visão Geral</span>
-    <button onclick="window.location.reload()" class="refresh-btn">🔄 Atualizar</button>
+    <span id="page-title">ðŸ“Š VisÃ£o Geral</span>
+    <button onclick="window.location.reload()" class="refresh-btn">ðŸ”„ Atualizar</button>
   </div>
   <div id="aba-home" class="aba ativa">${abaHome}</div>
   <div id="aba-carrinhos" class="aba">${abaCarrinhos}</div>
@@ -1532,7 +1535,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
   </div>
 </div>
 <script>
-var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP',bundle:'🎁 Bundle de Produtos'};
+var titulos={home:'ðŸ“Š VisÃ£o Geral',carrinhos:'ðŸ›’ Carrinhos Abandonados',ofertas:'ðŸ“£ Ofertas WhatsApp',pedidos:'ðŸ“¦ Pedidos',cupons:'ðŸŽŸ Cupons de Desconto','grupos-vip':'ðŸ“² Grupos VIP',bundle:'ðŸŽ Bundle de Produtos'};
 function mudarAba(aba){
   document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
   document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
@@ -1551,10 +1554,10 @@ async function salvarOferta(){
   var msg=document.getElementById('form-msg');
   var texto=document.getElementById('f-texto').value.trim();
   var dataHoraRaw=document.getElementById('f-data').value;
-  // Converter para ISO com offset de Brasília (UTC-3) explícito
+  // Converter para ISO com offset de BrasÃ­lia (UTC-3) explÃ­cito
   var dataHora = dataHoraRaw ? dataHoraRaw + ':00-03:00' : '';
-  if(!texto){msg.textContent='⚠️ Digite o texto';msg.style.color='#ef4444';return;}
-  if(!dataHoraRaw){msg.textContent='⚠️ Selecione data e hora';msg.style.color='#ef4444';return;}
+  if(!texto){msg.textContent='âš ï¸ Digite o texto';msg.style.color='#ef4444';return;}
+  if(!dataHoraRaw){msg.textContent='âš ï¸ Selecione data e hora';msg.style.color='#ef4444';return;}
   var sel=[];document.querySelectorAll('#grupos-wrap input:checked').forEach(function(el){sel.push(el.value);});
   var total=document.querySelectorAll('#grupos-wrap input').length;
   var grupos=sel.length===total?'todos':sel.join(',');
@@ -1563,7 +1566,7 @@ async function salvarOferta(){
     var resp=await fetch('/api/ofertas?action=salvar&secret=${secret}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:document.getElementById('f-imagem').value.trim(),link:document.getElementById('f-link').value.trim(),dataHora,grupos})});
     var data=await resp.json();
     if(data.success){
-      msg.textContent='✅ Agendada!';msg.style.color='#10b981';
+      msg.textContent='âœ… Agendada!';msg.style.color='#10b981';
       document.getElementById('f-texto').value='';
       document.getElementById('f-imagem').value='';
       document.getElementById('f-link').value='';
@@ -1572,8 +1575,8 @@ async function salvarOferta(){
       document.getElementById('f-data').value=agora2.getFullYear()+'-'+pad2(agora2.getMonth()+1)+'-'+pad2(agora2.getDate())+'T'+pad2(agora2.getHours())+':'+pad2(agora2.getMinutes());
       setTimeout(function(){msg.textContent='';mudarAba('ofertas');},1500);
     }
-    else{msg.textContent='❌ '+(data.error||'Erro');msg.style.color='#ef4444';}
-  }catch(e){msg.textContent='❌ Erro de conexão';msg.style.color='#ef4444';}
+    else{msg.textContent='âŒ '+(data.error||'Erro');msg.style.color='#ef4444';}
+  }catch(e){msg.textContent='âŒ Erro de conexÃ£o';msg.style.color='#ef4444';}
 }
 
 var agora=new Date();agora.setMinutes(agora.getMinutes()+5);
@@ -1584,25 +1587,25 @@ if(document.getElementById('f-data')){document.getElementById('f-data').min=min;
 // Enviar pedido para fornecedor
 async function enviarFornecedor(nome, tracking, imgUrl, meOrderId) {
   var btn = event.target;
-  btn.textContent = '⏳ Enviando...';
+  btn.textContent = 'â³ Enviando...';
   btn.disabled = true;
   try {
-    // 1. Buscar dados do pedido via Vercel (rápido)
+    // 1. Buscar dados do pedido via Vercel (rÃ¡pido)
     var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl), meOrderId: meOrderId||'' });
     var resp = await fetch('/api/admin?' + params.toString());
     var data = await resp.json();
-    if (data.ok) { btn.textContent = '✅ Enviado!'; btn.style.background = '#16a34a'; }
+    if (data.ok) { btn.textContent = 'âœ… Enviado!'; btn.style.background = '#16a34a'; }
     else if (data.pdfPending) {
       // 2. Vercel enviou tudo exceto PDF - chamar Railway diretamente para o PDF
-      btn.textContent = '⏳ PDF...';
+      btn.textContent = 'â³ PDF...';
       var pdfResp = await fetch('https://kcique-pdf-service-production.up.railway.app/send-pdf?secret=kcique2026&hash=' + data.printHash + '&phone=120363426285950378-group&nome=' + encodeURIComponent(nome) + '&tracking=' + (tracking||''));
       var pdfData = await pdfResp.json();
-      btn.textContent = pdfData.ok ? '✅ Enviado!' : '⚠️ Sem PDF';
+      btn.textContent = pdfData.ok ? 'âœ… Enviado!' : 'âš ï¸ Sem PDF';
       btn.style.background = pdfData.ok ? '#16a34a' : '#f59e0b';
     } else { 
-      btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; 
+      btn.textContent = 'âŒ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; 
     }
-  } catch(e) { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
+  } catch(e) { btn.textContent = 'âŒ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
 }
 
 // Cupons
@@ -1612,7 +1615,7 @@ function atualizarCampoValor() {
   campo.style.display = (tipo === 'frete_gratis') ? 'none' : 'block';
 }
 async function salvarCupom() {
-  // Buscar campos do formulário ativo no DOM atual
+  // Buscar campos do formulÃ¡rio ativo no DOM atual
   var form = document.querySelector('[id="c-codigo"]')?.closest('form') || document.getElementById('content-cupons') || document.body;
   var msg = document.getElementById('cupom-msg');
   var codigoEl = document.getElementById('c-codigo');
@@ -1620,14 +1623,14 @@ async function salvarCupom() {
   var valorEl = document.getElementById('c-valor');
   var validadeEl = document.getElementById('c-validade');
   var limiteEl = document.getElementById('c-limite');
-  if (!codigoEl || !tipoEl) { if(msg) msg.textContent = '⚠️ Formulário não encontrado'; return; }
+  if (!codigoEl || !tipoEl) { if(msg) msg.textContent = 'âš ï¸ FormulÃ¡rio nÃ£o encontrado'; return; }
   var codigo = codigoEl.value.trim().toUpperCase();
   var tipo = tipoEl.value;
   var valor = valorEl ? valorEl.value : '0';
   var validade = validadeEl ? validadeEl.value : '';
   var limite = limiteEl ? limiteEl.value : '';
   console.log('salvarCupom:', codigo, tipo, valor);
-  if (!codigo) { msg.textContent = '⚠️ Digite o código'; msg.style.color = '#ef4444'; return; }
+  if (!codigo) { msg.textContent = 'âš ï¸ Digite o cÃ³digo'; msg.style.color = '#ef4444'; return; }
   msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
   try {
     var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), {
@@ -1636,9 +1639,9 @@ async function salvarCupom() {
       body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: document.getElementById('c-produto').value.trim()||'todos', qtdMinima: document.getElementById('c-qtd-minima').value ? parseInt(document.getElementById('c-qtd-minima').value) : null, ativo: true })
     });
     var data = await resp.json();
-    if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => mudarAba('cupons'), 1500); }
-    else { msg.textContent = '❌ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
-  } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
+    if (data.ok) { msg.textContent = 'âœ… Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => mudarAba('cupons'), 1500); }
+    else { msg.textContent = 'âŒ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
+  } catch(e) { msg.textContent = 'âŒ Erro'; msg.style.color = '#ef4444'; }
 }
 async function toggleCupom(id) {
   var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', id: id }) });
@@ -1646,22 +1649,22 @@ async function toggleCupom(id) {
   if (data.ok) window.location.reload();
 }
 async function limparOfertas() {
-  if (!confirm('Deletar todas as ofertas enviadas e com erro? As agendadas serão mantidas.')) return;
+  if (!confirm('Deletar todas as ofertas enviadas e com erro? As agendadas serÃ£o mantidas.')) return;
   var btn = event.target;
   btn.disabled = true; btn.textContent = 'Limpando...';
   try {
     var resp = await fetch('/api/ofertas?action=limpar_enviadas&secret=${secret}');
     var data = await resp.json();
     if (data.ok) {
-      alert('✅ ' + data.deletadas + ' ofertas removidas!');
+      alert('âœ… ' + data.deletadas + ' ofertas removidas!');
       location.reload();
     } else {
       alert('Erro: ' + (data.error || 'desconhecido'));
-      btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
+      btn.disabled = false; btn.textContent = 'ðŸ—‘ Limpar todas enviadas';
     }
   } catch(e) {
-    alert('Erro de conexão');
-    btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
+    alert('Erro de conexÃ£o');
+    btn.disabled = false; btn.textContent = 'ðŸ—‘ Limpar todas enviadas';
   }
 }
 
@@ -1692,19 +1695,19 @@ async function carregarGruposVip() {
     // Cards superiores
     var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">';
     html += '<div class="stat-card" style="border-color:#2563eb">';
-    html += '<div class="stat-label">📲 Grupo Ativo Agora</div>';
+    html += '<div class="stat-label">ðŸ“² Grupo Ativo Agora</div>';
     html += '<div class="stat-value">' + ga.nome + '</div>';
-    html += '<div class="stat-sub">' + ga.membros + ' membros · ' + vagas + ' vagas</div>';
+    html += '<div class="stat-sub">' + ga.membros + ' membros Â· ' + vagas + ' vagas</div>';
     html += '<div style="background:#f3f4f6;border-radius:6px;height:8px;margin-top:10px"><div style="background:#2563eb;height:8px;border-radius:6px;width:' + pct + '%"></div></div>';
-    html += '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo →</a>';
+    html += '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo â†’</a>';
     html += '</div>';
-    html += '<div class="stat-card"><div class="stat-label">👥 Total de Membros VIP</div><div class="stat-value">' + data.totalMembros.toLocaleString('pt-BR') + '</div><div class="stat-sub">em 17 grupos</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">📈 Entradas Hoje</div><div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div><div class="stat-sub">novos membros hoje</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">ðŸ‘¥ Total de Membros VIP</div><div class="stat-value">' + data.totalMembros.toLocaleString('pt-BR') + '</div><div class="stat-sub">em 17 grupos</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">ðŸ“ˆ Entradas Hoje</div><div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div><div class="stat-sub">novos membros hoje</div></div>';
     html += '</div>';
 
     // Historico + link
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">';
-    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:16px">📅 Entradas nos últimos 7 dias</div>';
+    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:16px">ðŸ“… Entradas nos Ãºltimos 7 dias</div>';
     data.historico.forEach(function(h) {
       var d = new Date(h.data + 'T12:00:00');
       var label = d.toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
@@ -1714,17 +1717,17 @@ async function carregarGruposVip() {
       html += '</div>';
     });
     html += '</div>';
-    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>';
+    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">ðŸ”— Link ativo</div>';
     html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
     html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
     html += '<input id="input-link-ativo" value="' + ga.link + '" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px" placeholder="Novo link do grupo">';
     html += '<button class="btn-salvar-link" style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Salvar link</button>';
     html += '</div>';
-    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link /api/grupo</button>';
+    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">ðŸ“‹ Copiar link /api/grupo</button>';
     html += '</div></div>';
 
     // Grid de todos os grupos
-    html += '<div><div class="stat-label" style="margin-bottom:16px">📊 Status de todos os grupos</div>';
+    html += '<div><div class="stat-label" style="margin-bottom:16px">ðŸ“Š Status de todos os grupos</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">';
     data.grupos.forEach(function(g) {
       var pctG = Math.min(100, Math.round((g.membros / LIMITE) * 100));
@@ -1744,14 +1747,14 @@ async function carregarGruposVip() {
     loading.style.display = 'none';
     el.innerHTML = html;
     el.style.display = 'block';
-    // Adicionar event listeners após inserir HTML
+    // Adicionar event listeners apÃ³s inserir HTML
     var btnCopiar = document.getElementById('btn-copiar-link');
     if (btnCopiar) {
       btnCopiar.onclick = function() {
-        navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){ alert('Link copiado! Use este link fixo nos seus anúncios.'); });
+        navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){ alert('Link copiado! Use este link fixo nos seus anÃºncios.'); });
       };
     }
-    // Delegação de eventos para botões "Definir ativo"
+    // DelegaÃ§Ã£o de eventos para botÃµes "Definir ativo"
     el.querySelectorAll('.btn-def-ativo').forEach(function(btn) {
       btn.onclick = function() {
         var nome = btn.getAttribute('data-nome');
@@ -1762,7 +1765,7 @@ async function carregarGruposVip() {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ nome: nome, link: novoLink })
         }).then(function(r){ return r.json(); }).then(function(d){
-          if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
+          if (d.ok) { alert('âœ… Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
           else alert('Erro: ' + (d.error||'desconhecido'));
         });
       };
@@ -1777,7 +1780,7 @@ async function carregarGruposVip() {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ nome: data.grupoAtivo.nome, link: input.value.trim() })
         }).then(function(r){ return r.json(); }).then(function(d){
-          if (d.ok) { alert('✅ Link atualizado!'); carregarGruposVip(); }
+          if (d.ok) { alert('âœ… Link atualizado!'); carregarGruposVip(); }
         });
       };
     }
@@ -1804,7 +1807,7 @@ async function carregarBundle() {
     var selecionados = config.produtoIds || [];
 
     var html = '<div class="form-card">';
-    html += '<div class="form-title">🎁 Configurar Bundle de Produtos</div>';
+    html += '<div class="form-title">ðŸŽ Configurar Bundle de Produtos</div>';
     html += '<div class="field"><label>Valor do desconto (R$)</label><input type="number" id="bundle-desconto" value="' + (config.desconto||50) + '" step="1" min="0" style="width:160px"></div>';
     html += '<div style="font-size:13px;font-weight:600;color:#374151;margin:16px 0 10px">Selecione os produtos que podem aparecer no bundle:</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:500px;overflow-y:auto;padding:4px">';
@@ -1817,7 +1820,7 @@ async function carregarBundle() {
       html += '</label>';
     });
     html += '</div>';
-    html += '<button class="btn-green" onclick="salvarBundle()" style="margin-top:18px">💾 Salvar Configuração</button>';
+    html += '<button class="btn-green" onclick="salvarBundle()" style="margin-top:18px">ðŸ’¾ Salvar ConfiguraÃ§Ã£o</button>';
     html += '<div id="bundle-msg" style="margin-top:10px;font-size:13px"></div>';
     html += '</div>';
 
@@ -1842,12 +1845,12 @@ async function salvarBundle() {
       body: JSON.stringify({ produtoIds: ids, desconto: parseFloat(desconto) || 50 })
     });
     var data = await resp.json();
-    if (data.ok) { msg.textContent = '✅ Salvo! ' + ids.length + ' produtos selecionados.'; msg.style.color = '#10b981'; }
-    else { msg.textContent = '❌ Erro ao salvar'; msg.style.color = '#ef4444'; }
-  } catch(e) { msg.textContent = '❌ Erro de conexão'; msg.style.color = '#ef4444'; }
+    if (data.ok) { msg.textContent = 'âœ… Salvo! ' + ids.length + ' produtos selecionados.'; msg.style.color = '#10b981'; }
+    else { msg.textContent = 'âŒ Erro ao salvar'; msg.style.color = '#ef4444'; }
+  } catch(e) { msg.textContent = 'âŒ Erro de conexÃ£o'; msg.style.color = '#ef4444'; }
 }
 
-// Carregar membros dos grupos de forma assíncrona
+// Carregar membros dos grupos de forma assÃ­ncrona
 async function carregarMembrosGrupos(){
   var el=document.getElementById('grupos-membros');
   if(!el)return;
@@ -1874,8 +1877,8 @@ async function definirGrupoAtivo(nome, link) {
     body: JSON.stringify({ nome, link: novoLink })
   });
   var d = await r.json();
-  if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
-  else alert('❌ Erro: ' + (d.error||'desconhecido'));
+  if (d.ok) { alert('âœ… Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
+  else alert('âŒ Erro: ' + (d.error||'desconhecido'));
 }
 
 async function atualizarLinkAtivo() {
@@ -1893,9 +1896,24 @@ async function atualizarLinkAtivo() {
   });
   var d2 = await r2.json();
   if (d2.ok) {
-    alert('✅ Link atualizado!');
+    alert('âœ… Link atualizado!');
     carregarGruposVip();
   }
+}
+
+async function limparCupons() {
+  if (!confirm('Deletar TODOS os cupons? Essa aÃ§Ã£o nÃ£o pode ser desfeita.')) return;
+  var btn = event.target;
+  btn.disabled = true; btn.textContent = 'Limpando...';
+  try {
+    var r = await fetch('/api/cupons?secret=${secret}', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action: 'limpar_todos', secret: '${secret}' })
+    });
+    var d = await r.json();
+    if (d.ok) { alert('âœ… ' + d.deletados + ' cupons removidos!'); mudarAba('cupons'); }
+    else { alert('Erro: ' + (d.error||'desconhecido')); btn.disabled = false; btn.textContent = 'ðŸ—‘ Limpar todos os cupons'; }
+  } catch(e) { alert('Erro de conexÃ£o'); btn.disabled = false; btn.textContent = 'ðŸ—‘ Limpar todos os cupons'; }
 }
 
 async function delOferta(btn, id) {
