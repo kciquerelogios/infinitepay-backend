@@ -1518,7 +1518,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 <div class="main">
   <div class="page-title">
     <span id="page-title">📊 Visão Geral</span>
-    <button onclick="window.location.reload()" class="refresh-btn">🔄 Atualizar</button>
+    <button onclick="atualizarAbaAtual()" class="refresh-btn">🔄 Atualizar</button>
   </div>
   <div id="aba-home" class="aba ativa">${abaHome}</div>
   <div id="aba-carrinhos" class="aba">${abaCarrinhos}</div>
@@ -1536,7 +1536,22 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 </div>
 <script>
 var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP',bundle:'🎁 Bundle de Produtos'};
+var abaAtual = 'home';
+function atualizarAbaAtual() {
+  if (abaAtual === 'grupos-vip') { carregarGruposVip(); return; }
+  if (abaAtual === 'bundle') { carregarBundle(); return; }
+  // Para abas server-side, recarregar só o conteúdo via fetch
+  var el = document.getElementById('aba-' + abaAtual);
+  if (!el) { window.mudarAba(abaAtual); return; }
+  var loading = el.querySelector('.loading') || el.querySelector('.loading-text');
+  if (loading) loading.style.display = 'block';
+  // Recarregar a página mas manter na aba atual
+  var url = '/api/admin?secret=${secret}';
+  window.location.href = url + '#' + abaAtual;
+}
+
 function mudarAba(aba){
+  abaAtual = aba;
   document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
   document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
   document.getElementById('aba-'+aba).classList.add('ativa');
@@ -1646,7 +1661,7 @@ async function salvarCupom() {
 async function toggleCupom(id) {
   var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', id: id }) });
   var data = await resp.json();
-  if (data.ok) window.location.reload();
+  if (data.ok) { mudarAba(abaAtual); }
 }
 async function limparOfertas() {
   if (!confirm('Deletar todas as ofertas enviadas e com erro? As agendadas serão mantidas.')) return;
@@ -1657,7 +1672,7 @@ async function limparOfertas() {
     var data = await resp.json();
     if (data.ok) {
       alert('✅ ' + data.deletadas + ' ofertas removidas!');
-      location.reload();
+      mudarAba(abaAtual);
     } else {
       alert('Erro: ' + (data.error || 'desconhecido'));
       btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
@@ -1672,7 +1687,7 @@ async function deletarCupom(id, codigo) {
   if (!confirm('Deletar cupom ' + codigo + '?')) return;
   var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', id: id }) });
   var data = await resp.json();
-  if (data.ok) window.location.reload();
+  if (data.ok) { mudarAba(abaAtual); }
 }
 
 // Carregar aba Grupos VIP
