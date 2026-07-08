@@ -137,6 +137,19 @@ export default async function handler(req, res) {
   }
 
   // Deletar
+  if (req.method === 'POST' && req.body && req.body.action === 'limpar_todos') {
+    try {
+      const r = await fetch(`${KV_URL}/lrange/cupons-lista/0/-1`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const j = await r.json();
+      const ids = j.result || [];
+      for (const id of ids) {
+        await fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      }
+      await fetch(`${KV_URL}/del/cupons-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      return res.status(200).json({ ok: true, deletados: ids.length });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
   if (req.method === 'POST' && req.body && req.body.action === 'deletar') {
     const { id } = req.body;
     if (!id) return res.status(400).json({ erro: 'ID obrigatório' });
