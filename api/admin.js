@@ -1614,11 +1614,16 @@ function renderLeadsList(leads) {
     html += '<td>' + chips + '</td>';
     html += '<td><strong>' + fmt(val) + '</strong></td>';
     html += '<td style="font-size:12px;color:#6b7280">' + fmtDate(l.atualizado_em||l.criado_em) + '</td>';
-    html += '<td><button class="btn-del" onclick="delLead(this,\''+l.id+'\')">🗑</button></td>';
+    html += '<td><button class="btn-del" data-action="dellead" data-id="'+l.id+'">🗑</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
   el().innerHTML = html;
+  // Event delegation for delete buttons
+  el().addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action="dellead"]');
+    if (btn) delLead(btn, btn.getAttribute('data-id'));
+  }, {once: true});
 }
 function filtrarLeads(q) {
   var f = q ? _leads.filter(function(l){return (l.nome||l.email||'').toLowerCase().includes(q.toLowerCase());}) : _leads;
@@ -1664,11 +1669,16 @@ function renderOfertasList() {
     html += '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (o.texto||'') + '</td>';
     html += '<td>' + fmtDate(o.dataHora) + '</td>';
     html += '<td><span class="badge" style="background:' + (sc[o.status]||'#e5e7eb') + '">' + (o.status||'?') + '</span></td>';
-    html += '<td><button class="btn-del" onclick="delOferta(this,\''+o.id+'\')">🗑</button></td>';
+    html += '<td><button class="btn-del" data-action="deloferta" data-id="'+o.id+'">🗑</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
   el().innerHTML = html;
+  el().addEventListener('click', function(e) {
+    var b = e.target.closest('[data-action]');
+    if (!b) return;
+    if (b.getAttribute('data-action') === 'deloferta') delOferta(b, b.getAttribute('data-id'));
+  }, {once:true});
 }
 async function salvarOferta() {
   var texto = document.getElementById('of-texto').value.trim();
@@ -1723,11 +1733,15 @@ async function renderPedidos() {
       html += '<td><span class="badge" style="background:'+(fc[p.financeiro]||'#e5e7eb')+'">'+p.financeiro+'</span><br><span class="badge" style="background:'+(ful[p.fulfillment]||'#e5e7eb')+'">'+p.fulfillment+'</span></td>';
       html += '<td style="font-size:11px;font-family:monospace">'+(p.tracking||'—')+'</td>';
       html += '<td>'+(origem?'<span class="badge" style="background:#dcfce7;color:#16a34a">📍'+origem[1].trim()+'</span>':'—')+'</td>';
-      html += '<td><button class="btn-del" onclick="enviarFornecedor(this,\''+encodeURIComponent(p.cliente)+'\',\''+p.tracking+'\',\''+encodeURIComponent(p.imagem||'')+'\',\''+p.meOrderId+'\')">📦</button></td>';
+      html += '<td><button class="btn-del" data-action="fornecedor" data-cliente="'+encodeURIComponent(p.cliente)+'" data-tracking="'+(p.tracking||'')+'" data-img="'+encodeURIComponent(p.imagem||'')+'" data-orderid="'+(p.meOrderId||'')+'">📦</button></td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
     el().innerHTML = html;
+  el().addEventListener('click', function(e) {
+    var b = e.target.closest('[data-action="fornecedor"]');
+    if (b) enviarFornecedor(b, b.getAttribute('data-cliente'), b.getAttribute('data-tracking'), b.getAttribute('data-img'), b.getAttribute('data-orderid'));
+  }, {once:true});
   } catch(e) { erro('Erro: ' + e.message); }
 }
 async function enviarFornecedor(btn, nome, tracking, imgUrl, meOrderId) {
@@ -1767,11 +1781,18 @@ async function renderCupons() {
       html += '<td>'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
       html += '<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
       html += '<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
-      html += '<td><button class="btn-del" style="margin-right:4px" onclick="toggleCupom(\''+c.id+'\')">⟳</button><button class="btn-del" onclick="deletarCupom(this,\''+c.id+'\',\''+c.codigo+'\')">🗑</button></td>';
+    html += '<td><button class="btn-del" style="margin-right:4px" data-action="togglecupom" data-id="'+c.id+'">⟳</button><button class="btn-del" data-action="delcupom" data-id="'+c.id+'" data-codigo="'+c.codigo+'">🗑</button></td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
     el().innerHTML = html;
+  el().addEventListener('click', function(e) {
+    var b = e.target.closest('[data-action]');
+    if (!b) return;
+    var act = b.getAttribute('data-action');
+    if (act === 'togglecupom') toggleCupom(b.getAttribute('data-id'));
+    if (act === 'delcupom') deletarCupom(b, b.getAttribute('data-id'), b.getAttribute('data-codigo'));
+  }, {once:true});
   } catch(e) { erro('Erro: ' + e.message); }
 }
 function atualizarCampoValor() {
@@ -1863,12 +1884,16 @@ async function renderGrupos() {
       html += '<div style="font-size:18px;font-weight:700">'+fmtN(g.membros)+'</div>';
       html += '<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+cor+'"></div></div>';
       html += '<div style="font-size:10px;color:#9ca3af">'+(LIMITE-g.membros)+' vagas</div>';
-      if (!isAtivo) html += '<button onclick=\'definirGrupoAtivo("'+g.nome+'","'+(g.link||'')+'")\' style=\'width:100%;margin-top:6px;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer\'>Definir ativo</button>';
+      if (!isAtivo) html += '<button data-action="defativo" data-nome="'+g.nome+'" data-link="'+encodeURIComponent(g.link||'')+'" style="width:100%;margin-top:6px;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer">Definir ativo</button>';
       html += '</div>';
     });
     html += '</div>';
     if (d.aviso) html += '<div style="margin-top:12px;padding:10px 14px;background:#fef9c3;border-radius:8px;font-size:13px;color:#92400e">⚠️ '+d.aviso+'</div>';
     el().innerHTML = html;
+    el().addEventListener('click', function(e) {
+      var b = e.target.closest('[data-action="defativo"]');
+      if (b) definirGrupoAtivo(b.getAttribute('data-nome'), decodeURIComponent(b.getAttribute('data-link')));
+    }, {once:true});
   } catch(e) { erro('Erro: ' + e.message); }
 }
 async function atualizarLinkAtivo(nome) {
