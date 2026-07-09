@@ -256,6 +256,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== JSON: DASHBOARD HOME =====
   if (req.query.action === 'dashboard-home') {
     res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Cache Redis por 10 minutos
+    const cacheKey = 'cache-dashboard-home';
+    if (!req.query.refresh) {
+      try {
+        const cacheResp = await fetch(`${KV_URL}/get/${cacheKey}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        const cacheData = await cacheResp.json();
+        if (cacheData.result) {
+          let cached = cacheData.result;
+          while (typeof cached === 'string') { try { cached = JSON.parse(cached); } catch(e) { break; } }
+          if (cached && cached.vendas) {
+            return res.status(200).json({ ...cached, fromCache: true });
+          }
+        }
+      } catch(e) {}
+    }
+
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
@@ -302,7 +319,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       .map(([nome, d]) => ({ nome, ...d, imagem: getImg(nome) }))
       .sort((a,b) => b.valor - a.valor).slice(0, 5);
 
-    return res.status(200).json({
+    const result = {
       vendas: {
         hoje: calc(oH.orders), semana: calc(oS.orders), mes: vM, mesAnt: calc(oMA.orders),
         pendentes: (pedPendentes.orders||[]).length,
@@ -311,12 +328,31 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       melhorEnvio: { saldo: parseFloat(saldoME.balance || 0) },
       leads: { total: (leadsR.leads||[]).length },
       topProdutos,
-    });
+    };
+
+    // Salvar no cache por 10 minutos
+    fetch(`${KV_URL}/set/${cacheKey}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(result), ex: 600 })
+    }).catch(()=>{});
+
+    return res.status(200).json(result);
   }
 
   // ===== JSON: PEDIDOS =====
   if (req.query.action === 'pedidos-json') {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    const cachePedidos = 'cache-pedidos-json';
+    try {
+      const cr = await fetch(`${KV_URL}/get/${cachePedidos}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const cd = await cr.json();
+      if (cd.result) {
+        let cached = cd.result;
+        while (typeof cached === 'string') { try { cached = JSON.parse(cached); } catch(e) { break; } }
+        if (cached && cached.pedidos) return res.status(200).json({ ...cached, fromCache: true });
+      }
+    } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
@@ -336,7 +372,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       meOrderId: '', criado_em: o.created_at,
       imagem: getImg((o.line_items||[])[0]?.title || ''),
     }));
-    return res.status(200).json({ pedidos });
+    const pedResult = { pedidos };
+    fetch(`${KV_URL}/set/${cachePedidos}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(pedResult), ex: 300 })
+    }).catch(()=>{});
+    return res.status(200).json(pedResult);
   }
 
   // ===== DEFINIR GRUPO ATIVO MANUAL =====
@@ -1556,33 +1598,62 @@ function renderAba(aba) {
 }
 
 // ===== HOME =====
-async function renderHome() {
+async function renderHome(forceRefresh) {
   loading();
   try {
-    var d = await fetch(API + '/admin?secret=' + S + '&action=dashboard-home').then(r=>r.json());
+    var url = API + '/admin?secret=' + S + '&action=dashboard-home' + (forceRefresh ? '&refresh=1' : '');
+    var d = await fetch(url).then(r=>r.json());
     var v = d.vendas || {}, me = d.melhorEnvio || {}, leads = d.leads || {}, top = d.topProdutos || [];
     var html = '';
+
+    // Indicador de cache
+    if (d.fromCache) {
+      html += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px">';
+      html += '<span style="font-size:11px;color:#9ca3af">⚡ Cache · <button onclick="renderHome(true)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:11px">Forçar atualização</button></span>';
+      html += '</div>';
+    }
+
     html += '<div class="section-divider">Vendas</div>';
     html += '<div class="stat-grid">';
-    [{l:'Hoje',v:v.hoje},{l:'Semana',v:v.semana},{l:'Mês',v:v.mes},{l:'Mês Anterior',v:v.mesAnt}].forEach(function(c){
-      html += '<div class="stat-card"><div class="stat-label">' + c.l + '</div><div class="stat-value">' + fmt((c.v||{}).valor) + '</div><div class="stat-sub">' + ((c.v||{}).count||0) + ' pedidos</div></div>';
+    [{l:'Hoje',v:v.hoje},{l:'Esta Semana',v:v.semana},{l:'Este Mês',v:v.mes},{l:'Mês Anterior',v:v.mesAnt}].forEach(function(c){
+      var pct = '';
+      html += '<div class="stat-card">';
+      html += '<div class="stat-label">' + c.l + '</div>';
+      html += '<div class="stat-value">' + fmt((c.v||{}).valor) + '</div>';
+      html += '<div class="stat-sub">' + ((c.v||{}).count||0) + ' pedidos</div>';
+      html += '</div>';
     });
     html += '</div>';
+
     html += '<div class="section-divider">Operação</div>';
     html += '<div class="stat-grid">';
-    [{l:'Aguardando Envio',v:v.pendentes||0,i:'⏳'},{l:'Saldo Melhor Envio',v:fmt(me.saldo),i:'💰'},{l:'Carrinhos Abertos',v:leads.total||0,i:'🛒'},{l:'Ticket Médio',v:fmt(v.ticketMedio),i:'📊'}].forEach(function(c){
-      html += '<div class="stat-card"><div class="stat-label">' + c.i + ' ' + c.l + '</div><div class="stat-value" style="font-size:20px">' + c.v + '</div></div>';
+    [
+      {l:'Aguardando Envio',v:v.pendentes||0,i:'⏳',color:v.pendentes>0?'#f59e0b':''},
+      {l:'Saldo Melhor Envio',v:fmt(me.saldo),i:'💰',color:me.saldo<50?'#ef4444':''},
+      {l:'Carrinhos Abertos',v:leads.total||0,i:'🛒',color:''},
+      {l:'Ticket Médio',v:fmt(v.ticketMedio),i:'📊',color:''}
+    ].forEach(function(c){
+      html += '<div class="stat-card">';
+      html += '<div class="stat-label">' + c.i + ' ' + c.l + '</div>';
+      html += '<div class="stat-value" style="font-size:20px' + (c.color?';color:'+c.color:'') + '">' + c.v + '</div>';
+      html += '</div>';
     });
     html += '</div>';
+
     if (top.length) {
       html += '<div class="section-divider">Top Produtos do Mês</div>';
-      html += '<table><thead><tr><th></th><th>Produto</th><th>Vendas</th><th>Receita</th></tr></thead><tbody>';
+      html += '<table><thead><tr><th></th><th>Produto</th><th>Qtd</th><th>Receita</th></tr></thead><tbody>';
       top.forEach(function(p){
-        html += '<tr><td>' + (p.imagem ? '<img src="' + p.imagem + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px">' : '') + '</td>';
-        html += '<td>' + p.nome + '</td><td>' + p.count + '</td><td>' + fmt(p.valor) + '</td></tr>';
+        html += '<tr>';
+        html += '<td>' + (p.imagem ? '<img src="' + p.imagem + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px">' : '') + '</td>';
+        html += '<td>' + p.nome + '</td>';
+        html += '<td>' + p.count + ' un</td>';
+        html += '<td><strong>' + fmt(p.valor) + '</strong></td>';
+        html += '</tr>';
       });
       html += '</tbody></table>';
     }
+
     el().innerHTML = html;
   } catch(e) { erro('Erro ao carregar: ' + e.message); }
 }
@@ -1595,13 +1666,16 @@ async function renderCarrinhos() {
     var d = await fetch(API + '/leads?secret=' + S).then(r=>r.json());
     _leads = (d.leads||[]).sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
     renderLeadsList(_leads);
-  } catch(e) { erro('Erro: ' + e.message); }
+  } catch(e) { erro('Erro ao carregar carrinhos: ' + e.message); }
 }
 function renderLeadsList(leads) {
   var ec = {dados:'#e5e7eb',endereco:'#bfdbfe',frete_selecionado:'#fde68a',pagamento_pendente:'#fca5a5'};
   var et = {dados:'Dados',endereco:'Endereço',frete_selecionado:'Frete',pagamento_pendente:'Pagando'};
-  var html = '<div style="display:flex;gap:10px;margin-bottom:16px">';
-  html += '<input class="field" style="flex:1;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none" placeholder="Buscar por nome ou email..." oninput="filtrarLeads(this.value)">';
+  // Calcular valor total em aberto
+  var valorTotal = leads.reduce(function(s,l){ return s + (l.carrinho||[]).reduce(function(sv,i){return sv+(i.preco*i.quantidade/100);},0); }, 0);
+  var html = '<div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">';
+  html += '<span style="font-size:13px;color:#6b7280">' + leads.length + ' carrinhos · ' + fmt(valorTotal) + ' em aberto</span>';
+  html += '<input style="flex:1;padding:8px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none" placeholder="Buscar..." oninput="filtrarLeads(this.value)">';
   html += '</div>';
   if (!leads.length) { html += '<div class="vazio">Nenhum carrinho abandonado</div>'; el().innerHTML = html; return; }
   html += '<table><thead><tr><th>Cliente</th><th>Etapa</th><th>Produtos</th><th>Valor</th><th>Atualizado</th><th></th></tr></thead><tbody>';
