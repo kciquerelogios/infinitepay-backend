@@ -1897,7 +1897,7 @@ function abrirModalPedido(i) {
   html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#6b7280">Subtotal</span><span>'+fmt(parseFloat(p.subtotal||0))+'</span></div>';
   if(parseFloat(p.frete_valor||0)>0)html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#6b7280">Frete</span><span>+'+fmt(parseFloat(p.frete_valor||0))+'</span></div>';
   if(parseFloat(p.desconto||0)>0){
-    html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#16a34a"><span>🎟 Desconto'+(p.cupom?' ('+p.cupom+')')+'</span><span>-'+fmt(parseFloat(p.desconto||0))+'</span></div>';
+    var cupomLabel = p.cupom ? ' ('+p.cupom+')' : ''; html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#16a34a"><span>🎟 Desconto'+cupomLabel+'</span><span>-'+fmt(parseFloat(p.desconto||0))+'</span></div>';
   }
   html+='<div style="border-top:1px solid #e8eaf0;margin:8px 0"></div>';
   html+='<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700"><span>Total pago</span><span style="color:#16a34a">'+fmt(parseFloat(p.valor||0))+'</span></div>';
