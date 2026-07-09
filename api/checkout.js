@@ -181,12 +181,16 @@ export default async function handler(req, res) {
   try {
     // Salvar dados no Redis
     if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      const valorOriginalTotal = subtotalBruto + (frete ? precoFrete : 0);
       const dadosPedido = {
         cliente,
         frete,
         carrinho,
         order_nsu: orderNsu,
         ref: ref || 'direto',
+        cupom: cupomValido || null,
+        valorOriginal: descontoTotal > 0 ? (valorOriginalTotal / 100).toFixed(2) : null,
+        desconto: descontoTotal > 0 ? (descontoTotal / 100).toFixed(2) : null,
         criado_em: new Date().toISOString()
       };
 
