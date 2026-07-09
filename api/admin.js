@@ -1511,13 +1511,13 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 <div class="sidebar">
   <div class="sidebar-logo">⌚ <span>Kcique Admin</span></div>
   <div class="sidebar-menu">
-    <button class="menu-item ativo" id="menu-home" onclick="mudarAba('home')"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
-    <button class="menu-item" id="menu-carrinhos" onclick="mudarAba('carrinhos')"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
-    <button class="menu-item" id="menu-ofertas" onclick="mudarAba('ofertas')"><span class="menu-icon">📣</span><span class="menu-label">Ofertas</span></button>
-    <button class="menu-item" id="menu-pedidos" onclick="mudarAba('pedidos')"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
-    <button class="menu-item" id="menu-cupons" onclick="mudarAba('cupons')"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
-    <button class="menu-item" id="menu-grupos-vip" onclick="mudarAba('grupos-vip')"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
-    <button class="menu-item" id="menu-bundle" onclick="mudarAba('bundle')"><span class="menu-icon">🎁</span><span class="menu-label">Bundle</span></button>
+    <button class="menu-item ativo" id="menu-home" data-aba="home"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
+    <button class="menu-item" id="menu-carrinhos" data-aba="carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
+    <button class="menu-item" id="menu-ofertas" data-aba="ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas</span></button>
+    <button class="menu-item" id="menu-pedidos" data-aba="pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
+    <button class="menu-item" id="menu-cupons" data-aba="cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
+    <button class="menu-item" id="menu-grupos-vip" data-aba="grupos-vip"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
+    <button class="menu-item" id="menu-bundle" data-aba="bundle"><span class="menu-icon">🎁</span><span class="menu-label">Bundle</span></button>
   </div>
   <div class="sidebar-footer">Kcique © 2026</div>
 </div>
@@ -1937,6 +1937,12 @@ async function salvarBundle() {
   if(msg) { msg.textContent=d.ok?'✅ Salvo!':'❌ Erro'; msg.style.color=d.ok?'#16a34a':'#ef4444'; }
   btn.disabled=false; btn.textContent='💾 Salvar Configuração';
 }
+
+// Event delegation para menu
+document.querySelector('.sidebar-menu').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-aba]');
+  if (btn) mudarAba(btn.getAttribute('data-aba'));
+});
 
 // INICIAR
 renderAba('home');
