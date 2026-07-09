@@ -319,15 +319,46 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       .map(([nome, d]) => ({ nome, ...d, imagem: getImg(nome) }))
       .sort((a,b) => b.valor - a.valor).slice(0, 5);
 
+    // Método de pagamento (do mês)
+    const pagamentos = {};
+    (oM.orders||[]).forEach(order => {
+      const nota = order.note || '';
+      const metodo = nota.match(/Método: ([^|]+)/)?.[1]?.trim() || 'outro';
+      const label = metodo === 'pix' ? 'PIX' : metodo === 'credit_card' ? 'Cartão' : metodo === 'debit_card' ? 'Débito' : 'Outro';
+      if (!pagamentos[label]) pagamentos[label] = { count: 0, valor: 0 };
+      pagamentos[label].count++;
+      pagamentos[label].valor += parseFloat(order.total_price || 0);
+    });
+    const pagamentosArr = Object.entries(pagamentos)
+      .map(([nome, d]) => ({ nome, ...d }))
+      .sort((a,b) => b.valor - a.valor);
+
+    // Comparativo mês anterior %
+    const crescimento = vM.valor > 0 && calc(oMA.orders).valor > 0
+      ? ((vM.valor - calc(oMA.orders).valor) / calc(oMA.orders).valor * 100).toFixed(1)
+      : null;
+
+    // Últimos 5 pedidos
+    const ultimosPedidos = (oM.orders||[]).slice(0,5).map(o => ({
+      numero: o.order_number,
+      cliente: o.customer ? (o.customer.first_name||'') + ' ' + (o.customer.last_name||'') : 'Cliente',
+      valor: parseFloat(o.total_price||0),
+      metodo: (o.note||'').match(/Método: ([^|]+)/)?.[1]?.trim() || '',
+      criado_em: o.created_at,
+    }));
+
     const result = {
       vendas: {
         hoje: calc(oH.orders), semana: calc(oS.orders), mes: vM, mesAnt: calc(oMA.orders),
         pendentes: (pedPendentes.orders||[]).length,
         ticketMedio: vM.count > 0 ? vM.valor / vM.count : 0,
+        crescimento,
       },
       melhorEnvio: { saldo: parseFloat(saldoME.balance || 0) },
       leads: { total: (leadsR.leads||[]).length },
       topProdutos,
+      pagamentos: pagamentosArr,
+      ultimosPedidos,
     };
 
     // Salvar no cache por 10 minutos
@@ -1659,31 +1690,132 @@ async function renderHome(force) {
   } catch(e) { errMsg('Erro: '+e.message); }
 }
 function renderHomeHtml(d) {
-  var v = d.vendas||{}, me = d.melhorEnvio||{}, lds = d.leads||{}, top = d.topProdutos||[];
+  var v = d.vendas||{}, me = d.melhorEnvio||{}, lds = d.leads||{}, top = d.topProdutos||[], pags = d.pagamentos||[], ults = d.ultimosPedidos||[];
   var html = '';
-  if (d.fromCache) html += '<div class="cache-bar">⚡ Cache <button onclick="renderHome(true)">Atualizar</button></div>';
-  html += '<div class="section-title">Vendas</div><div class="stat-grid">';
-  [{l:'Hoje',v:v.hoje},{l:'Esta Semana',v:v.semana},{l:'Este Mês',v:v.mes},{l:'Mês Anterior',v:v.mesAnt}].forEach(function(c){
-    var cv = c.v||{};
-    html += '<div class="stat-card"><div class="stat-label">'+c.l+'</div><div class="stat-value">'+fmt(cv.valor)+'</div><div class="stat-sub">'+(cv.count||0)+' pedidos</div></div>';
-  });
-  html += '</div><div class="section-title">Operação</div><div class="stat-grid">';
-  [
-    {l:'Aguardando Envio',v:v.pendentes||0,i:'⏳',w:v.pendentes>0},
-    {l:'Saldo Melhor Envio',v:fmt(me.saldo),i:'💰',w:me.saldo<50},
-    {l:'Carrinhos Abertos',v:lds.total||0,i:'🛒',w:false},
-    {l:'Ticket Médio',v:fmt(v.ticketMedio),i:'📊',w:false}
-  ].forEach(function(c){
-    html += '<div class="stat-card"><div class="stat-label">'+c.i+' '+c.l+'</div><div class="stat-value" style="font-size:20px'+(c.w?';color:#f59e0b':'')+'">'+c.v+'</div></div>';
-  });
+  if (d.fromCache) html += '<div class="cache-bar">⚡ Dados em cache <button onclick="renderHome(true)">↻ Atualizar</button></div>';
+
+  // KPIs principais
+  var mesAnt = v.mesAnt||{};
+  var cresc = v.crescimento;
+  html += '<div class="stat-grid" style="margin-bottom:20px">';
+  // Hoje
+  html += '<div class="stat-card" style="border-left:3px solid #25d366">';
+  html += '<div class="stat-label">📈 Hoje</div>';
+  html += '<div class="stat-value">'+fmt(((v.hoje||{}).valor)||0)+'</div>';
+  html += '<div class="stat-sub">'+(((v.hoje||{}).count)||0)+' pedidos</div>';
   html += '</div>';
-  if (top.length) {
-    html += '<div class="section-title" style="margin-top:8px">Top Produtos do Mês</div><div class="tbl-wrap"><table><thead><tr><th></th><th>Produto</th><th>Qtd</th><th>Receita</th></tr></thead><tbody>';
-    top.forEach(function(p){
-      html += '<tr><td>'+(p.imagem?'<img src="'+p.imagem+'" style="width:34px;height:34px;object-fit:cover;border-radius:6px">':'')+'</td><td>'+p.nome+'</td><td>'+p.count+'</td><td><strong>'+fmt(p.valor)+'</strong></td></tr>';
-    });
-    html += '</tbody></table></div>';
+  // Semana
+  html += '<div class="stat-card" style="border-left:3px solid #3b82f6">';
+  html += '<div class="stat-label">📅 Esta Semana</div>';
+  html += '<div class="stat-value">'+fmt(((v.semana||{}).valor)||0)+'</div>';
+  html += '<div class="stat-sub">'+(((v.semana||{}).count)||0)+' pedidos</div>';
+  html += '</div>';
+  // Mês com crescimento
+  html += '<div class="stat-card" style="border-left:3px solid #8b5cf6">';
+  html += '<div class="stat-label">🗓 Este Mês</div>';
+  html += '<div class="stat-value">'+fmt(((v.mes||{}).valor)||0)+'</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-top:3px">';
+  html += '<span class="stat-sub">'+(((v.mes||{}).count)||0)+' pedidos</span>';
+  if (cresc !== null) {
+    var cor = parseFloat(cresc)>=0?'#16a34a':'#dc2626';
+    var seta = parseFloat(cresc)>=0?'↑':'↓';
+    html += '<span style="font-size:12px;font-weight:700;color:'+cor+'">'+seta+' '+Math.abs(cresc)+'%</span>';
   }
+  html += '</div></div>';
+  // Ticket médio
+  html += '<div class="stat-card" style="border-left:3px solid #f59e0b">';
+  html += '<div class="stat-label">🎯 Ticket Médio</div>';
+  html += '<div class="stat-value">'+fmt(v.ticketMedio||0)+'</div>';
+  html += '<div class="stat-sub">vs '+fmt((mesAnt.valor||0)/(mesAnt.count||1))+' mês ant.</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Linha 2: Operação + Método de Pagamento
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+
+  // Operação
+  html += '<div class="card" style="padding:18px">';
+  html += '<div class="section-title" style="margin-bottom:14px">Operação</div>';
+  [
+    {i:'⏳',l:'Aguardando Envio',v:v.pendentes||0,w:v.pendentes>0,fmt:false},
+    {i:'💰',l:'Saldo Melhor Envio',v:fmt(me.saldo||0),w:(me.saldo||0)<50,fmt:true},
+    {i:'🛒',l:'Carrinhos Abertos',v:lds.total||0,w:false,fmt:false},
+  ].forEach(function(c){
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6">';
+    html += '<div style="display:flex;align-items:center;gap:8px"><span>'+c.i+'</span><span style="font-size:13px;color:#374151">'+c.l+'</span></div>';
+    html += '<span style="font-size:15px;font-weight:700;color:'+(c.w?'#f59e0b':'#111')+'">'+c.v+'</span>';
+    html += '</div>';
+  });
+  // Alerta saldo baixo
+  if ((me.saldo||0) < 50) html += '<div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e">⚠️ Saldo baixo! Recarregue o Melhor Envio.</div>';
+  html += '</div>';
+
+  // Métodos de pagamento
+  html += '<div class="card" style="padding:18px">';
+  html += '<div class="section-title" style="margin-bottom:14px">💳 Pagamentos do Mês</div>';
+  if (!pags.length) {
+    html += '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">Sem dados</div>';
+  } else {
+    var totalPag = pags.reduce(function(s,p){return s+p.valor;},0);
+    pags.forEach(function(p){
+      var pct = totalPag > 0 ? Math.round(p.valor/totalPag*100) : 0;
+      var cor = p.nome==='PIX'?'#25d366':p.nome==='Cartão'?'#3b82f6':p.nome==='Débito'?'#8b5cf6':'#9ca3af';
+      html += '<div style="margin-bottom:12px">';
+      html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
+      html += '<span style="font-size:13px;font-weight:600">'+p.nome+'</span>';
+      html += '<span style="font-size:13px;color:#6b7280">'+p.count+' · '+fmt(p.valor)+' ('+pct+'%)</span>';
+      html += '</div>';
+      html += '<div style="background:#f3f4f6;border-radius:4px;height:6px"><div style="width:'+pct+'%;height:6px;border-radius:4px;background:'+cor+';transition:width .5s"></div></div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  html += '</div>'; // fim grid 2 colunas
+
+  // Top produtos + Últimos pedidos
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+
+  // Top produtos
+  html += '<div class="card">';
+  html += '<div style="padding:16px 18px;border-bottom:1px solid #f3f4f6"><span style="font-size:13px;font-weight:700">🏆 Top Produtos do Mês</span></div>';
+  if (!top.length) {
+    html += '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:13px">Sem vendas no período</div>';
+  } else {
+    top.forEach(function(p, i){
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #f9f9f9">';
+      html += '<span style="font-size:16px;font-weight:700;color:#d1d5db;width:18px">'+(i+1)+'</span>';
+      html += (p.imagem?'<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:8px;flex-shrink:0">':'<div style="width:36px;height:36px;background:#f3f4f6;border-radius:8px;flex-shrink:0"></div>');
+      html += '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div><div style="font-size:11px;color:#9ca3af">'+p.count+' vendas</div></div>';
+      html += '<div style="font-size:13px;font-weight:700;color:#111;flex-shrink:0">'+fmt(p.valor)+'</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // Últimos pedidos
+  html += '<div class="card">';
+  html += '<div style="padding:16px 18px;border-bottom:1px solid #f3f4f6"><span style="font-size:13px;font-weight:700">🕐 Pedidos Recentes</span></div>';
+  if (!ults.length) {
+    html += '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:13px">Sem pedidos recentes</div>';
+  } else {
+    ults.forEach(function(p){
+      var metLabel = p.metodo==='pix'?'PIX':p.metodo==='credit_card'?'Cartão':p.metodo==='debit_card'?'Débito':'';
+      var metCor = p.metodo==='pix'?'#dcfce7':p.metodo==='credit_card'?'#dbeafe':'#f3f4f6';
+      var metTxt = p.metodo==='pix'?'#16a34a':p.metodo==='credit_card'?'#1d4ed8':'#374151';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #f9f9f9">';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="font-size:13px;font-weight:600">#'+p.numero+' · '+p.cliente.trim()+'</div>';
+      html += '<div style="font-size:11px;color:#9ca3af">'+fmtDate(p.criado_em)+'</div>';
+      html += '</div>';
+      html += '<div style="text-align:right;flex-shrink:0">';
+      html += '<div style="font-size:13px;font-weight:700">'+fmt(p.valor)+'</div>';
+      if(metLabel)html += '<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:'+metCor+';color:'+metTxt+'">'+metLabel+'</span>';
+      html += '</div></div>';
+    });
+  }
+  html += '</div>';
+  html += '</div>'; // fim grid top+últimos
+
   ct().innerHTML = html;
 }
 
