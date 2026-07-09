@@ -45,6 +45,8 @@ export default async function handler(req, res) {
     const cliente = dadosPedido ? dadosPedido.cliente : null;
     const frete = dadosPedido ? dadosPedido.frete : null;
     const carrinhoSalvo = dadosPedido ? dadosPedido.carrinho : null;
+    const cupomAplicado = dadosPedido ? dadosPedido.cupom : null;
+    const valorOriginal = dadosPedido ? dadosPedido.valorOriginal : null;
 
     // Usar carrinho salvo se disponível, senão usar payload
     let lineItems;
@@ -74,8 +76,9 @@ export default async function handler(req, res) {
         financial_status: 'paid',
         fulfillment_status: null,
         currency: 'BRL',
-        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Telefone: ${cliente ? cliente.telefone : ''} | Comprovante: ${payload.receipt_url || ''}`,
+        note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Telefone: ${cliente ? cliente.telefone : ''} | Comprovante: ${payload.receipt_url || ''} | Origem: ${dadosPedido?.ref || 'direto'}${cupomAplicado ? ' | Cupom: ' + cupomAplicado.codigo + ' (' + cupomAplicado.tipo + ' -' + (cupomAplicado.tipo === 'percentual' ? cupomAplicado.valor + '%)' : 'R$' + cupomAplicado.valor + ')') : ''}${valorOriginal ? ' | Valor original: R$' + parseFloat(valorOriginal).toFixed(2) : ''}`,
         tags: 'InfinitePay',
+        discount_codes: cupomAplicado ? [{ code: cupomAplicado.codigo, amount: String(parseFloat(valorOriginal || 0) - parseFloat(payload.amount || 0) / 100), type: 'fixed_amount' }] : [],
         transactions: [{
           kind: 'sale',
           status: 'success',
@@ -161,6 +164,7 @@ export default async function handler(req, res) {
     // ===== META CAPI: Purchase =====
     try {
       const valorTotal = parseFloat(payload.amount || 0) / 100;
+      const refOrigem = dadosPedido?.ref || 'direto';
       const metaPayload = {
         event_name: 'Purchase',
         event_id: 'purchase_' + (shopifyData.order.id || Date.now()),
