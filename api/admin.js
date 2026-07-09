@@ -1935,7 +1935,7 @@ async function enviarFornecedorPed(btn, i) {
 async function renderCupons() {
   loading();
   try {
-    var d = await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'listar',secret:S})}).then(r=>r.json());
+    var d = await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
     var cupons=d.cupons||[];
     var html='<div class="form-card"><div class="form-title">🎟 Criar novo cupom</div>';
     html+='<div class="row-3"><div class="field"><label>Código</label><input id="c-cod" placeholder="KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
@@ -1981,7 +1981,7 @@ async function salvarCupom(){
   if(!cod){if(msg)msg.textContent='⚠️ Digite o código';return;}
   var btn=get('btn-criar-cupom');btn.disabled=true;btn.textContent='Salvando...';
   try{
-    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limite:parseInt(val('c-limite'))||null,produto:val('c-prod')||null})}).then(r=>r.json());
+    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:val('c-prod')||null})}).then(r=>r.json());
     if(d.ok){if(msg){msg.textContent='✅ Criado!';msg.style.color='#16a34a';}setTimeout(function(){renderCupons();},800);}
     else{if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
