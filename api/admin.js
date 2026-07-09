@@ -1724,7 +1724,7 @@ async function renderPedidos() {
     if (!pedidos.length) { el().innerHTML = '<div class="vazio">Nenhum pedido</div>'; return; }
     var html = '<table><thead><tr><th></th><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Status</th><th>Tracking</th><th>Origem</th><th></th></tr></thead><tbody>';
     pedidos.forEach(function(p){
-      var origem = (p.nota||'').match(/Origem: ([^|\n]+)/);
+      var origemMatch = (p.nota||'').split('Origem: ')[1]; var origem = origemMatch ? [null, origemMatch.split('|')[0].trim()] : null;
       html += '<tr>';
       html += '<td>' + (p.imagem?'<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px">':'') + '</td>';
       html += '<td><strong>#'+p.numero+'</strong><br><span style="font-size:11px;color:#6b7280">'+fmtDate(p.criado_em)+'</span></td>';
