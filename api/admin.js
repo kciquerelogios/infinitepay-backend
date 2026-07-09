@@ -1797,20 +1797,20 @@ async function limparOfertas(){
 }
 
 // ===== PEDIDOS =====
-async function renderPedidos() {
+var _pedidos = [];
+async function renderPedidos(force) {
   loading();
   try {
-    var d = await fetch(API+'/api/admin?secret='+S+'&action=pedidos-json').then(r=>r.json());
-    var pedidos = d.pedidos||[];
+    var d = await fetch(API+'/api/admin?secret='+S+'&action=pedidos-json'+(force?'&refresh=1':'')).then(r=>r.json());
+    _pedidos = d.pedidos||[];
     var fc={paid:'#bbf7d0',pending:'#fde68a',refunded:'#fca5a5'};
     var fu={fulfilled:'#bbf7d0',unfulfilled:'#fde68a',partial:'#bfdbfe'};
-    if(d.fromCache) ct().innerHTML='<div class="cache-bar">⚡ Cache <button onclick="renderPedidos(true)">Atualizar</button></div>';
-    else ct().innerHTML='';
-    if(!pedidos.length){ct().innerHTML+='<div class="vazio">Nenhum pedido</div>';return;}
-    var html='<div class="tbl-wrap"><table><thead><tr><th></th><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Pagamento</th><th>Envio</th><th>Tracking</th><th>Origem</th><th></th></tr></thead><tbody>';
-    pedidos.forEach(function(p){
+    var html = d.fromCache ? '<div class="cache-bar">⚡ Cache <button onclick="renderPedidos(true)">Atualizar</button></div>' : '';
+    if(!_pedidos.length){ct().innerHTML=html+'<div class="vazio">Nenhum pedido</div>';return;}
+    html+='<div class="tbl-wrap"><table><thead><tr><th></th><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Pagamento</th><th>Envio</th><th>Tracking</th><th>Origem</th><th></th></tr></thead><tbody>';
+    _pedidos.forEach(function(p,i){
       var origem=(p.nota||'').split('Origem: ')[1];if(origem)origem=origem.split('|')[0].trim();
-      html+='<tr>';
+      html+='<tr style="cursor:pointer" data-pi="'+i+'">';
       html+='<td>'+(p.imagem?'<img src="'+p.imagem+'" style="width:32px;height:32px;object-fit:cover;border-radius:6px">':'')+'</td>';
       html+='<td><strong>#'+p.numero+'</strong><div style="font-size:11px;color:#9ca3af">'+fmtDate(p.criado_em)+'</div></td>';
       html+='<td>'+p.cliente+'</td>';
@@ -1820,19 +1820,70 @@ async function renderPedidos() {
       html+='<td><span class="badge" style="background:'+(fu[p.fulfillment]||'#e5e7eb')+'">'+p.fulfillment+'</span></td>';
       html+='<td style="font-size:11px;font-family:monospace">'+(p.tracking||'—')+'</td>';
       html+='<td>'+(origem?'<span class="badge" style="background:#dcfce7;color:#16a34a">📍'+origem+'</span>':'—')+'</td>';
-      html+='<td><button class="btn-del" data-pid="'+encodeURIComponent(p.cliente)+'" data-tr="'+(p.tracking||'')+'" data-img="'+encodeURIComponent(p.imagem||'')+'" data-oid="'+(p.meOrderId||'')+'">📦</button></td>';
+      html+='<td><button class="btn-del btn-forn" data-pi="'+i+'">📦</button></td>';
       html+='</tr>';
     });
     html+='</tbody></table></div>';
-    ct().innerHTML=(ct().innerHTML||'')+html;
-    ct().addEventListener('click',function(e){
-      var b=e.target.closest('[data-pid]');
-      if(!b)return;
-      b.disabled=true;b.textContent='...';
-      fetch(API+'/api/admin?secret='+S+'&action=enviar-fornecedor&clienteNome='+b.getAttribute('data-pid')+'&tracking='+b.getAttribute('data-tr')+'&imgUrl='+b.getAttribute('data-img')+'&meOrderId='+b.getAttribute('data-oid'))
-        .then(function(){b.textContent='✅';});
-    },{once:true});
+    // Modal
+    html+='<div id="modal-ped" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">';
+    html+='<div style="background:#fff;border-radius:14px;padding:28px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;position:relative">';
+    html+='<button onclick="fecharModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>';
+    html+='<div id="modal-content"></div></div></div>';
+    ct().innerHTML = html;
+    ct().addEventListener('click', function(e) {
+      // Botão fornecedor
+      var bf = e.target.closest('.btn-forn');
+      if (bf) { e.stopPropagation(); enviarFornecedorPed(bf, parseInt(bf.getAttribute('data-pi'))); return; }
+      // Clique na linha - abrir modal
+      var tr = e.target.closest('tr[data-pi]');
+      if (tr) abrirModalPedido(parseInt(tr.getAttribute('data-pi')));
+    });
   }catch(e){errMsg('Erro: '+e.message);}
+}
+function abrirModalPedido(i) {
+  var p = _pedidos[i]; if (!p) return;
+  var fc={paid:'✅ Pago',pending:'⏳ Pendente',refunded:'↩️ Reembolsado'};
+  var fu={fulfilled:'✅ Enviado',unfulfilled:'⏳ Aguardando',partial:'🔄 Parcial'};
+  var origem=(p.nota||'').split('Origem: ')[1];if(origem)origem=origem.split('|')[0].trim();
+  var html='';
+  html+='<div style="display:flex;gap:14px;margin-bottom:18px">';
+  html+=(p.imagem?'<img src="'+p.imagem+'" style="width:70px;height:70px;object-fit:cover;border-radius:10px">':'');
+  html+='<div><div style="font-size:18px;font-weight:700">#'+p.numero+'</div>';
+  html+='<div style="color:#9ca3af;font-size:13px">'+fmtDate(p.criado_em)+'</div>';
+  html+='<div style="font-size:20px;font-weight:700;color:#25d366;margin-top:4px">'+fmt(parseFloat(p.valor||0))+'</div></div></div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+  [
+    {l:'Cliente',v:p.cliente},
+    {l:'Email',v:p.email||'—'},
+    {l:'Telefone',v:p.telefone||'—'},
+    {l:'Produto',v:p.produto||'—'},
+    {l:'Pagamento',v:fc[p.financeiro]||p.financeiro},
+    {l:'Envio',v:fu[p.fulfillment]||p.fulfillment},
+    {l:'Tracking',v:p.tracking||'—'},
+    {l:'Origem',v:origem||'—'},
+  ].forEach(function(c){
+    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px"><div style="font-size:11px;color:#9ca3af;margin-bottom:3px">'+c.l+'</div><div style="font-size:13px;font-weight:600">'+c.v+'</div></div>';
+  });
+  html+='</div>';
+  if (p.nota) {
+    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;font-size:12px;color:#6b7280;word-break:break-all">'+p.nota+'</div>';
+  }
+  html+='<div style="display:flex;gap:8px;margin-top:16px">';
+  html+='<button class="btn btn-ghost btn-sm" id="modal-forn-btn">📦 Enviar para Fornecedor</button>';
+  html+='</div>';
+  var mc = get('modal-content'); if (mc) mc.innerHTML = html;
+  var m = get('modal-ped'); if (m) m.style.display = 'flex';
+  var mf = get('modal-forn-btn');
+  if (mf) mf.addEventListener('click', function() { enviarFornecedorPed(mf, i); });
+}
+function fecharModal() {
+  var m = get('modal-ped'); if (m) m.style.display = 'none';
+}
+async function enviarFornecedorPed(btn, i) {
+  var p = _pedidos[i]; if (!p) return;
+  btn.disabled=true; btn.textContent='Enviando...';
+  await fetch(API+'/api/admin?secret='+S+'&action=enviar-fornecedor&clienteNome='+encodeURIComponent(p.cliente)+'&tracking='+(p.tracking||'')+'&imgUrl='+encodeURIComponent(p.imagem||'')+'&meOrderId='+(p.meOrderId||''));
+  btn.textContent='✅ Enviado';
 }
 
 // ===== CUPONS =====
