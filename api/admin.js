@@ -1864,8 +1864,8 @@ async function renderGrupos() {
     html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="'+(ga.link||'#')+'" target="_blank">'+(ga.link||'—')+'</a></div>';
     html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
     html += '<input id="input-link-ativo" value="'+(ga.link||'')+'" style="flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none" placeholder="Novo link">';
-    html += '<button onclick="atualizarLinkAtivo(\''+ga.nome+'\')" style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer">Salvar</button>';
-    html += '<button onclick="navigator.clipboard.writeText(\'https://infinitepay-backend.vercel.app/api/grupo\').then(function(){alert(\'Link copiado!\');})" style="padding:8px 14px;background:#f3f4f6;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;cursor:pointer">📋 Copiar</button>';
+    html += '<button id="btn-atualizar-link" style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer">Salvar</button>';
+    html += '<button id="btn-copiar-grupo" style="padding:8px 14px;background:#f3f4f6;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;cursor:pointer">📋 Copiar</button>';
     html += '</div>';
     html += '<div style="font-size:12px;color:#6b7280">Entradas hoje: <strong>'+d.entradasHoje+'</strong></div>';
     html += '</div>';
@@ -1900,10 +1900,15 @@ async function renderGrupos() {
     html += '</div>';
     if (d.aviso) html += '<div style="margin-top:12px;padding:10px 14px;background:#fef9c3;border-radius:8px;font-size:13px;color:#92400e">⚠️ '+d.aviso+'</div>';
     el().innerHTML = html;
+    // Adicionar eventos após render
+    var btnSalvar = el().querySelector('#btn-atualizar-link');
+    if (btnSalvar) btnSalvar.onclick = function() { atualizarLinkAtivo(ga.nome); };
+    var btnCopiar = el().querySelector('#btn-copiar-grupo');
+    if (btnCopiar) btnCopiar.onclick = function() { navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){alert('Link copiado! Use este link fixo nos anúncios.');}); };
     el().addEventListener('click', function(e) {
       var b = e.target.closest('[data-action="defativo"]');
       if (b) definirGrupoAtivo(b.getAttribute('data-nome'), decodeURIComponent(b.getAttribute('data-link')));
-    }, {once:true});
+    });
   } catch(e) { erro('Erro: ' + e.message); }
 }
 async function atualizarLinkAtivo(nome) {
