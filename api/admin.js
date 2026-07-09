@@ -1893,20 +1893,25 @@ function abrirModalPedido(i) {
     html+='</div>';
   }
   // Financeiro
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">';
-  [{l:'Subtotal',v:fmt(parseFloat(p.subtotal||0))},{l:'Frete',v:fmt(parseFloat(p.frete_valor||0))},{l:'Desconto',v:fmt(parseFloat(p.desconto||0))}].forEach(function(c){
-    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">'+c.l+'</div><div style="font-size:14px;font-weight:700">'+c.v+'</div></div>';
-  });
+  html+='<div style="background:#f9fafb;border-radius:10px;padding:14px;margin-bottom:16px">';
+  html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#6b7280">Subtotal</span><span>'+fmt(parseFloat(p.subtotal||0))+'</span></div>';
+  if(parseFloat(p.frete_valor||0)>0)html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#6b7280">Frete</span><span>+'+fmt(parseFloat(p.frete_valor||0))+'</span></div>';
+  if(parseFloat(p.desconto||0)>0){
+    html+='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#16a34a"><span>🎟 Desconto'+(p.cupom?' ('+p.cupom+')')+'</span><span>-'+fmt(parseFloat(p.desconto||0))+'</span></div>';
+  }
+  html+='<div style="border-top:1px solid #e8eaf0;margin:8px 0"></div>';
+  html+='<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700"><span>Total pago</span><span style="color:#16a34a">'+fmt(parseFloat(p.valor||0))+'</span></div>';
   html+='</div>';
   // Tracking + Cupom
+  if(p.tags)html+='<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">Tags: '+p.tags+'</div>';
+  if(p.cupom&&!parseFloat(p.desconto||0))html+='<div style="background:#fef9c3;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px">🎟 Cupom: <strong>'+p.cupom+'</strong></div>';
   if(p.tracking){
     html+='<div style="background:#f0f9ff;border-radius:8px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">';
     html+='<div><div style="font-size:10px;color:#9ca3af">Tracking</div><div style="font-size:13px;font-weight:700;font-family:monospace">'+p.tracking+'</div></div>';
     if(p.tracking_url)html+='<a href="'+p.tracking_url+'" target="_blank" style="font-size:12px;color:#2563eb">Rastrear →</a>';
     html+='</div>';
   }
-  if(p.cupom)html+='<div style="background:#fef9c3;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px">🎟 Cupom: <strong>'+p.cupom+'</strong></div>';
-  if(p.tags)html+='<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">Tags: '+p.tags+'</div>';
+
   if(p.nota)html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;font-size:12px;color:#6b7280;word-break:break-word;margin-bottom:12px">'+p.nota+'</div>';
   html+='<div style="display:flex;gap:8px;margin-top:8px">';
   html+='<button class="btn btn-ghost btn-sm" id="modal-forn-btn">📦 Enviar para Fornecedor</button>';
