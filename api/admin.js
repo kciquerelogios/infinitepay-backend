@@ -1540,7 +1540,7 @@ const loading = () => { el().innerHTML = '<div class="loading-tab"><div class="s
 const erro = msg => { el().innerHTML = '<div class="vazio">⚠️ ' + msg + '</div>'; };
 
 var abaAtual = 'home';
-var titulos = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos-vip:'📲 Grupos VIP',bundle:'🎁 Bundle'};
+var titulos = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons','grupos-vip':'📲 Grupos VIP',bundle:'🎁 Bundle'};
 
 function mudarAba(aba) {
   abaAtual = aba;
