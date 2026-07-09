@@ -1683,8 +1683,11 @@ async function renderHome(force) {
   if (_homeCache && !force) { renderHomeHtml(_homeCache); return; }
   loading();
   try {
-    var url = API+'/api/admin?secret='+S+'&action=dashboard-home'+(force?'&refresh=1':'');
-    var d = await fetch(url).then(r=>r.json());
+    var [d, presenca] = await Promise.all([
+      fetch(API+'/api/admin?secret='+S+'&action=dashboard-home'+(force?'&refresh=1':'')).then(r=>r.json()),
+      fetch(API+'/api/checkout?action=contar').then(r=>r.json()).catch(function(){return {ativos:0,totalDia:0};})
+    ]);
+    d.presenca = presenca;
     _homeCache = d;
     renderHomeHtml(d);
   } catch(e) { errMsg('Erro: '+e.message); }
@@ -1693,6 +1696,22 @@ function renderHomeHtml(d) {
   var v = d.vendas||{}, me = d.melhorEnvio||{}, lds = d.leads||{}, top = d.topProdutos||[], pags = d.pagamentos||[], ults = d.ultimosPedidos||[];
   var html = '';
   if (d.fromCache) html += '<div class="cache-bar">⚡ Dados em cache <button onclick="renderHome(true)">↻ Atualizar</button></div>';
+
+  // Widget presença
+  var pres = d.presenca || {};
+  if (pres.ativos !== undefined) {
+    html += '<div style="display:flex;gap:10px;margin-bottom:16px">';
+    html += '<div style="flex:1;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px">';
+    html += '<div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite"></div>';
+    html += '<div><div style="font-size:22px;font-weight:800;color:#16a34a">'+pres.ativos+'</div><div style="font-size:12px;color:#166534;font-weight:500">pessoas no checkout agora</div></div>';
+    html += '</div>';
+    html += '<div style="flex:1;background:#f8faff;border:1px solid #dbeafe;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px">';
+    html += '<div style="font-size:22px">🛒</div>';
+    html += '<div><div style="font-size:22px;font-weight:800;color:#1d4ed8">'+pres.totalDia+'</div><div style="font-size:12px;color:#1e40af;font-weight:500">acessos ao checkout hoje</div></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<style>@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.2)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.1)}}</style>';
+  }
 
   // KPIs principais
   var mesAnt = v.mesAnt||{};
