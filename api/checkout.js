@@ -1,11 +1,85 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const KV_URL = process.env.KV_REST_API_URL;
+  const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+
+  // ===== PRESENÇA EM TEMPO REAL =====
+  if (req.query.action === 'presenca') {
+    const { sessao, evento } = req.body || {};
+    if (!sessao) return res.status(400).json({ error: 'sessao obrigatória' });
+
+    const hoje = new Date();
+    const hojeBR = new Date(hoje.getTime() - 3*60*60*1000).toISOString().split('T')[0];
+    const chaveAtivos = 'checkout-ativos';
+    const chaveDiario = 'checkout-total-'+hojeBR;
+
+    if (evento === 'entrou') {
+      // Registrar sessão ativa (TTL 5 min)
+      await fetch(`${KV_URL}/set/checkout-sess-${sessao}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: '1', ex: 300 })
+      });
+      // Incrementar contador do dia
+      await fetch(`${KV_URL}/incr/${chaveDiario}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      // Definir TTL do contador diário (24h)
+      await fetch(`${KV_URL}/expire/${chaveDiario}/86400`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+    } else if (evento === 'ping') {
+      // Renovar TTL da sessão
+      await fetch(`${KV_URL}/expire/checkout-sess-${sessao}/300`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+    } else if (evento === 'saiu') {
+      await fetch(`${KV_URL}/del/checkout-sess-${sessao}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+    }
+
+    return res.status(200).json({ ok: true });
+  }
+
+  // ===== CONTAR ATIVOS =====
+  if (req.query.action === 'contar') {
+    try {
+      const hoje = new Date();
+      const hojeBR = new Date(hoje.getTime() - 3*60*60*1000).toISOString().split('T')[0];
+      const chaveDiario = 'checkout-total-'+hojeBR;
+
+      // Listar sessões ativas
+      const keysResp = await fetch(`${KV_URL}/keys/checkout-sess-*`, {
+        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      const keysData = await keysResp.json();
+      const ativos = (keysData.result || []).length;
+
+      // Total do dia
+      const diaResp = await fetch(`${KV_URL}/get/${chaveDiario}`, {
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      const diaData = await diaResp.json();
+      const totalDia = parseInt(diaData.result || 0);
+
+      return res.status(200).json({ ativos, totalDia });
+    } catch(e) {
+      return res.status(200).json({ ativos: 0, totalDia: 0 });
+    }
+  }
+
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { carrinho, frete, cliente, cupom } = req.body;
+  const { carrinho, frete, cliente, cupom, ref } = req.body;
   const HANDLE = process.env.INFINITE_HANDLE;
 
   if (!carrinho || carrinho.length === 0) {
@@ -112,6 +186,7 @@ export default async function handler(req, res) {
         frete,
         carrinho,
         order_nsu: orderNsu,
+        ref: ref || 'direto',
         criado_em: new Date().toISOString()
       };
 
