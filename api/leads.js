@@ -94,17 +94,23 @@ export default async function handler(req, res) {
         return v;
       }
 
-      const leads = [];
-      const idsVistos = [];
+      // Buscar todos em paralelo (muito mais rápido que sequencial)
+      const idsUnicos = [...new Set(ids)].slice(0, 200); // max 200
+      const resultados = await Promise.all(
+        idsUnicos.map(id =>
+          fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } })
+            .then(r => r.json()).catch(() => ({}))
+        )
+      );
 
-      for (const id of ids) {
+      const leads = [];
+      const idsVistos = new Set();
+      for (const d of resultados) {
         try {
-          const r = await fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-          const d = await r.json();
           if (!d.result) continue;
           const parsed = desencapsular(d.result);
-          if (parsed && parsed.email && !idsVistos.includes(parsed.id)) {
-            idsVistos.push(parsed.id);
+          if (parsed && parsed.email && !idsVistos.has(parsed.id)) {
+            idsVistos.add(parsed.id);
             leads.push(parsed);
           }
         } catch(e) {}
