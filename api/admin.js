@@ -1703,14 +1703,15 @@ function renderHomeHtml(d) {
     html += '<div style="display:flex;gap:10px;margin-bottom:16px">';
     html += '<div style="flex:1;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px">';
     html += '<div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite"></div>';
-    html += '<div><div style="font-size:22px;font-weight:800;color:#16a34a">'+pres.ativos+'</div><div style="font-size:12px;color:#166534;font-weight:500">pessoas no checkout agora</div></div>';
+    html += '<div><div id="pres-ativos" style="font-size:22px;font-weight:800;color:#16a34a">'+pres.ativos+'</div><div style="font-size:12px;color:#166534;font-weight:500">pessoas no checkout agora</div></div>';
     html += '</div>';
-    html += '<div style="flex:1;background:#f8faff;border:1px solid #dbeafe;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px">';
+    html += '<div style="position:relative;flex:1;background:#f8faff;border:1px solid #dbeafe;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px">';
     html += '<div style="font-size:22px">🛒</div>';
-    html += '<div><div style="font-size:22px;font-weight:800;color:#1d4ed8">'+pres.totalDia+'</div><div style="font-size:12px;color:#1e40af;font-weight:500">acessos ao checkout hoje</div></div>';
+    html += '<div><div id="pres-total" style="font-size:22px;font-weight:800;color:#1d4ed8">'+pres.totalDia+'</div><div style="font-size:12px;color:#1e40af;font-weight:500">acessos ao checkout hoje</div></div>';
     html += '</div>';
     html += '</div>';
     html += '<style>@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.2)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.1)}}</style>';
+    html += '<div style="text-align:right;font-size:10px;color:#9ca3af;margin-top:-4px;margin-bottom:8px">🔄 Atualiza automaticamente a cada 30s</div>';
   }
 
   // KPIs principais
@@ -1836,6 +1837,18 @@ function renderHomeHtml(d) {
   html += '</div>'; // fim grid top+últimos
 
   ct().innerHTML = html;
+
+  // Live update da presença a cada 30s
+  if (window._presencaInterval) clearInterval(window._presencaInterval);
+  window._presencaInterval = setInterval(function() {
+    if (currentAba !== 'home') { clearInterval(window._presencaInterval); return; }
+    fetch(API+'/api/checkout?action=contar').then(function(r){return r.json();}).then(function(p){
+      var ativos = document.getElementById('pres-ativos');
+      var total = document.getElementById('pres-total');
+      if (ativos) ativos.textContent = p.ativos;
+      if (total) total.textContent = p.totalDia;
+    }).catch(function(){});
+  }, 30000);
 }
 
 // ===== CARRINHOS =====
