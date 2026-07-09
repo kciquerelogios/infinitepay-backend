@@ -1660,7 +1660,7 @@ function renderOfertasList() {
   html += ' <span id="of-msg" style="margin-left:10px;font-size:13px"></span></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
   html += '<div style="font-size:14px;color:#6b7280">' + _ofertas.length + ' ofertas</div>';
-  html += '<button onclick=\'limparOfertas()\' style=\'padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer\'>🗑 Limpar enviadas</button></div>';
+  html += '<button id="btn-limpar-ofertas" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗑 Limpar enviadas</button>';
   if (!_ofertas.length) { html += '<div class="vazio">Nenhuma oferta agendada</div>'; el().innerHTML = html; return; }
   html += '<table><thead><tr><th>Imagem</th><th>Texto</th><th>Data/Hora</th><th>Status</th><th></th></tr></thead><tbody>';
   _ofertas.slice().reverse().forEach(function(o){
@@ -1675,6 +1675,7 @@ function renderOfertasList() {
   html += '</tbody></table>';
   el().innerHTML = html;
   el().addEventListener('click', function(e) {
+    if (e.target.closest('#btn-limpar-ofertas')) { limparOfertas(); return; }
     var b = e.target.closest('[data-action]');
     if (!b) return;
     if (b.getAttribute('data-action') === 'deloferta') delOferta(b, b.getAttribute('data-id'));
@@ -1770,7 +1771,7 @@ async function renderCupons() {
     html += '<button class="btn-green" onclick="salvarCupom()">💾 Criar Cupom</button>';
     html += ' <span id="cupom-msg" style="margin-left:10px;font-size:13px"></span></div>';
     html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">';
-    html += '<button onclick=\'limparCupons()\' style=\'padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer\'>🗑 Limpar todos os cupons</button></div>';
+    html += '<button id="btn-limpar-cupons" style="padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🗑 Limpar todos os cupons</button>';
     if (!cupons.length) { html += '<div class="vazio">Nenhum cupom cadastrado</div>'; el().innerHTML = html; return; }
     html += '<table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
     cupons.forEach(function(c){
@@ -1786,6 +1787,15 @@ async function renderCupons() {
     });
     html += '</tbody></table>';
     el().innerHTML = html;
+  el().addEventListener('click', function(e) {
+    if (e.target.closest('#btn-limpar-cupons')) { limparCupons(); return; }
+    var b = e.target.closest('[data-action]');
+    if (!b) return;
+    var act = b.getAttribute('data-action');
+    if (act === 'togglecupom') toggleCupom(b.getAttribute('data-id'));
+    if (act === 'delcupom') deletarCupom(b, b.getAttribute('data-id'), b.getAttribute('data-codigo'));
+  }, {once:true});
+  
   el().addEventListener('click', function(e) {
     var b = e.target.closest('[data-action]');
     if (!b) return;
