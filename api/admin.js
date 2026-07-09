@@ -1481,472 +1481,468 @@ td{padding:12px 16px;border-bottom:1px solid #f3f4f6;font-size:13px;vertical-ali
 tr:last-child td{border-bottom:none}tr:hover td{background:#f9f9fb}
 .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500;white-space:nowrap}
 .btn-wpp{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#25d366;color:#fff;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;margin-right:4px}
-.btn-del{display:inline-flex;align-items:center;padding:6px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;text-decoration:none;font-size:12px}
+.btn-del{display:inline-flex;align-items:center;padding:6px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-size:12px;border:1px solid #fecaca}
 .vazio{text-align:center;padding:48px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}
 .form-card{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:24px;margin-bottom:24px}
 .form-title{font-size:15px;font-weight:700;margin-bottom:18px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px}
-.field input,.field textarea{width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit;outline:none}
-.field input:focus,.field textarea:focus{border-color:#25d366}
+.field input,.field textarea,.field select{width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit;outline:none}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:#25d366}
 .field textarea{resize:vertical}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grupos-wrap{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.grupo-label{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #e8eaf0;border-radius:6px;cursor:pointer;font-size:12px}
 .btn-green{padding:12px 24px;background:#25d366;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
 .btn-green:hover{background:#1da851}
 .refresh-btn{padding:8px 16px;background:#f3f4f6;border:1px solid #e8eaf0;border-radius:8px;font-size:13px;color:#374151;cursor:pointer}
-.aba{display:none}.aba.ativa{display:block}
 .section-divider{font-size:13px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;margin-top:4px;padding-bottom:8px;border-bottom:1px solid #e8eaf0}
-@media(max-width:768px){.sidebar{width:60px}.sidebar-logo span,.menu-label,.sidebar-footer{display:none}.menu-item{padding:14px;justify-content:center}.main{margin-left:60px;padding:16px}.row-2{grid-template-columns:1fr}}
+.loading-tab{text-align:center;padding:60px;color:#9ca3af;font-size:14px}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid #e8eaf0;border-top-color:#25d366;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chip{display:inline-block;padding:2px 8px;background:#f3f4f6;border-radius:4px;font-size:11px;color:#374151;margin:2px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.grupo-card{background:#fff;border-radius:10px;border:1px solid #e8eaf0;padding:14px;text-align:center}
+.grupo-card.ativo-card{border-color:#25d366;background:#f0fff4}
+.progress-bar{background:#f3f4f6;border-radius:4px;height:5px;margin:6px 0}
+.progress-fill{height:5px;border-radius:4px;background:#25d366}
+@media(max-width:768px){.sidebar{width:60px}.sidebar-logo span,.menu-label,.sidebar-footer{display:none}.menu-item{padding:14px;justify-content:center}.main{margin-left:60px;padding:16px}.row-2{grid-template-columns:1fr}.stat-grid{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 <div class="sidebar">
   <div class="sidebar-logo">⌚ <span>Kcique Admin</span></div>
   <div class="sidebar-menu">
-    <button onclick="mudarAba('home')" class="menu-item ativo" id="menu-home"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
-    <button onclick="mudarAba('carrinhos')" class="menu-item" id="menu-carrinhos"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
-    <button onclick="mudarAba('ofertas')" class="menu-item" id="menu-ofertas"><span class="menu-icon">📣</span><span class="menu-label">Ofertas WhatsApp</span></button>
-    <button onclick="mudarAba('pedidos')" class="menu-item" id="menu-pedidos"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
-    <button onclick="mudarAba('cupons')" class="menu-item" id="menu-cupons"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
-    <button onclick="mudarAba('grupos-vip')" class="menu-item" id="menu-grupos-vip"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
-    <button onclick="mudarAba('bundle')" class="menu-item" id="menu-bundle"><span class="menu-icon">🎁</span><span class="menu-label">Bundle Produtos</span></button>
+    <button class="menu-item ativo" id="menu-home" onclick="mudarAba('home')"><span class="menu-icon">📊</span><span class="menu-label">Visão Geral</span></button>
+    <button class="menu-item" id="menu-carrinhos" onclick="mudarAba('carrinhos')"><span class="menu-icon">🛒</span><span class="menu-label">Carrinhos</span></button>
+    <button class="menu-item" id="menu-ofertas" onclick="mudarAba('ofertas')"><span class="menu-icon">📣</span><span class="menu-label">Ofertas</span></button>
+    <button class="menu-item" id="menu-pedidos" onclick="mudarAba('pedidos')"><span class="menu-icon">📦</span><span class="menu-label">Pedidos</span></button>
+    <button class="menu-item" id="menu-cupons" onclick="mudarAba('cupons')"><span class="menu-icon">🎟</span><span class="menu-label">Cupons</span></button>
+    <button class="menu-item" id="menu-grupos-vip" onclick="mudarAba('grupos-vip')"><span class="menu-icon">📲</span><span class="menu-label">Grupos VIP</span></button>
+    <button class="menu-item" id="menu-bundle" onclick="mudarAba('bundle')"><span class="menu-icon">🎁</span><span class="menu-label">Bundle</span></button>
   </div>
-  <div class="sidebar-footer">Kcique Relógios</div>
+  <div class="sidebar-footer">Kcique © 2026</div>
 </div>
 <div class="main">
   <div class="page-title">
     <span id="page-title">📊 Visão Geral</span>
-    <button onclick="atualizarAbaAtual()" class="refresh-btn">🔄 Atualizar</button>
+    <button onclick="renderAba(abaAtual)" class="refresh-btn">🔄 Atualizar</button>
   </div>
-  <div id="aba-home" class="aba ativa">${abaHome}</div>
-  <div id="aba-carrinhos" class="aba">${abaCarrinhos}</div>
-  <div id="aba-ofertas" class="aba">${abaOfertas}</div>
-  <div id="aba-pedidos" class="aba">${abaPedidos}</div>
-  <div id="aba-cupons" class="aba">${abaCupons}</div>
-  <div id="aba-grupos-vip" class="aba" id="aba-grupos-vip-el">
-    <div id="gvip-loading" style="text-align:center;padding:60px;color:#9ca3af">Carregando dados dos grupos...</div>
-    <div id="gvip-content" style="display:none"></div>
-  </div>
-  <div id="aba-bundle" class="aba">
-    <div id="bundle-loading" style="text-align:center;padding:60px;color:#9ca3af">Carregando produtos...</div>
-    <div id="bundle-content" style="display:none"></div>
-  </div>
+  <div id="aba-content"><div class="loading-tab"><div class="spinner"></div><br>Carregando...</div></div>
 </div>
+
 <script>
-var titulos={home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons de Desconto','grupos-vip':'📲 Grupos VIP',bundle:'🎁 Bundle de Produtos'};
+const S = '${secret}';
+const API = '/api';
+const fmt = v => 'R$ ' + (v||0).toFixed(2).replace('.',',');
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+const fmtDate = d => d ? new Date(d).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+const el = () => document.getElementById('aba-content');
+const loading = () => { el().innerHTML = '<div class="loading-tab"><div class="spinner"></div><br>Carregando...</div>'; };
+const erro = msg => { el().innerHTML = '<div class="vazio">⚠️ ' + msg + '</div>'; };
+
 var abaAtual = 'home';
-function atualizarAbaAtual() {
-  if (abaAtual === 'grupos-vip') { carregarGruposVip(); return; }
-  if (abaAtual === 'bundle') { carregarBundle(); return; }
-  // Para abas server-side, recarregar só o conteúdo via fetch
-  var el = document.getElementById('aba-' + abaAtual);
-  if (!el) { window.mudarAba(abaAtual); return; }
-  var loading = el.querySelector('.loading') || el.querySelector('.loading-text');
-  if (loading) loading.style.display = 'block';
-  // Recarregar a página mas manter na aba atual
-  var url = '/api/admin?secret=${secret}';
-  window.location.href = url + '#' + abaAtual;
-}
+var titulos = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos Abandonados',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos-vip:'📲 Grupos VIP',bundle:'🎁 Bundle'};
 
-function mudarAba(aba){
+function mudarAba(aba) {
   abaAtual = aba;
-  document.querySelectorAll('.aba').forEach(function(el){el.classList.remove('ativa');});
-  document.querySelectorAll('.menu-item').forEach(function(el){el.classList.remove('ativo');});
-  document.getElementById('aba-'+aba).classList.add('ativa');
-  document.getElementById('menu-'+aba).classList.add('ativo');
-  document.getElementById('page-title').textContent=titulos[aba];
-  if(aba==='grupos-vip') carregarGruposVip();
-  if(aba==='bundle') carregarBundle();
-}
-if(window.location.hash==='#carrinhos')mudarAba('carrinhos');
-if(window.location.hash==='#ofertas')mudarAba('ofertas');
-if(window.location.hash==='#cupons')mudarAba('cupons');
-
-function toggleTodos(cb){document.querySelectorAll('#grupos-wrap input').forEach(function(el){el.checked=cb.checked;});}
-async function salvarOferta(){
-  var msg=document.getElementById('form-msg');
-  var texto=document.getElementById('f-texto').value.trim();
-  var dataHoraRaw=document.getElementById('f-data').value;
-  // Converter para ISO com offset de Brasília (UTC-3) explícito
-  var dataHora = dataHoraRaw ? dataHoraRaw + ':00-03:00' : '';
-  if(!texto){msg.textContent='⚠️ Digite o texto';msg.style.color='#ef4444';return;}
-  if(!dataHoraRaw){msg.textContent='⚠️ Selecione data e hora';msg.style.color='#ef4444';return;}
-  var sel=[];document.querySelectorAll('#grupos-wrap input:checked').forEach(function(el){sel.push(el.value);});
-  var total=document.querySelectorAll('#grupos-wrap input').length;
-  var grupos=sel.length===total?'todos':sel.join(',');
-  msg.textContent='Salvando...';msg.style.color='#6b7280';
-  try{
-    var resp=await fetch('/api/ofertas?action=salvar&secret=${secret}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:document.getElementById('f-imagem').value.trim(),link:document.getElementById('f-link').value.trim(),dataHora,grupos})});
-    var data=await resp.json();
-    if(data.success){
-      msg.textContent='✅ Agendada!';msg.style.color='#10b981';
-      document.getElementById('f-texto').value='';
-      document.getElementById('f-imagem').value='';
-      document.getElementById('f-link').value='';
-      var agora2=new Date();agora2.setMinutes(agora2.getMinutes()+5);
-      var pad2=function(n){return n<10?'0'+n:String(n);};
-      document.getElementById('f-data').value=agora2.getFullYear()+'-'+pad2(agora2.getMonth()+1)+'-'+pad2(agora2.getDate())+'T'+pad2(agora2.getHours())+':'+pad2(agora2.getMinutes());
-      setTimeout(function(){msg.textContent='';mudarAba('ofertas');},1500);
-    }
-    else{msg.textContent='❌ '+(data.error||'Erro');msg.style.color='#ef4444';}
-  }catch(e){msg.textContent='❌ Erro de conexão';msg.style.color='#ef4444';}
+  document.querySelectorAll('.menu-item').forEach(function(b){b.classList.remove('ativo');});
+  document.getElementById('menu-' + aba).classList.add('ativo');
+  document.getElementById('page-title').textContent = titulos[aba] || aba;
+  renderAba(aba);
 }
 
-var agora=new Date();agora.setMinutes(agora.getMinutes()+5);
-var pad=function(n){return n<10?'0'+n:n;};
-var min=agora.getFullYear()+'-'+pad(agora.getMonth()+1)+'-'+pad(agora.getDate())+'T'+pad(agora.getHours())+':'+pad(agora.getMinutes());
-if(document.getElementById('f-data')){document.getElementById('f-data').min=min;document.getElementById('f-data').value=min;}
+function renderAba(aba) {
+  var fns = {home:renderHome,carrinhos:renderCarrinhos,ofertas:renderOfertas,pedidos:renderPedidos,cupons:renderCupons,'grupos-vip':renderGrupos,bundle:renderBundle};
+  if (fns[aba]) fns[aba]();
+}
 
-// Enviar pedido para fornecedor
-async function enviarFornecedor(nome, tracking, imgUrl, meOrderId) {
-  var btn = event.target;
-  btn.textContent = '⏳ Enviando...';
-  btn.disabled = true;
+// ===== HOME =====
+async function renderHome() {
+  loading();
   try {
-    // 1. Buscar dados do pedido via Vercel (rápido)
-    var params = new URLSearchParams({ action: 'enviar-fornecedor', secret: '${secret}', clienteNome: nome, tracking: tracking, imgUrl: encodeURIComponent(imgUrl), meOrderId: meOrderId||'' });
-    var resp = await fetch('/api/admin?' + params.toString());
-    var data = await resp.json();
-    if (data.ok) { btn.textContent = '✅ Enviado!'; btn.style.background = '#16a34a'; }
-    else if (data.pdfPending) {
-      // 2. Vercel enviou tudo exceto PDF - chamar Railway diretamente para o PDF
-      btn.textContent = '⏳ PDF...';
-      var pdfResp = await fetch('https://kcique-pdf-service-production.up.railway.app/send-pdf?secret=kcique2026&hash=' + data.printHash + '&phone=120363426285950378-group&nome=' + encodeURIComponent(nome) + '&tracking=' + (tracking||''));
-      var pdfData = await pdfResp.json();
-      btn.textContent = pdfData.ok ? '✅ Enviado!' : '⚠️ Sem PDF';
-      btn.style.background = pdfData.ok ? '#16a34a' : '#f59e0b';
-    } else { 
-      btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; 
-    }
-  } catch(e) { btn.textContent = '❌ Erro'; btn.style.background = '#ef4444'; btn.disabled = false; }
-}
-
-// Cupons
-function atualizarCampoValor() {
-  var tipo = document.getElementById('c-tipo').value;
-  var campo = document.getElementById('campo-valor');
-  campo.style.display = (tipo === 'frete_gratis') ? 'none' : 'block';
-}
-async function salvarCupom() {
-  // Buscar campos do formulário ativo no DOM atual
-  var form = document.querySelector('[id="c-codigo"]')?.closest('form') || document.getElementById('content-cupons') || document.body;
-  var msg = document.getElementById('cupom-msg');
-  var codigoEl = document.getElementById('c-codigo');
-  var tipoEl = document.getElementById('c-tipo');
-  var valorEl = document.getElementById('c-valor');
-  var validadeEl = document.getElementById('c-validade');
-  var limiteEl = document.getElementById('c-limite');
-  if (!codigoEl || !tipoEl) { if(msg) msg.textContent = '⚠️ Formulário não encontrado'; return; }
-  var codigo = codigoEl.value.trim().toUpperCase();
-  var tipo = tipoEl.value;
-  var valor = valorEl ? valorEl.value : '0';
-  var validade = validadeEl ? validadeEl.value : '';
-  var limite = limiteEl ? limiteEl.value : '';
-  console.log('salvarCupom:', codigo, tipo, valor);
-  if (!codigo) { msg.textContent = '⚠️ Digite o código'; msg.style.color = '#ef4444'; return; }
-  msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
-  try {
-    var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'salvar', secret: '${secret}', codigo: codigo, tipo: tipo, valor: parseFloat(valor)||0, validade: validade||null, limiteUsos: limite ? parseInt(limite) : null, produto: document.getElementById('c-produto').value.trim()||'todos', qtdMinima: document.getElementById('c-qtd-minima').value ? parseInt(document.getElementById('c-qtd-minima').value) : null, ativo: true })
-    });
-    var data = await resp.json();
-    if (data.ok) { msg.textContent = '✅ Cupom criado!'; msg.style.color = '#10b981'; setTimeout(() => mudarAba('cupons'), 1500); }
-    else { msg.textContent = '❌ ' + (data.erro||'Erro'); msg.style.color = '#ef4444'; }
-  } catch(e) { msg.textContent = '❌ Erro'; msg.style.color = '#ef4444'; }
-}
-async function toggleCupom(id) {
-  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'toggle', secret: '${secret}', id: id }) });
-  var data = await resp.json();
-  if (data.ok) { mudarAba(abaAtual); }
-}
-async function limparOfertas() {
-  if (!confirm('Deletar todas as ofertas enviadas e com erro? As agendadas serão mantidas.')) return;
-  var btn = event.target;
-  btn.disabled = true; btn.textContent = 'Limpando...';
-  try {
-    var resp = await fetch('/api/ofertas?action=limpar_enviadas&secret=${secret}');
-    var data = await resp.json();
-    if (data.ok) {
-      alert('✅ ' + data.deletadas + ' ofertas removidas!');
-      mudarAba(abaAtual);
-    } else {
-      alert('Erro: ' + (data.error || 'desconhecido'));
-      btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
-    }
-  } catch(e) {
-    alert('Erro de conexão');
-    btn.disabled = false; btn.textContent = '🗑 Limpar todas enviadas';
-  }
-}
-
-async function deletarCupom(id, codigo) {
-  if (!confirm('Deletar cupom ' + codigo + '?')) return;
-  var resp = await fetch('/api/cupons?secret='+encodeURIComponent('${secret}'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'deletar', secret: '${secret}', id: id }) });
-  var data = await resp.json();
-  if (data.ok) { mudarAba(abaAtual); }
-}
-
-// Carregar aba Grupos VIP
-var gvipCarregado = false;
-async function carregarGruposVip() {
-  if (gvipCarregado) return;
-  gvipCarregado = true;
-  var loading = document.getElementById('gvip-loading');
-  var el = document.getElementById('gvip-content');
-  try {
-    var resp = await fetch('/api/admin?action=grupos-vip-dashboard&secret=${secret}');
-    var data = await resp.json();
-    if (!data.grupos) { loading.textContent = 'Erro ao carregar'; return; }
-
-    var LIMITE = 1000;
-    var ga = data.grupoAtivo;
-    var pct = Math.min(100, Math.round((ga.membros / LIMITE) * 100));
-    var vagas = LIMITE - ga.membros;
-
-    // Cards superiores
-    var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">';
-    html += '<div class="stat-card" style="border-color:#2563eb">';
-    html += '<div class="stat-label">📲 Grupo Ativo Agora</div>';
-    html += '<div class="stat-value">' + ga.nome + '</div>';
-    html += '<div class="stat-sub">' + ga.membros + ' membros · ' + vagas + ' vagas</div>';
-    html += '<div style="background:#f3f4f6;border-radius:6px;height:8px;margin-top:10px"><div style="background:#2563eb;height:8px;border-radius:6px;width:' + pct + '%"></div></div>';
-    html += '<a href="' + ga.link + '" target="_blank" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb">Ver link do grupo →</a>';
-    html += '</div>';
-    html += '<div class="stat-card"><div class="stat-label">👥 Total de Membros VIP</div><div class="stat-value">' + data.totalMembros.toLocaleString('pt-BR') + '</div><div class="stat-sub">em 17 grupos</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">📈 Entradas Hoje</div><div class="stat-value" style="color:#10b981">' + data.entradasHoje + '</div><div class="stat-sub">novos membros hoje</div></div>';
-    html += '</div>';
-
-    // Historico + link
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">';
-    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:16px">📅 Entradas nos últimos 7 dias</div>';
-    data.historico.forEach(function(h) {
-      var d = new Date(h.data + 'T12:00:00');
-      var label = d.toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">';
-      html += '<span style="font-size:13px;color:#6b7280">' + label + '</span>';
-      html += '<span style="font-size:14px;font-weight:600">' + h.entradas + ' entradas</span>';
-      html += '</div>';
+    var d = await fetch(API + '/admin?secret=' + S + '&action=dashboard-home').then(r=>r.json());
+    var v = d.vendas || {}, me = d.melhorEnvio || {}, leads = d.leads || {}, top = d.topProdutos || [];
+    var html = '';
+    html += '<div class="section-divider">Vendas</div>';
+    html += '<div class="stat-grid">';
+    [{l:'Hoje',v:v.hoje},{l:'Semana',v:v.semana},{l:'Mês',v:v.mes},{l:'Mês Anterior',v:v.mesAnt}].forEach(function(c){
+      html += '<div class="stat-card"><div class="stat-label">' + c.l + '</div><div class="stat-value">' + fmt((c.v||{}).valor) + '</div><div class="stat-sub">' + ((c.v||{}).count||0) + ' pedidos</div></div>';
     });
     html += '</div>';
-    html += '<div class="stat-card"><div class="stat-label" style="margin-bottom:12px">🔗 Link ativo</div>';
-    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="' + ga.link + '" target="_blank">' + ga.link + '</a></div>';
-    html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
-    html += '<input id="input-link-ativo" value="' + ga.link + '" style="flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px" placeholder="Novo link do grupo">';
-    html += '<button class="btn-salvar-link" style="padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Salvar link</button>';
+    html += '<div class="section-divider">Operação</div>';
+    html += '<div class="stat-grid">';
+    [{l:'Aguardando Envio',v:v.pendentes||0,i:'⏳'},{l:'Saldo Melhor Envio',v:fmt(me.saldo),i:'💰'},{l:'Carrinhos Abertos',v:leads.total||0,i:'🛒'},{l:'Ticket Médio',v:fmt(v.ticketMedio),i:'📊'}].forEach(function(c){
+      html += '<div class="stat-card"><div class="stat-label">' + c.i + ' ' + c.l + '</div><div class="stat-value" style="font-size:20px">' + c.v + '</div></div>';
+    });
     html += '</div>';
-    html += '<button id="btn-copiar-link" style="padding:8px 16px;background:#f0f5ff;color:#2563eb;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer">📋 Copiar link /api/grupo</button>';
-    html += '</div></div>';
-
-    // Grid de todos os grupos
-    html += '<div><div class="stat-label" style="margin-bottom:16px">📊 Status de todos os grupos</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">';
-    data.grupos.forEach(function(g) {
-      var pctG = Math.min(100, Math.round((g.membros / LIMITE) * 100));
-      var isAtivo = g.id === ga.id;
-      var cor = pctG >= 90 ? '#ef4444' : pctG >= 70 ? '#f59e0b' : '#10b981';
-      html += '<div style="background:#fff;border:' + (isAtivo ? '2px solid #2563eb' : '1px solid #e8eaf0') + ';border-radius:10px;padding:12px;position:relative">';
-      if (isAtivo) html += '<span style="position:absolute;top:6px;right:6px;background:#2563eb;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:20px">ATIVO</span>';
-      html += '<div style="font-size:12px;font-weight:700;margin-bottom:4px">' + g.nome + '</div>';
-      html += '<div style="font-size:18px;font-weight:700;margin-bottom:4px">' + g.membros.toLocaleString('pt-BR') + '</div>';
-      html += '<div style="background:#f3f4f6;border-radius:4px;height:5px;margin-bottom:3px"><div style="background:' + cor + ';height:5px;border-radius:4px;width:' + pctG + '%"></div></div>';
-      html += '<div style="font-size:10px;color:#9ca3af;margin-bottom:6px">' + (LIMITE - g.membros) + ' vagas</div>';
-      if (!isAtivo) html += '<button class="btn-def-ativo" data-nome="' + g.nome + '" data-link="' + encodeURIComponent(g.link||'') + '" style="width:100%;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer">Definir ativo</button>';
-      html += '</div>';
-    });
-    html += '</div></div>';
-
-    loading.style.display = 'none';
-    el.innerHTML = html;
-    el.style.display = 'block';
-    // Adicionar event listeners após inserir HTML
-    var btnCopiar = document.getElementById('btn-copiar-link');
-    if (btnCopiar) {
-      btnCopiar.onclick = function() {
-        navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){ alert('Link copiado! Use este link fixo nos seus anúncios.'); });
-      };
+    if (top.length) {
+      html += '<div class="section-divider">Top Produtos do Mês</div>';
+      html += '<table><thead><tr><th></th><th>Produto</th><th>Vendas</th><th>Receita</th></tr></thead><tbody>';
+      top.forEach(function(p){
+        html += '<tr><td>' + (p.imagem ? '<img src="' + p.imagem + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px">' : '') + '</td>';
+        html += '<td>' + p.nome + '</td><td>' + p.count + '</td><td>' + fmt(p.valor) + '</td></tr>';
+      });
+      html += '</tbody></table>';
     }
-    // Delegação de eventos para botões "Definir ativo"
-    el.querySelectorAll('.btn-def-ativo').forEach(function(btn) {
-      btn.onclick = function() {
-        var nome = btn.getAttribute('data-nome');
-        var link = decodeURIComponent(btn.getAttribute('data-link'));
-        var novoLink = prompt('Novo link para o grupo ' + nome + ':', link);
-        if (!novoLink) return;
-        fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ nome: nome, link: novoLink })
-        }).then(function(r){ return r.json(); }).then(function(d){
-          if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
-          else alert('Erro: ' + (d.error||'desconhecido'));
-        });
-      };
-    });
-    // Campo de atualizar link
-    var btnSalvarLink = el.querySelector('.btn-salvar-link');
-    if (btnSalvarLink) {
-      btnSalvarLink.onclick = function() {
-        var input = document.getElementById('input-link-ativo');
-        if (!input || !input.value.trim()) return;
-        fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ nome: data.grupoAtivo.nome, link: input.value.trim() })
-        }).then(function(r){ return r.json(); }).then(function(d){
-          if (d.ok) { alert('✅ Link atualizado!'); carregarGruposVip(); }
-        });
-      };
-    }
-  } catch(e) {
-    loading.textContent = 'Erro: ' + e.message;
-  }
+    el().innerHTML = html;
+  } catch(e) { erro('Erro ao carregar: ' + e.message); }
 }
 
-// Carregar aba Bundle de Produtos
-var bundleCarregado = false;
-async function carregarBundle() {
-  if (bundleCarregado) return;
-  bundleCarregado = true;
-  var loading = document.getElementById('bundle-loading');
-  var el = document.getElementById('bundle-content');
+// ===== CARRINHOS =====
+var _leads = [];
+async function renderCarrinhos() {
+  loading();
   try {
-    var [resp, configResp2] = await Promise.all([
-      fetch('/api/admin?action=produtos-lista&secret=${secret}'),
-      fetch('/api/admin?action=bundle-produtos')
-    ]);
-    var data = await resp.json();
-    var config = await configResp2.json();
-    var produtos = data.produtos || [];
-    var selecionados = config.produtoIds || [];
-
-    var html = '<div class="form-card">';
-    html += '<div class="form-title">🎁 Configurar Bundle de Produtos</div>';
-    html += '<div class="field"><label>Valor do desconto (R$)</label><input type="number" id="bundle-desconto" value="' + (config.desconto||50) + '" step="1" min="0" style="width:160px"></div>';
-    html += '<div style="font-size:13px;font-weight:600;color:#374151;margin:16px 0 10px">Selecione os produtos que podem aparecer no bundle:</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:500px;overflow-y:auto;padding:4px">';
-    produtos.forEach(function(p) {
-      var checked = selecionados.indexOf(p.id) !== -1 ? 'checked' : '';
-      html += '<label style="display:flex;align-items:center;gap:10px;padding:10px;border:1.5px solid #e8eaf0;border-radius:10px;cursor:pointer;background:#fff">';
-      html += '<input type="checkbox" class="bundle-prod-check" value="' + p.id + '" ' + checked + ' style="width:18px;height:18px;flex-shrink:0">';
-      if (p.imagem) html += '<img src="' + p.imagem + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">';
-      html += '<span style="font-size:13px;font-weight:500;line-height:1.3">' + p.titulo + '</span>';
-      html += '</label>';
-    });
-    html += '</div>';
-    html += '<button class="btn-green" onclick="salvarBundle()" style="margin-top:18px">💾 Salvar Configuração</button>';
-    html += '<div id="bundle-msg" style="margin-top:10px;font-size:13px"></div>';
-    html += '</div>';
-
-    loading.style.display = 'none';
-    el.innerHTML = html;
-    el.style.display = 'block';
-  } catch(e) {
-    loading.textContent = 'Erro: ' + e.message;
-  }
+    var d = await fetch(API + '/leads?secret=' + S).then(r=>r.json());
+    _leads = (d.leads||[]).sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
+    renderLeadsList(_leads);
+  } catch(e) { erro('Erro: ' + e.message); }
 }
-
-async function salvarBundle() {
-  var msg = document.getElementById('bundle-msg');
-  var desconto = document.getElementById('bundle-desconto').value;
-  var ids = [];
-  document.querySelectorAll('.bundle-prod-check:checked').forEach(function(el) { ids.push(el.value); });
-  msg.textContent = 'Salvando...'; msg.style.color = '#6b7280';
-  try {
-    var resp = await fetch('/api/admin?action=bundle-salvar&secret=${secret}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ produtoIds: ids, desconto: parseFloat(desconto) || 50 })
-    });
-    var data = await resp.json();
-    if (data.ok) { msg.textContent = '✅ Salvo! ' + ids.length + ' produtos selecionados.'; msg.style.color = '#10b981'; }
-    else { msg.textContent = '❌ Erro ao salvar'; msg.style.color = '#ef4444'; }
-  } catch(e) { msg.textContent = '❌ Erro de conexão'; msg.style.color = '#ef4444'; }
-}
-
-// Carregar membros dos grupos de forma assíncrona
-async function carregarMembrosGrupos(){
-  var el=document.getElementById('grupos-membros');
-  if(!el)return;
-  try{
-    var resp=await fetch('/api/admin?action=grupos&secret=${secret}');
-    var data=await resp.json();
-    if(data.grupos){
-      el.innerHTML='<div style="font-weight:600;color:#1a1a2e;margin-bottom:8px">Total: '+data.total+' membros</div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
-        data.grupos.map(function(g){return '<span style="background:#f3f4f6;padding:2px 8px;border-radius:4px;font-size:11px">'+g.nome+': '+g.membros+'</span>';}).join('')+
-        '</div>';
-    }
-  }catch(e){
-    if(el)el.textContent='Erro ao carregar membros';
-  }
-}
-setTimeout(carregarMembrosGrupos,800);
-
-async function definirGrupoAtivo(nome, link) {
-  var novoLink = prompt('Link do grupo ' + nome + ':', link);
-  if (!novoLink) return;
-  var r = await fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ nome, link: novoLink })
+function renderLeadsList(leads) {
+  var ec = {dados:'#e5e7eb',endereco:'#bfdbfe',frete_selecionado:'#fde68a',pagamento_pendente:'#fca5a5'};
+  var et = {dados:'Dados',endereco:'Endereço',frete_selecionado:'Frete',pagamento_pendente:'Pagando'};
+  var html = '<div style="display:flex;gap:10px;margin-bottom:16px">';
+  html += '<input class="field" style="flex:1;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none" placeholder="Buscar por nome ou email..." oninput="filtrarLeads(this.value)">';
+  html += '</div>';
+  if (!leads.length) { html += '<div class="vazio">Nenhum carrinho abandonado</div>'; el().innerHTML = html; return; }
+  html += '<table><thead><tr><th>Cliente</th><th>Etapa</th><th>Produtos</th><th>Valor</th><th>Atualizado</th><th></th></tr></thead><tbody>';
+  leads.forEach(function(l){
+    var val = (l.carrinho||[]).reduce(function(s,i){return s+(i.preco*i.quantidade/100);},0);
+    var chips = (l.carrinho||[]).map(function(i){return '<span class="chip">'+(i.nome||'').split(' ').slice(0,3).join(' ')+(i.cor&&i.cor!=='Default Title'?' · '+i.cor:'')+'</span>';}).join('');
+    html += '<tr>';
+    html += '<td><div style="font-weight:600">' + (l.nome||'Sem nome') + '</div><div style="font-size:12px;color:#6b7280">' + (l.email||'') + '</div></td>';
+    html += '<td><span class="badge" style="background:' + (ec[l.estagio]||'#e5e7eb') + '">' + (et[l.estagio]||l.estagio||'?') + '</span></td>';
+    html += '<td>' + chips + '</td>';
+    html += '<td><strong>' + fmt(val) + '</strong></td>';
+    html += '<td style="font-size:12px;color:#6b7280">' + fmtDate(l.atualizado_em||l.criado_em) + '</td>';
+    html += '<td><button class="btn-del" onclick="delLead(this,\''+l.id+'\')">🗑</button></td>';
+    html += '</tr>';
   });
-  var d = await r.json();
-  if (d.ok) { alert('✅ Grupo ' + nome + ' definido como ativo!'); carregarGruposVip(); }
-  else alert('❌ Erro: ' + (d.error||'desconhecido'));
+  html += '</tbody></table>';
+  el().innerHTML = html;
 }
-
-async function atualizarLinkAtivo() {
-  var input = document.getElementById('input-link-ativo');
-  var linkAtivo = document.getElementById('link-ativo');
-  if (!input || !input.value.trim()) return;
-  var novoLink = input.value.trim();
-  // Buscar grupo ativo atual para saber o nome
-  var r = await fetch('/api/admin?secret=${secret}&action=grupos-vip-dashboard');
-  var d = await r.json();
-  var nome = d.grupoAtivo ? d.grupoAtivo.nome : '#1';
-  var r2 = await fetch('/api/admin?secret=${secret}&action=set-grupo-ativo', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ nome, link: novoLink })
-  });
-  var d2 = await r2.json();
-  if (d2.ok) {
-    alert('✅ Link atualizado!');
-    carregarGruposVip();
-  }
-}
-
-async function limparCupons() {
-  if (!confirm('Deletar TODOS os cupons? Essa ação não pode ser desfeita.')) return;
-  var btn = event.target;
-  btn.disabled = true; btn.textContent = 'Limpando...';
-  try {
-    var r = await fetch('/api/cupons?secret=${secret}', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action: 'limpar_todos', secret: '${secret}' })
-    });
-    var d = await r.json();
-    if (d.ok) { alert('✅ ' + d.deletados + ' cupons removidos!'); mudarAba('cupons'); }
-    else { alert('Erro: ' + (d.error||'desconhecido')); btn.disabled = false; btn.textContent = '🗑 Limpar todos os cupons'; }
-  } catch(e) { alert('Erro de conexão'); btn.disabled = false; btn.textContent = '🗑 Limpar todos os cupons'; }
-}
-
-async function delOferta(btn, id) {
-  if (!confirm('Remover oferta?')) return;
-  btn.textContent = '...'; btn.disabled = true;
-  var tr = btn.closest('tr');
-  if (tr) tr.style.opacity = '0.4';
-  await fetch('/api/admin?secret=${secret}&del_oferta=' + id);
-  if (tr) tr.remove();
+function filtrarLeads(q) {
+  var f = q ? _leads.filter(function(l){return (l.nome||l.email||'').toLowerCase().includes(q.toLowerCase());}) : _leads;
+  renderLeadsList(f);
 }
 async function delLead(btn, id) {
   if (!confirm('Remover carrinho?')) return;
-  btn.textContent = '...'; btn.disabled = true;
-  var tr = btn.closest('tr');
-  if (tr) tr.style.opacity = '0.4';
-  await fetch('/api/admin?secret=${secret}&del_lead=' + id);
+  btn.disabled = true; btn.textContent = '...';
+  var tr = btn.closest('tr'); if (tr) tr.style.opacity = '0.4';
+  await fetch(API + '/admin?secret=' + S + '&del_lead=' + id);
   if (tr) tr.remove();
+  _leads = _leads.filter(function(l){return l.id !== id;});
 }
+
+// ===== OFERTAS =====
+var _ofertas = [];
+async function renderOfertas() {
+  loading();
+  try {
+    var d = await fetch(API + '/ofertas?action=dashboard&secret=' + S).then(r=>r.json());
+    _ofertas = d.ofertas || [];
+    renderOfertasList();
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+function renderOfertasList() {
+  var sc = {agendada:'#bfdbfe',enviada:'#bbf7d0',erro:'#fca5a5'};
+  var html = '<div class="form-card">';
+  html += '<div class="form-title">📅 Agendar nova oferta</div>';
+  html += '<div class="field"><label>Texto</label><textarea id="of-texto" rows="3" placeholder="Texto da oferta..."></textarea></div>';
+  html += '<div class="row-2"><div class="field"><label>URL da Imagem (opcional)</label><input id="of-imagem" placeholder="https://..."></div>';
+  html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://..."></div></div>';
+  html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div><div></div></div>';
+  html += '<button class="btn-green" onclick="salvarOferta()">📅 Agendar Oferta</button>';
+  html += ' <span id="of-msg" style="margin-left:10px;font-size:13px"></span></div>';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html += '<div style="font-size:14px;color:#6b7280">' + _ofertas.length + ' ofertas</div>';
+  html += '<button onclick=\'limparOfertas()\' style=\'padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer\'>🗑 Limpar enviadas</button></div>';
+  if (!_ofertas.length) { html += '<div class="vazio">Nenhuma oferta agendada</div>'; el().innerHTML = html; return; }
+  html += '<table><thead><tr><th>Imagem</th><th>Texto</th><th>Data/Hora</th><th>Status</th><th></th></tr></thead><tbody>';
+  _ofertas.slice().reverse().forEach(function(o){
+    html += '<tr>';
+    html += '<td>' + (o.imagem ? '<img src="'+o.imagem+'" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' : '—') + '</td>';
+    html += '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (o.texto||'') + '</td>';
+    html += '<td>' + fmtDate(o.dataHora) + '</td>';
+    html += '<td><span class="badge" style="background:' + (sc[o.status]||'#e5e7eb') + '">' + (o.status||'?') + '</span></td>';
+    html += '<td><button class="btn-del" onclick="delOferta(this,\''+o.id+'\')">🗑</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  el().innerHTML = html;
+}
+async function salvarOferta() {
+  var texto = document.getElementById('of-texto').value.trim();
+  var dataHora = document.getElementById('of-data').value;
+  var msg = document.getElementById('of-msg');
+  if (!texto||!dataHora) { msg.textContent='⚠️ Preencha texto e data'; msg.style.color='#ef4444'; return; }
+  var btn = event.target; btn.disabled=true; btn.textContent='Agendando...';
+  try {
+    var r = await fetch(API + '/ofertas?action=salvar&secret=' + S, {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({texto,imagem:document.getElementById('of-imagem').value.trim(),link:document.getElementById('of-link').value.trim(),dataHora:dataHora+':00-03:00',grupos:'todos'})
+    });
+    var d = await r.json();
+    if (d.success) { msg.textContent='✅ Agendada!'; msg.style.color='#16a34a'; setTimeout(function(){renderOfertas();},1000); }
+    else { msg.textContent='❌ '+(d.error||'Erro'); msg.style.color='#ef4444'; }
+  } catch(e) { msg.textContent='❌ '+e.message; msg.style.color='#ef4444'; }
+  btn.disabled=false; btn.textContent='📅 Agendar Oferta';
+}
+async function delOferta(btn, id) {
+  if (!confirm('Remover oferta?')) return;
+  btn.disabled=true; btn.textContent='...';
+  var tr = btn.closest('tr'); if(tr) tr.style.opacity='0.4';
+  await fetch(API + '/admin?secret=' + S + '&del_oferta=' + id);
+  if(tr) tr.remove();
+  _ofertas = _ofertas.filter(function(o){return o.id!==id;});
+}
+async function limparOfertas() {
+  if (!confirm('Deletar todas as enviadas e com erro?')) return;
+  var r = await fetch(API + '/ofertas?action=limpar_enviadas&secret=' + S);
+  var d = await r.json();
+  if (d.ok) { alert('✅ ' + d.deletadas + ' removidas'); renderOfertas(); }
+}
+
+// ===== PEDIDOS =====
+async function renderPedidos() {
+  loading();
+  try {
+    var d = await fetch(API + '/admin?secret=' + S + '&action=pedidos-json').then(r=>r.json());
+    var pedidos = d.pedidos || [];
+    var fc = {paid:'#bbf7d0',pending:'#fde68a',refunded:'#fca5a5'};
+    var ful = {fulfilled:'#bbf7d0',unfulfilled:'#fde68a',partial:'#bfdbfe'};
+    if (!pedidos.length) { el().innerHTML = '<div class="vazio">Nenhum pedido</div>'; return; }
+    var html = '<table><thead><tr><th></th><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Valor</th><th>Status</th><th>Tracking</th><th>Origem</th><th></th></tr></thead><tbody>';
+    pedidos.forEach(function(p){
+      var origem = (p.nota||'').match(/Origem: ([^|\n]+)/);
+      html += '<tr>';
+      html += '<td>' + (p.imagem?'<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px">':'') + '</td>';
+      html += '<td><strong>#'+p.numero+'</strong><br><span style="font-size:11px;color:#6b7280">'+fmtDate(p.criado_em)+'</span></td>';
+      html += '<td>'+p.cliente+'</td>';
+      html += '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.produto+'</td>';
+      html += '<td><strong>'+fmt(parseFloat(p.valor||0))+'</strong></td>';
+      html += '<td><span class="badge" style="background:'+(fc[p.financeiro]||'#e5e7eb')+'">'+p.financeiro+'</span><br><span class="badge" style="background:'+(ful[p.fulfillment]||'#e5e7eb')+'">'+p.fulfillment+'</span></td>';
+      html += '<td style="font-size:11px;font-family:monospace">'+(p.tracking||'—')+'</td>';
+      html += '<td>'+(origem?'<span class="badge" style="background:#dcfce7;color:#16a34a">📍'+origem[1].trim()+'</span>':'—')+'</td>';
+      html += '<td><button class="btn-del" onclick="enviarFornecedor(this,\''+encodeURIComponent(p.cliente)+'\',\''+p.tracking+'\',\''+encodeURIComponent(p.imagem||'')+'\',\''+p.meOrderId+'\')">📦</button></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el().innerHTML = html;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+async function enviarFornecedor(btn, nome, tracking, imgUrl, meOrderId) {
+  btn.disabled=true; btn.textContent='...';
+  await fetch(API + '/admin?secret='+S+'&action=enviar-fornecedor&clienteNome='+nome+'&tracking='+(tracking||'')+'&imgUrl='+imgUrl+'&meOrderId='+(meOrderId||''));
+  btn.textContent='✅';
+}
+
+// ===== CUPONS =====
+async function renderCupons() {
+  loading();
+  try {
+    var d = await fetch(API + '/cupons?secret=' + S, {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'listar',secret:S})
+    }).then(r=>r.json());
+    var cupons = d.cupons || [];
+    var html = '<div class="form-card">';
+    html += '<div class="form-title">🎟 Criar novo cupom</div>';
+    html += '<div class="row-2"><div class="field"><label>Código</label><input id="c-codigo" placeholder="ex: KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
+    html += '<div class="field"><label>Tipo</label><select id="c-tipo" onchange="atualizarCampoValor()"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option></select></div></div>';
+    html += '<div class="row-2"><div class="field" id="campo-valor"><label>Valor</label><input type="number" id="c-valor" placeholder="ex: 10" min="0" step="0.01"></div>';
+    html += '<div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-validade"></div></div>';
+    html += '<div class="row-2"><div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="ex: 100"></div>';
+    html += '<div class="field"><label>Produto (opcional)</label><input id="c-produto" placeholder="ex: TAG Senna"></div></div>';
+    html += '<button class="btn-green" onclick="salvarCupom()">💾 Criar Cupom</button>';
+    html += ' <span id="cupom-msg" style="margin-left:10px;font-size:13px"></span></div>';
+    html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">';
+    html += '<button onclick=\'limparCupons()\' style=\'padding:8px 16px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer\'>🗑 Limpar todos os cupons</button></div>';
+    if (!cupons.length) { html += '<div class="vazio">Nenhum cupom cadastrado</div>'; el().innerHTML = html; return; }
+    html += '<table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+    cupons.forEach(function(c){
+      html += '<tr>';
+      html += '<td><strong style="font-family:monospace">'+c.codigo+'</strong></td>';
+      html += '<td>'+c.tipo+'</td>';
+      html += '<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.valor+'%')+'</td>';
+      html += '<td>'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
+      html += '<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
+      html += '<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
+      html += '<td><button class="btn-del" style="margin-right:4px" onclick="toggleCupom(\''+c.id+'\')">⟳</button><button class="btn-del" onclick="deletarCupom(this,\''+c.id+'\',\''+c.codigo+'\')">🗑</button></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el().innerHTML = html;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+function atualizarCampoValor() {
+  var tipo = document.getElementById('c-tipo')?.value;
+  var campo = document.getElementById('campo-valor');
+  if (campo) campo.style.display = tipo==='frete_gratis' ? 'none' : 'block';
+}
+async function salvarCupom() {
+  var codigo = document.getElementById('c-codigo')?.value.trim().toUpperCase();
+  var tipo = document.getElementById('c-tipo')?.value;
+  var valor = parseFloat(document.getElementById('c-valor')?.value||0);
+  var msg = document.getElementById('cupom-msg');
+  console.log('salvarCupom:', codigo, tipo, valor);
+  if (!codigo) { if(msg) msg.textContent='⚠️ Digite o código'; return; }
+  var btn = event.target; btn.disabled=true; btn.textContent='Salvando...';
+  try {
+    var body = {action:'salvar',secret:S,codigo,tipo,valor,ativo:true,
+      validade:document.getElementById('c-validade')?.value||null,
+      limite:parseInt(document.getElementById('c-limite')?.value)||null,
+      produto:document.getElementById('c-produto')?.value.trim()||null};
+    var d = await fetch(API+'/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+    if (d.ok) { if(msg){msg.textContent='✅ Criado!';msg.style.color='#16a34a';} setTimeout(function(){renderCupons();},800); }
+    else { if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';} }
+  } catch(e) { if(msg){msg.textContent='❌ '+e.message;msg.style.color='#ef4444';} }
+  btn.disabled=false; btn.textContent='💾 Criar Cupom';
+}
+async function toggleCupom(id) {
+  await fetch(API+'/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',secret:S,id})});
+  renderCupons();
+}
+async function deletarCupom(btn, id, codigo) {
+  if (!confirm('Deletar cupom '+codigo+'?')) return;
+  btn.disabled=true;
+  var tr=btn.closest('tr'); if(tr) tr.style.opacity='0.4';
+  await fetch(API+'/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id})});
+  if(tr) tr.remove();
+}
+async function limparCupons() {
+  if (!confirm('Deletar TODOS os cupons?')) return;
+  var r = await fetch(API+'/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'limpar_todos',secret:S})});
+  var d = await r.json();
+  if (d.ok) { alert('✅ '+d.deletados+' cupons removidos!'); renderCupons(); }
+}
+
+// ===== GRUPOS VIP =====
+async function renderGrupos() {
+  loading();
+  try {
+    var d = await fetch(API+'/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json());
+    var grupos = d.grupos || [];
+    var ga = d.grupoAtivo || {};
+    var LIMITE = 1000;
+    var html = '';
+    // Grupo ativo card
+    html += '<div class="form-card" style="margin-bottom:20px">';
+    html += '<div class="form-title">🟢 Grupo Ativo Agora</div>';
+    html += '<div style="font-size:24px;font-weight:700;margin-bottom:8px">'+ga.nome+'</div>';
+    html += '<div style="font-size:13px;color:#6b7280;margin-bottom:8px">'+ga.membros+' membros &bull; '+(LIMITE-ga.membros)+' vagas</div>';
+    html += '<div style="font-size:13px;word-break:break-all;color:#2563eb;margin-bottom:8px"><a id="link-ativo" href="'+(ga.link||'#')+'" target="_blank">'+(ga.link||'—')+'</a></div>';
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+    html += '<input id="input-link-ativo" value="'+(ga.link||'')+'" style="flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none" placeholder="Novo link">';
+    html += '<button onclick="atualizarLinkAtivo(\''+ga.nome+'\')" style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer">Salvar</button>';
+    html += '<button onclick="navigator.clipboard.writeText(\'https://infinitepay-backend.vercel.app/api/grupo\').then(function(){alert(\'Link copiado!\');})" style="padding:8px 14px;background:#f3f4f6;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;cursor:pointer">📋 Copiar</button>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:#6b7280">Entradas hoje: <strong>'+d.entradasHoje+'</strong></div>';
+    html += '</div>';
+    // Histórico
+    if (d.historico && d.historico.length) {
+      html += '<div class="form-card" style="margin-bottom:20px">';
+      html += '<div class="form-title">📈 Histórico de Entradas</div>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+      d.historico.forEach(function(h){
+        html += '<div style="text-align:center;padding:10px 14px;background:#f9fafb;border-radius:8px;border:1px solid #e8eaf0">';
+        html += '<div style="font-size:11px;color:#6b7280">'+h.data+'</div>';
+        html += '<div style="font-size:18px;font-weight:700;color:#1a1a2e">'+h.entradas+'</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+    // Cards dos 17 grupos
+    html += '<div class="section-divider">17 Grupos</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">';
+    grupos.forEach(function(g){
+      var isAtivo = g.nome === ga.nome;
+      var pct = Math.min(100, Math.round((g.membros/LIMITE)*100));
+      var cor = pct>90?'#ef4444':pct>70?'#f59e0b':'#25d366';
+      html += '<div class="grupo-card'+(isAtivo?' ativo-card':'')+'">';
+      html += '<div style="font-size:12px;font-weight:700;margin-bottom:4px">Grupo '+g.nome+(isAtivo?' 🟢':'')+'</div>';
+      html += '<div style="font-size:18px;font-weight:700">'+fmtN(g.membros)+'</div>';
+      html += '<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+cor+'"></div></div>';
+      html += '<div style="font-size:10px;color:#9ca3af">'+(LIMITE-g.membros)+' vagas</div>';
+      if (!isAtivo) html += '<button onclick=\'definirGrupoAtivo("'+g.nome+'","'+(g.link||'')+'")\' style=\'width:100%;margin-top:6px;padding:4px;background:#f0f5ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;font-size:10px;cursor:pointer\'>Definir ativo</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+    if (d.aviso) html += '<div style="margin-top:12px;padding:10px 14px;background:#fef9c3;border-radius:8px;font-size:13px;color:#92400e">⚠️ '+d.aviso+'</div>';
+    el().innerHTML = html;
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+async function atualizarLinkAtivo(nome) {
+  var input = document.getElementById('input-link-ativo');
+  if (!input || !input.value.trim()) return;
+  var r = await fetch(API+'/admin?secret='+S+'&action=set-grupo-ativo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome:nome,link:input.value.trim()})});
+  var d = await r.json();
+  if (d.ok) { alert('✅ Link atualizado!'); renderGrupos(); }
+}
+async function definirGrupoAtivo(nome, link) {
+  var novoLink = prompt('Novo link para o grupo '+nome+':', link);
+  if (!novoLink) return;
+  var r = await fetch(API+'/admin?secret='+S+'&action=set-grupo-ativo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome,link:novoLink})});
+  var d = await r.json();
+  if (d.ok) { alert('✅ Grupo '+nome+' definido como ativo!'); renderGrupos(); }
+}
+
+// ===== BUNDLE =====
+var _selecionados = [], _desconto = 50, _produtos = [];
+async function renderBundle() {
+  loading();
+  try {
+    var [b, p] = await Promise.all([
+      fetch(API+'/admin?action=bundle-lista').then(r=>r.json()),
+      fetch(API+'/admin?secret='+S+'&action=produtos-lista').then(r=>r.json())
+    ]);
+    _produtos = p.produtos || [];
+    _selecionados = (b.produtos||[]).map(function(x){return (x.id||x).toString();});
+    _desconto = b.desconto || 50;
+    renderBundleForm();
+  } catch(e) { erro('Erro: ' + e.message); }
+}
+function renderBundleForm() {
+  var html = '<div class="form-card">';
+  html += '<div class="form-title">🎁 Configurar Bundle</div>';
+  html += '<div class="field"><label>Desconto em R$</label><input type="number" id="bundle-desc" value="'+_desconto+'" style="width:120px"></div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:400px;overflow-y:auto;margin-bottom:18px">';
+  _produtos.forEach(function(p){
+    var sel = _selecionados.includes(p.id.toString());
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;cursor:pointer;border:1.5px solid '+(sel?'#25d366':'#e8eaf0')+';background:'+(sel?'#f0fff4':'#fff')+'">';
+    html += '<input type="checkbox" '+(sel?'checked':'')+' onchange="toggleBundle(\''+p.id+'\')" style="width:15px;height:15px;accent-color:#25d366;flex-shrink:0">';
+    html += (p.imagem?'<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">':'');
+    html += '<div style="min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div><div style="font-size:11px;color:#6b7280">'+fmt(p.preco/100)+'</div></div></label>';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;align-items:center;gap:12px">';
+  html += '<button class="btn-green" onclick="salvarBundle()">💾 Salvar Configuração</button>';
+  html += '<span id="bundle-sel" style="font-size:13px;color:#6b7280">'+_selecionados.length+' selecionados</span>';
+  html += '<span id="bundle-msg" style="font-size:13px"></span></div></div>';
+  el().innerHTML = html;
+}
+function toggleBundle(id) {
+  var s = id.toString();
+  if (_selecionados.includes(s)) _selecionados = _selecionados.filter(function(x){return x!==s;});
+  else _selecionados.push(s);
+  var lbl = event.target.closest('label');
+  if (lbl) { lbl.style.border = _selecionados.includes(s)?'1.5px solid #25d366':'1.5px solid #e8eaf0'; lbl.style.background = _selecionados.includes(s)?'#f0fff4':'#fff'; }
+  var sel = document.getElementById('bundle-sel');
+  if (sel) sel.textContent = _selecionados.length + ' selecionados';
+}
+async function salvarBundle() {
+  var desc = parseFloat(document.getElementById('bundle-desc')?.value||50);
+  var msg = document.getElementById('bundle-msg');
+  var btn = event.target; btn.disabled=true; btn.textContent='Salvando...';
+  var d = await fetch(API+'/admin?action=bundle-salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({produtos:_selecionados,desconto:desc})}).then(r=>r.json());
+  if(msg) { msg.textContent=d.ok?'✅ Salvo!':'❌ Erro'; msg.style.color=d.ok?'#16a34a':'#ef4444'; }
+  btn.disabled=false; btn.textContent='💾 Salvar Configuração';
+}
+
+// INICIAR
+renderAba('home');
+if(window.location.hash==='#carrinhos')mudarAba('carrinhos');
+if(window.location.hash==='#ofertas')mudarAba('ofertas');
+if(window.location.hash==='#cupons')mudarAba('cupons');
 </script>
 </body>
 </html>`);
