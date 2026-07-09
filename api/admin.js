@@ -1944,7 +1944,7 @@ function renderBundleForm() {
   _produtos.forEach(function(p){
     var sel = _selecionados.includes(p.id.toString());
     html += '<label style="display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;cursor:pointer;border:1.5px solid '+(sel?'#25d366':'#e8eaf0')+';background:'+(sel?'#f0fff4':'#fff')+'">';
-    html += '<input type="checkbox" '+(sel?'checked':'')+' onchange="toggleBundle(\''+p.id+'\')" style="width:15px;height:15px;accent-color:#25d366;flex-shrink:0">';
+    html += '<input type="checkbox" '+(sel?'checked':'')+' data-action="togglebundle" data-id="'+p.id+'" style="width:15px;height:15px;accent-color:#25d366;flex-shrink:0">';
     html += (p.imagem?'<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">':'');
     html += '<div style="min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div><div style="font-size:11px;color:#6b7280">'+fmt(p.preco/100)+'</div></div></label>';
   });
@@ -1954,6 +1954,10 @@ function renderBundleForm() {
   html += '<span id="bundle-sel" style="font-size:13px;color:#6b7280">'+_selecionados.length+' selecionados</span>';
   html += '<span id="bundle-msg" style="font-size:13px"></span></div></div>';
   el().innerHTML = html;
+  el().addEventListener('click', function(e) {
+    var b = e.target.closest('[data-action="togglebundle"]');
+    if (b) toggleBundle(b.getAttribute('data-id'));
+  });
 }
 function toggleBundle(id) {
   var s = id.toString();
