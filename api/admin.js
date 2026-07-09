@@ -364,12 +364,27 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       return p?.image?.src || '';
     };
     const pedidos = (pedidosR.orders||[]).map(o => ({
-      id: o.id, numero: o.order_number,
+      id: o.id,
+      numero: o.order_number,
       cliente: o.customer ? `${o.customer.first_name||''} ${o.customer.last_name||''}`.trim() : 'Sem nome',
-      produto: (o.line_items||[])[0]?.title || '',
-      valor: o.total_price, financeiro: o.financial_status, fulfillment: o.fulfillment_status || 'unfulfilled',
+      email: o.customer?.email || o.email || '',
+      telefone: o.shipping_address?.phone || o.billing_address?.phone || o.customer?.phone || o.phone || '',
+      endereco: o.shipping_address ? `${o.shipping_address.address1||''}, ${o.shipping_address.city||''} - ${o.shipping_address.province_code||''}, ${o.shipping_address.zip||''}` : '',
+      produto: (o.line_items||[]).map(i => i.title + (i.variant_title&&i.variant_title!=='Default Title'?' - '+i.variant_title:'')).join(', '),
+      itens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title, quantidade: i.quantity, preco: i.price })),
+      subtotal: o.subtotal_price,
+      frete_valor: o.total_shipping_price_set?.shop_money?.amount || '0',
+      desconto: o.total_discounts,
+      valor: o.total_price,
+      financeiro: o.financial_status,
+      fulfillment: o.fulfillment_status || 'unfulfilled',
       tracking: (o.fulfillments||[])[0]?.tracking_number || '',
-      meOrderId: '', criado_em: o.created_at,
+      tracking_url: (o.fulfillments||[])[0]?.tracking_url || '',
+      nota: o.note || '',
+      tags: o.tags || '',
+      cupom: (o.discount_codes||[]).map(d => d.code).join(', '),
+      meOrderId: '',
+      criado_em: o.created_at,
       imagem: getImg((o.line_items||[])[0]?.title || ''),
     }));
     const pedResult = { pedidos };
@@ -1846,35 +1861,60 @@ function abrirModalPedido(i) {
   var fu={fulfilled:'✅ Enviado',unfulfilled:'⏳ Aguardando',partial:'🔄 Parcial'};
   var origem=(p.nota||'').split('Origem: ')[1];if(origem)origem=origem.split('|')[0].trim();
   var html='';
-  html+='<div style="display:flex;gap:14px;margin-bottom:18px">';
-  html+=(p.imagem?'<img src="'+p.imagem+'" style="width:70px;height:70px;object-fit:cover;border-radius:10px">':'');
-  html+='<div><div style="font-size:18px;font-weight:700">#'+p.numero+'</div>';
-  html+='<div style="color:#9ca3af;font-size:13px">'+fmtDate(p.criado_em)+'</div>';
-  html+='<div style="font-size:20px;font-weight:700;color:#25d366;margin-top:4px">'+fmt(parseFloat(p.valor||0))+'</div></div></div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-  [
-    {l:'Cliente',v:p.cliente},
-    {l:'Email',v:p.email||'—'},
-    {l:'Telefone',v:p.telefone||'—'},
-    {l:'Produto',v:p.produto||'—'},
-    {l:'Pagamento',v:fc[p.financeiro]||p.financeiro},
-    {l:'Envio',v:fu[p.fulfillment]||p.fulfillment},
-    {l:'Tracking',v:p.tracking||'—'},
-    {l:'Origem',v:origem||'—'},
-  ].forEach(function(c){
-    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px"><div style="font-size:11px;color:#9ca3af;margin-bottom:3px">'+c.l+'</div><div style="font-size:13px;font-weight:600">'+c.v+'</div></div>';
+  // Header
+  html+='<div style="display:flex;gap:14px;margin-bottom:20px;align-items:flex-start">';
+  html+=(p.imagem?'<img src="'+p.imagem+'" style="width:64px;height:64px;object-fit:cover;border-radius:10px;flex-shrink:0">':'');
+  html+='<div><div style="font-size:20px;font-weight:700">#'+p.numero+'</div>';
+  html+='<div style="color:#9ca3af;font-size:12px">'+fmtDate(p.criado_em)+'</div>';
+  html+='<div style="font-size:22px;font-weight:700;color:#16a34a;margin-top:3px">'+fmt(parseFloat(p.valor||0))+'</div></div></div>';
+  // Status
+  html+='<div style="display:flex;gap:8px;margin-bottom:16px">';
+  html+='<span class="badge" style="background:#bbf7d0">'+(fc[p.financeiro]||p.financeiro)+'</span>';
+  html+='<span class="badge" style="background:#bfdbfe">'+(fu[p.fulfillment]||p.fulfillment)+'</span>';
+  if(origem)html+='<span class="badge" style="background:#dcfce7;color:#16a34a">📍'+origem+'</span>';
+  html+='</div>';
+  // Cliente
+  html+='<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cliente</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">';
+  [{l:'Nome',v:p.cliente},{l:'Email',v:p.email||'—'},{l:'Telefone',v:p.telefone||'—'},{l:'Endereço',v:p.endereco||'—'}].forEach(function(c){
+    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">'+c.l+'</div><div style="font-size:13px;font-weight:600;word-break:break-word">'+c.v+'</div></div>';
   });
   html+='</div>';
-  if (p.nota) {
-    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;font-size:12px;color:#6b7280;word-break:break-all">'+p.nota+'</div>';
+  // Itens
+  if (p.itens && p.itens.length) {
+    html+='<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Itens do Pedido</div>';
+    html+='<div style="background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:16px">';
+    p.itens.forEach(function(it){
+      html+='<div style="padding:10px 12px;border-bottom:1px solid #e8eaf0;display:flex;justify-content:space-between;align-items:center">';
+      html+='<div><div style="font-size:13px;font-weight:600">'+it.nome+'</div>';
+      if(it.variante&&it.variante!=='Default Title')html+='<div style="font-size:11px;color:#9ca3af">'+it.variante+'</div>';
+      html+='</div><div style="text-align:right"><div style="font-size:12px;color:#6b7280">x'+it.quantidade+'</div><div style="font-size:13px;font-weight:600">'+fmt(parseFloat(it.preco)*it.quantidade)+'</div></div></div>';
+    });
+    html+='</div>';
   }
-  html+='<div style="display:flex;gap:8px;margin-top:16px">';
+  // Financeiro
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">';
+  [{l:'Subtotal',v:fmt(parseFloat(p.subtotal||0))},{l:'Frete',v:fmt(parseFloat(p.frete_valor||0))},{l:'Desconto',v:fmt(parseFloat(p.desconto||0))}].forEach(function(c){
+    html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:#9ca3af;margin-bottom:2px">'+c.l+'</div><div style="font-size:14px;font-weight:700">'+c.v+'</div></div>';
+  });
+  html+='</div>';
+  // Tracking + Cupom
+  if(p.tracking){
+    html+='<div style="background:#f0f9ff;border-radius:8px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">';
+    html+='<div><div style="font-size:10px;color:#9ca3af">Tracking</div><div style="font-size:13px;font-weight:700;font-family:monospace">'+p.tracking+'</div></div>';
+    if(p.tracking_url)html+='<a href="'+p.tracking_url+'" target="_blank" style="font-size:12px;color:#2563eb">Rastrear →</a>';
+    html+='</div>';
+  }
+  if(p.cupom)html+='<div style="background:#fef9c3;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px">🎟 Cupom: <strong>'+p.cupom+'</strong></div>';
+  if(p.tags)html+='<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">Tags: '+p.tags+'</div>';
+  if(p.nota)html+='<div style="background:#f9fafb;border-radius:8px;padding:10px;font-size:12px;color:#6b7280;word-break:break-word;margin-bottom:12px">'+p.nota+'</div>';
+  html+='<div style="display:flex;gap:8px;margin-top:8px">';
   html+='<button class="btn btn-ghost btn-sm" id="modal-forn-btn">📦 Enviar para Fornecedor</button>';
   html+='</div>';
-  var mc = get('modal-content'); if (mc) mc.innerHTML = html;
-  var m = get('modal-ped'); if (m) m.style.display = 'flex';
-  var mf = get('modal-forn-btn');
-  if (mf) mf.addEventListener('click', function() { enviarFornecedorPed(mf, i); });
+  var mc=get('modal-content');if(mc)mc.innerHTML=html;
+  var m=get('modal-ped');if(m)m.style.display='flex';
+  var mf=get('modal-forn-btn');
+  if(mf)mf.addEventListener('click',function(){enviarFornecedorPed(mf,i);});
 }
 function fecharModal() {
   var m = get('modal-ped'); if (m) m.style.display = 'none';
