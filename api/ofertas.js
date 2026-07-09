@@ -444,6 +444,14 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
+  // Endpoint JSON para dashboard SPA
+  if (action === 'listar-json') {
+    try {
+      const ofertas = await listarOfertas(KV_URL, KV_TOKEN);
+      return res.status(200).json({ ok: true, ofertas });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
   if (action === 'salvar' && req.method === 'POST') {
     try {
       const id = await salvarOferta(KV_URL, KV_TOKEN, req.body);
