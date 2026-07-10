@@ -8,37 +8,42 @@ export default async function handler(req, res) {
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
   // ===== PRESENÇA EM TEMPO REAL =====
+  // Usa Hash Redis: campo = sessaoId, valor = timestamp do último ping
+  // Limpeza automática de sessões antigas (>3 min) a cada request
+
   if (req.query.action === 'presenca') {
     const { sessao, evento } = req.body || {};
     if (!sessao) return res.status(400).json({ error: 'sessao obrigatória' });
 
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3*60*60*1000).toISOString().split('T')[0];
-    const chaveAtivos = 'checkout-ativos';
+    const HASH_KEY = 'checkout-presenca-hash';
     const chaveDiario = 'checkout-total-'+hojeBR;
+    const agora = Date.now();
 
-    if (evento === 'entrou') {
-      // Registrar sessão ativa (TTL 5 min)
-      await fetch(`${KV_URL}/set/checkout-sess-${sessao}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: '1', ex: 300 })
+    if (evento === 'entrou' || evento === 'ping') {
+      // Salvar/renovar timestamp desta sessão no hash
+      // Upstash HSET: POST /hset/KEY com body [campo, valor]
+      await fetch(`${KV_URL}/hset/${HASH_KEY}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([sessao, String(agora)])
       });
-      // Incrementar contador do dia
-      await fetch(`${KV_URL}/incr/${chaveDiario}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-      // Definir TTL do contador diário (24h)
-      await fetch(`${KV_URL}/expire/${chaveDiario}/86400`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-    } else if (evento === 'ping') {
-      // Renovar TTL da sessão
-      await fetch(`${KV_URL}/expire/checkout-sess-${sessao}/300`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
+
+      if (evento === 'entrou') {
+        // Incrementar contador diário
+        await fetch(`${KV_URL}/incr/${chaveDiario}`, {
+          method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+        });
+        await fetch(`${KV_URL}/expire/${chaveDiario}/86400`, {
+          method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+        });
+      }
     } else if (evento === 'saiu') {
-      await fetch(`${KV_URL}/del/checkout-sess-${sessao}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      await fetch(`${KV_URL}/hdel/${HASH_KEY}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([sessao])
       });
     }
 
@@ -51,13 +56,38 @@ export default async function handler(req, res) {
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000).toISOString().split('T')[0];
       const chaveDiario = 'checkout-total-'+hojeBR;
+      const HASH_KEY = 'checkout-presenca-hash';
+      const agora = Date.now();
+      const TIMEOUT = 3 * 60 * 1000; // 3 minutos sem ping = offline
 
-      // Listar sessões ativas
-      const keysResp = await fetch(`${KV_URL}/keys/checkout-sess-*`, {
-        method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      // Buscar todos os campos do hash
+      const hashResp = await fetch(`${KV_URL}/hgetall/${HASH_KEY}`, {
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
-      const keysData = await keysResp.json();
-      const ativos = (keysData.result || []).length;
+      const hashData = await hashResp.json();
+      const campos = hashData.result || [];
+
+      // hgetall retorna array alternado [campo, valor, campo, valor...]
+      let ativos = 0;
+      const sessoesMortas = [];
+      for (let i = 0; i < campos.length; i += 2) {
+        const sessId = campos[i];
+        const ts = parseInt(campos[i+1] || 0);
+        if (agora - ts <= TIMEOUT) {
+          ativos++;
+        } else {
+          sessoesMortas.push(sessId);
+        }
+      }
+
+      // Limpar sessões mortas em background (sem await)
+      if (sessoesMortas.length > 0) {
+        fetch(`${KV_URL}/hdel/${HASH_KEY}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(sessoesMortas)
+        }).catch(() => {});
+      }
 
       // Total do dia
       const diaResp = await fetch(`${KV_URL}/get/${chaveDiario}`, {
