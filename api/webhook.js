@@ -301,17 +301,26 @@ export default async function handler(req, res) {
 
     // Deletar lead de abandono se existir (cliente pagou!)
     if (cliente && cliente.email && process.env.KV_REST_API_URL) {
-      const leadId = `lead-${cliente.email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-      await fetch(`${process.env.KV_REST_API_URL}/del/${leadId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-      });
-      // Remover da lista também
-      await fetch(`${process.env.KV_REST_API_URL}/lrem/leads-lista/0/${leadId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-      });
-      console.log('Lead removido após pagamento:', leadId);
+      const emailSlug = cliente.email.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const leadIdNovo = `lead:${emailSlug}`;   // formato novo
+      const leadIdAntigo = `lead-${emailSlug}`; // formato antigo (compatibilidade)
+      const kvUrl = process.env.KV_REST_API_URL;
+      const kvToken = process.env.KV_REST_API_TOKEN;
+      const headers = { Authorization: `Bearer ${kvToken}`, 'Content-Type': 'application/json' };
+
+      // Deletar ambos os formatos
+      await Promise.all([
+        fetch(`${kvUrl}/del/${encodeURIComponent(leadIdNovo)}`, { method: 'POST', headers }),
+        fetch(`${kvUrl}/del/${leadIdAntigo}`, { method: 'POST', headers }),
+        // Remover do Set (novo sistema)
+        fetch(`${kvUrl}/pipeline`, {
+          method: 'POST', headers,
+          body: JSON.stringify([['SREM', 'leads-set', leadIdNovo]])
+        }),
+        // Remover da lista antiga
+        fetch(`${kvUrl}/lrem/leads-lista/0/${leadIdAntigo}`, { method: 'POST', headers }),
+      ]);
+      console.log('Lead removido após pagamento:', leadIdNovo);
     }
 
     return res.status(200).json({ success: true, message: null });
