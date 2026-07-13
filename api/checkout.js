@@ -22,12 +22,13 @@ export default async function handler(req, res) {
     const agora = Date.now();
 
     if (evento === 'entrou' || evento === 'ping') {
-      // Salvar/renovar timestamp desta sessão no hash
-      // Upstash HSET: POST /hset/KEY com body [campo, valor]
-      await fetch(`${KV_URL}/hset/${HASH_KEY}`, {
+      // Upstash HSET via pipeline: POST /pipeline com comando HSET
+      await fetch(`${KV_URL}/pipeline`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([sessao, String(agora)])
+        body: JSON.stringify([
+          ['HSET', HASH_KEY, sessao, String(agora)]
+        ])
       });
 
       if (evento === 'entrou') {
@@ -40,10 +41,12 @@ export default async function handler(req, res) {
         });
       }
     } else if (evento === 'saiu') {
-      await fetch(`${KV_URL}/hdel/${HASH_KEY}`, {
+      await fetch(`${KV_URL}/pipeline`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([sessao])
+        body: JSON.stringify([
+          ['HDEL', HASH_KEY, sessao]
+        ])
       });
     }
 
@@ -92,10 +95,10 @@ export default async function handler(req, res) {
 
       // Limpar sessões mortas em background (sem await)
       if (sessoesMortas.length > 0) {
-        fetch(`${KV_URL}/hdel/${HASH_KEY}`, {
+        fetch(`${KV_URL}/pipeline`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(sessoesMortas)
+          body: JSON.stringify(sessoesMortas.map(s => ['HDEL', HASH_KEY, s]))
         }).catch(() => {});
       }
 
