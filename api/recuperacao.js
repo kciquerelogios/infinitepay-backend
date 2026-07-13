@@ -1,8 +1,6 @@
 // api/recuperacao.js — Cron de recuperação de carrinhos abandonados
 // Configurar no vercel.json: {"crons": [{"path": "/api/recuperacao", "schedule": "*/10 * * * *"}]}
 
-import fetch from 'node-fetch';
-
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 const ZAPI_BASE = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
