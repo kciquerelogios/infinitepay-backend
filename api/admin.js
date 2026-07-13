@@ -1706,11 +1706,13 @@ async function renderHome(force) {
   if (_homeCache && !force) { renderHomeHtml(_homeCache); return; }
   loading();
   try {
-    var [d, presenca] = await Promise.all([
+    var [d, presenca, grupos] = await Promise.all([
       fetch(API+'/api/admin?secret='+S+'&action=dashboard-home'+(force?'&refresh=1':'')).then(r=>r.json()),
-      fetch(API+'/api/checkout?action=contar').then(r=>r.json()).catch(function(){return {ativos:0,totalDia:0};})
+      fetch(API+'/api/checkout?action=contar').then(r=>r.json()).catch(function(){return {ativos:0,totalDia:0};}),
+      fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json()).catch(function(){return {};})
     ]);
     d.presenca = presenca;
+    d.gruposVip = { total: grupos.totalMembros||0, entradasHoje: grupos.entradasHoje||0, grupoAtivo: grupos.grupoAtivo||{} };
     _homeCache = d;
     renderHomeHtml(d);
   } catch(e) { errMsg('Erro: '+e.message); }
@@ -1783,6 +1785,7 @@ function renderHomeHtml(d) {
     {i:'⏳',l:'Aguardando Envio',v:v.pendentes||0,w:v.pendentes>0,fmt:false},
     {i:'💰',l:'Saldo Melhor Envio',v:fmt(me.saldo||0),w:(me.saldo||0)<50,fmt:true},
     {i:'🛒',l:'Carrinhos Abertos',v:lds.total||0,w:false,fmt:false},
+    {i:'📲',l:'Membros VIP (17 grupos)',v:fmtN((d.gruposVip||{}).total||0),w:false,fmt:false},
   ].forEach(function(c){
     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6">';
     html += '<div style="display:flex;align-items:center;gap:8px"><span>'+c.i+'</span><span style="font-size:13px;color:#374151">'+c.l+'</span></div>';
