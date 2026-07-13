@@ -78,7 +78,18 @@ export default async function handler(req, res) {
         currency: 'BRL',
         note: `Pago via InfinitePay | NSU: ${payload.order_nsu || ''} | Método: ${payload.capture_method || ''} | Telefone: ${cliente ? cliente.telefone : ''} | Comprovante: ${payload.receipt_url || ''} | Origem: ${dadosPedido?.ref || 'direto'}${cupomAplicado ? ' | Cupom: ' + cupomAplicado.codigo + ' (' + cupomAplicado.tipo + ' -' + (cupomAplicado.tipo === 'percentual' ? cupomAplicado.valor + '%)' : 'R$' + cupomAplicado.valor + ')') : ''}${valorOriginal ? ' | Valor original: R$' + parseFloat(valorOriginal).toFixed(2) : ''}`,
         tags: 'InfinitePay',
-        discount_codes: cupomAplicado ? [{ code: cupomAplicado.codigo, amount: String(parseFloat(valorOriginal || 0) - parseFloat(payload.amount || 0) / 100), type: 'fixed_amount' }] : [],
+        discount_codes: (() => {
+          if (!cupomAplicado) return [];
+          let discountAmount = 0;
+          if (cupomAplicado.tipo === 'frete_gratis') {
+            // Desconto = valor do frete
+            discountAmount = frete ? parseFloat(frete.preco || 0) : 0;
+          } else if (valorOriginal) {
+            discountAmount = Math.max(0, parseFloat(valorOriginal) - parseFloat(payload.amount || 0) / 100);
+          }
+          if (discountAmount <= 0) return [];
+          return [{ code: cupomAplicado.codigo, amount: discountAmount.toFixed(2), type: 'fixed_amount' }];
+        })(),
         transactions: [{
           kind: 'sale',
           status: 'success',
