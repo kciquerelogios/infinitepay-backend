@@ -1889,15 +1889,19 @@ async function renderCarrinhos() {
 function renderLeadsList(leads) {
   var ec={
     dados:'#e5e7eb',
+    cep_produto:'#d1fae5',
     endereco:'#bfdbfe',
+    frete_calculado:'#fef9c3',
     frete_selecionado:'#fde68a',
     pagamento_pendente:'#fca5a5'
   };
   var et={
     dados:'📋 Identificação',
-    endereco:'📍 Endereço',
-    frete_selecionado:'🚚 Frete escolhido',
-    pagamento_pendente:'💳 Abandonou no pagamento'
+    cep_produto:'📦 Veio do produto',
+    endereco:'📍 Digitou endereço',
+    frete_calculado:'🔍 Calculou frete',
+    frete_selecionado:'🚚 Escolheu frete',
+    pagamento_pendente:'💳 Abandonou no pag.'
   };
   var total = leads.reduce(function(s,l){return s+(l.carrinho||[]).reduce(function(sv,i){return sv+(i.preco*i.quantidade/100);},0);},0);
   var html = '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">';
