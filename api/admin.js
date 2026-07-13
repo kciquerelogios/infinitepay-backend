@@ -225,6 +225,26 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── RECUPERAÇÃO CONFIG ──────────────────────────────────────
+  if (req.query.action === 'recuperacao-config') {
+    try {
+      const r = await fetch(`${KV_URL}/get/recuperacao-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      return res.status(200).json({ ok: true, config: config || {} });
+    } catch(e) { return res.status(200).json({ ok: true, config: {} }); }
+  }
+
+  if (req.query.action === 'recuperacao-config-salvar' && req.method === 'POST') {
+    await fetch(`${KV_URL}/set/recuperacao-config`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(req.body || {}) })
+    });
+    return res.status(200).json({ ok: true });
+  }
+
   if (secret !== process.env.REPROCESSAR_SECRET) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(401).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kcique Admin</title>
@@ -1648,6 +1668,7 @@ tr:hover td{background:#fafafa}
     <button class="nav-item" data-aba="cupons"><span class="nav-icon">🎟</span><span class="nav-label">Cupons</span></button>
     <button class="nav-item" data-aba="grupos"><span class="nav-icon">📲</span><span class="nav-label">Grupos VIP</span></button>
     <button class="nav-item" data-aba="bundle"><span class="nav-icon">🎁</span><span class="nav-label">Bundle</span></button>
+    <button class="nav-item" data-aba="recuperacao"><span class="nav-icon">💬</span><span class="nav-label">Recuperação</span></button>
   </nav>
   <div class="sidebar-foot">Kcique © 2026</div>
 </aside>
@@ -1665,7 +1686,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle'};
+const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -1696,7 +1717,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle};
+  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -1881,7 +1902,7 @@ function renderHomeHtml(d) {
 async function renderCarrinhos() {
   loading();
   try {
-    var d = await fetch(API+'/api/leads?secret='+S).then(r=>r.json());
+    var d = await fetch(API+'/api/leads?secret='+S+'&ts='+Date.now()).then(r=>r.json());
     _leads = (d.leads||[]).sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
     renderLeadsList(_leads);
   } catch(e) { errMsg('Erro: '+e.message); }
@@ -1942,7 +1963,8 @@ function renderLeadsList(leads) {
     if (!b) return;
     if (!confirm('Remover carrinho?')) return;
     var tr=b.closest('tr'); if(tr)tr.style.opacity='0.4';
-    fetch(API+'/api/admin?secret='+S+'&del_lead='+b.getAttribute('data-lid')).then(function(){if(tr)tr.remove();});
+    fetch(API+'/api/leads?secret='+S+'&id='+encodeURIComponent(b.getAttribute('data-lid')), {method:'DELETE'})
+      .then(function(){if(tr)tr.remove(); _leads=_leads.filter(function(l){return l.id!==b.getAttribute('data-lid');});});
   }, {once:true});
 }
 function _attachLeadSearch() {
@@ -1959,7 +1981,7 @@ function _attachLeadSearch() {
     fetch(API+'/api/leads', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({action:'limpar_leads', secret:S})
+      body: JSON.stringify({action:'limpar_todos', secret:S})
     }).then(function(r){return r.json();}).then(function(d){
       if (d.ok) { alert('✅ '+d.deletados+' carrinhos removidos'); renderCarrinhos(); }
       else { alert('❌ Erro'); bl.disabled=false; bl.textContent='🗑 Limpar todos'; }
@@ -2325,6 +2347,114 @@ function renderBundleHtml(){
     if(msg){msg.textContent=d.ok?'✅ Salvo!':'❌ Erro';msg.style.color=d.ok?'#16a34a':'#ef4444';}
     bs.disabled=false;bs.textContent='💾 Salvar';
   });
+}
+
+// ===== RECUPERAÇÃO =====
+async function renderRecuperacao() {
+  loading();
+  try {
+    var config = await fetch(API+'/api/admin?secret='+S+'&action=recuperacao-config').then(r=>r.json()).catch(function(){return {};});
+    var c = config.config || {};
+
+    var regras = [
+      { key: 'regra_identificacao', label: '📋 Preencheu identificação (nome/email)', desc: 'Pessoa preencheu dados pessoais mas não foi ao endereço' },
+      { key: 'regra_frete',         label: '🚚 Abandonou no frete',                  desc: 'Pessoa calculou ou selecionou frete mas não foi ao pagamento' },
+      { key: 'regra_pagamento',     label: '💳 Abandonou no pagamento',               desc: 'Pessoa clicou em pagar mas não completou' },
+    ];
+
+    var html = '';
+
+    // Status global
+    var ativo = c.ativo !== false;
+    html += '<div class="form-card" style="margin-bottom:16px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between">';
+    html += '<div><div class="form-title">💬 Recuperação Automática de Carrinhos</div>';
+    html += '<div style="font-size:13px;color:#6b7280">Mensagens automáticas via WhatsApp para recuperar carrinhos abandonados</div></div>';
+    html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">';
+    html += '<span style="font-size:13px;font-weight:600">'+(ativo?'Ativo':'Inativo')+'</span>';
+    html += '<div style="position:relative;width:44px;height:24px"><input type="checkbox" id="rec-ativo" '+(ativo?'checked':'')+'style="opacity:0;position:absolute;width:100%;height:100%;margin:0;cursor:pointer;z-index:2">';
+    html += '<div id="rec-ativo-bg" style="position:absolute;inset:0;border-radius:12px;background:'+(ativo?'#25d366':'#d1d5db')+';transition:background .2s"></div>';
+    html += '<div id="rec-ativo-dot" style="position:absolute;top:3px;left:'+(ativo?'23':'3')+'px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></label>';
+    html += '</div></div>';
+
+    // Variáveis disponíveis
+    html += '<div style="margin-bottom:16px;padding:12px 16px;background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;font-size:12px;color:#0369a1">';
+    html += '<strong>Variáveis disponíveis nas mensagens:</strong> ';
+    html += '<code>{nome}</code> · <code>{produtos}</code> · <code>{link}</code> · <code>{email}</code>';
+    html += '</div>';
+
+    // Regras
+    regras.forEach(function(regra) {
+      var r = c[regra.key] || {};
+      var rAtivo = r.ativo !== false;
+      html += '<div class="form-card" style="margin-bottom:12px">';
+      html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">';
+      html += '<div><div style="font-size:14px;font-weight:700">'+regra.label+'</div>';
+      html += '<div style="font-size:12px;color:#9ca3af;margin-top:2px">'+regra.desc+'</div></div>';
+      html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0">';
+      html += '<input type="checkbox" class="rec-regra-ativo" data-regra="'+regra.key+'" '+(rAtivo?'checked':'')+' style="width:16px;height:16px;accent-color:#25d366">';
+      html += '<span style="font-size:12px">'+(rAtivo?'On':'Off')+'</span></label>';
+      html += '</div>';
+      html += '<div class="row-2">';
+      html += '<div class="field"><label>Aguardar (minutos) antes de enviar</label>';
+      html += '<input type="number" class="rec-delay" data-regra="'+regra.key+'" value="'+(r.delay_minutos||30)+'" min="1" max="10080" style="width:100%"></div>';
+      html += '<div class="field"><label>Enviar apenas uma vez por lead</label>';
+      html += '<select class="rec-reenvio" data-regra="'+regra.key+'" style="width:100%">';
+      html += '<option value="1" '+(r.reenviar!==false?'selected':'')+'>Sim — não reenviar</option>';
+      html += '</select></div></div>';
+      html += '<div class="field"><label>Mensagem WhatsApp</label>';
+      html += '<textarea class="rec-mensagem" data-regra="'+regra.key+'" rows="4" placeholder="Ex: Olá {nome}! Vi que você deixou {produtos} no carrinho...">'+(r.mensagem||'')+'</textarea></div>';
+      html += '</div>';
+    });
+
+    html += '<div style="display:flex;gap:10px;align-items:center">';
+    html += '<button class="btn btn-primary" id="btn-salvar-rec">💾 Salvar configurações</button>';
+    html += '<button class="btn btn-ghost" id="btn-testar-rec">▶ Disparar agora</button>';
+    html += '<span id="rec-msg" style="font-size:13px"></span>';
+    html += '</div>';
+
+    ct().innerHTML = html;
+
+    // Toggle global
+    var recAtivoBg = document.getElementById('rec-ativo-bg');
+    var recAtivoDot = document.getElementById('rec-ativo-dot');
+    document.getElementById('rec-ativo').addEventListener('change', function() {
+      recAtivoBg.style.background = this.checked ? '#25d366' : '#d1d5db';
+      recAtivoDot.style.left = this.checked ? '23px' : '3px';
+    });
+
+    // Salvar
+    document.getElementById('btn-salvar-rec').addEventListener('click', async function() {
+      var btn = this; btn.disabled=true; btn.textContent='Salvando...';
+      var novaConfig = { ativo: document.getElementById('rec-ativo').checked };
+      regras.forEach(function(regra) {
+        novaConfig[regra.key] = {
+          ativo: ct().querySelector('.rec-regra-ativo[data-regra="'+regra.key+'"]').checked,
+          delay_minutos: parseInt(ct().querySelector('.rec-delay[data-regra="'+regra.key+'"]').value) || 30,
+          mensagem: ct().querySelector('.rec-mensagem[data-regra="'+regra.key+'"]').value.trim(),
+        };
+      });
+      var r = await fetch(API+'/api/admin?secret='+S+'&action=recuperacao-config-salvar', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(novaConfig)
+      }).then(function(r){return r.json();});
+      var msg = document.getElementById('rec-msg');
+      if (r.ok) { msg.textContent='✅ Salvo!'; msg.style.color='#16a34a'; }
+      else { msg.textContent='❌ Erro'; msg.style.color='#ef4444'; }
+      btn.disabled=false; btn.textContent='💾 Salvar configurações';
+      setTimeout(function(){ msg.textContent=''; }, 3000);
+    });
+
+    // Disparar agora
+    document.getElementById('btn-testar-rec').addEventListener('click', async function() {
+      var btn=this; btn.disabled=true; btn.textContent='Disparando...';
+      var r = await fetch(API+'/api/recuperacao?secret='+S, {method:'POST'}).then(function(r){return r.json();}).catch(function(){return {ok:false};});
+      var msg = document.getElementById('rec-msg');
+      if (r.ok) { msg.textContent='✅ '+r.disparos+' mensagens enviadas'; msg.style.color='#16a34a'; }
+      else { msg.textContent='❌ Erro ao disparar'; msg.style.color='#ef4444'; }
+      btn.disabled=false; btn.textContent='▶ Disparar agora';
+    });
+
+  } catch(e) { errMsg('Erro: '+e.message); }
 }
 
 // INICIAR
