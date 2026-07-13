@@ -2188,7 +2188,13 @@ async function renderGrupos(){
     var d=await fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json());
     var grupos=d.grupos||[],ga=d.grupoAtivo||{},LIMITE=1000;
     var html='<div class="form-card"><div class="form-title">🟢 Grupo Ativo: <strong>'+ga.nome+'</strong></div>';
-    html+='<div style="font-size:13px;color:#6b7280;margin-bottom:8px">'+fmtN(ga.membros||0)+' membros · '+(LIMITE-(ga.membros||0))+' vagas · Entradas hoje: <strong>'+d.entradasHoje+'</strong></div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;color:#6b7280">';
+    html += '<span>'+fmtN(ga.membros||0)+' membros no grupo ativo</span>';
+    html += '<span style="color:#d1d5db">·</span>';
+    html += '<span><strong style="color:#111">'+fmtN(d.totalMembros||0)+'</strong> total em 17 grupos</span>';
+    html += '<span style="color:#d1d5db">·</span>';
+    html += '<span>📈 Entradas hoje: <strong style="color:#16a34a">'+d.entradasHoje+'</strong></span>';
+    html += '</div>';
     html+='<div style="display:flex;gap:8px;margin-bottom:6px">';
     html+='<input id="inp-link" value="'+(ga.link||'')+'" style="flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none" placeholder="Novo link do grupo">';
     html+='<button class="btn btn-ghost btn-sm" id="btn-salvar-link">Salvar link</button>';
