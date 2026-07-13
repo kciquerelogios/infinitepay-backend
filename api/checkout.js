@@ -53,14 +53,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  // ===== DEBUG HASH =====
-  if (req.query.action === 'debug-hash') {
-    const HASH_KEY = 'checkout-presenca-hash';
-    const r1 = await fetch(`${KV_URL}/hgetall/${HASH_KEY}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-    const d1 = await r1.json();
-    const r2 = await fetch(`${KV_URL}/hget/${HASH_KEY}/teste123`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-    const d2 = await r2.json();
-    return res.status(200).json({ hgetall: d1, hget_teste: d2, agora: Date.now() });
+  // ===== LIMPAR HASH (admin) =====
+  if (req.query.action === 'limpar-hash' && req.query.secret === process.env.REPROCESSAR_SECRET) {
+    await fetch(`${KV_URL}/del/checkout-presenca-hash`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    return res.status(200).json({ ok: true });
   }
 
   // ===== CONTAR ATIVOS =====
