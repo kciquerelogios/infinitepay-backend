@@ -2015,9 +2015,18 @@ function renderOfertasHtml() {
   html += '<div class="row-2"><div class="field"><label>URL da Imagem (opcional)</label><input id="of-imagem" placeholder="https://cdn.shopify.com/..."></div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
-  html += '<div class="field"><label>Grupos</label><select id="of-grupos"><option value="todos">Todos os grupos (1-17)</option>';
-  GRUPOS_NOMES.forEach(function(g){ html += '<option value="'+g+'">Grupo '+g+'</option>'; });
-  html += '</select></div></div>';
+  html += '<div class="field"><label>Grupos</label>';
+  html += '<div style="border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden">';
+  // Opção todos
+  html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-bottom:1px solid #d1d5db;cursor:pointer;font-weight:600">';
+  html += '<input type="checkbox" id="of-grupos-todos" style="width:15px;height:15px;accent-color:#25d366"> Todos os grupos (1-17)</label>';
+  // Grid de grupos
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);max-height:180px;overflow-y:auto">';
+  GRUPOS_NOMES.forEach(function(g){
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #f3f4f6">';
+    html += '<input type="checkbox" class="of-grupo-check" value="'+g+'" style="width:13px;height:13px;accent-color:#25d366"> '+g+'</label>';
+  });
+  html += '</div></div></div></div>';
   html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-agendar">📅 Agendar</button><span id="of-msg" style="font-size:13px"></span></div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
@@ -2042,6 +2051,22 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
+
+  // Toggle "Todos" — marca/desmarca todos
+  var todosCheck = get('of-grupos-todos');
+  if (todosCheck) todosCheck.addEventListener('change', function() {
+    document.querySelectorAll('.of-grupo-check').forEach(function(c){ c.checked = todosCheck.checked; });
+  });
+
+  // Se desmarcar qualquer um, desmarca "Todos"
+  ct().addEventListener('change', function(e) {
+    if (e.target.classList.contains('of-grupo-check')) {
+      var todos = document.querySelectorAll('.of-grupo-check');
+      var marcados = document.querySelectorAll('.of-grupo-check:checked');
+      var todosEl = get('of-grupos-todos');
+      if (todosEl) todosEl.checked = todos.length === marcados.length;
+    }
+  });
   var bl = get('btn-limpar-of');
   if (bl) bl.addEventListener('click', limparOfertas);
   ct().addEventListener('click', function(e) {
@@ -2057,7 +2082,14 @@ async function salvarOferta() {
   if (!texto||!data){if(msg)msg.textContent='⚠️ Preencha texto e data';return;}
   var btn=get('btn-agendar');btn.disabled=true;btn.textContent='Agendando...';
   try {
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:val('of-imagem'),link:val('of-link'),dataHora:data+':00-03:00',grupos:val('of-grupos')||'todos'})});
+    // Ler grupos selecionados
+    var todosChecked = get('of-grupos-todos') && get('of-grupos-todos').checked;
+    var gruposSel = [];
+    if (!todosChecked) {
+      document.querySelectorAll('.of-grupo-check:checked').forEach(function(c){ gruposSel.push(c.value); });
+    }
+    var gruposVal = todosChecked ? 'todos' : (gruposSel.length ? gruposSel.join(',') : 'todos');
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:val('of-imagem'),link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal})});
     var d = await r.json();
     if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
