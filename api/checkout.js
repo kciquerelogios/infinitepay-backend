@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       const chaveDiario = 'checkout-total-'+hojeBR;
       const HASH_KEY = 'checkout-presenca-hash';
       const agora = Date.now();
-      const TIMEOUT = 3 * 60 * 1000; // 3 minutos sem ping = offline
+      const TIMEOUT = 90 * 1000; // 90 segundos sem ping = offline
 
       // Buscar todos os campos do hash
       const hashResp = await fetch(`${KV_URL}/hgetall/${HASH_KEY}`, {
