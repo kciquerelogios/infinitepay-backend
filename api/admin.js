@@ -1734,13 +1734,33 @@ async function renderHome(force) {
   if (_homeCache && !force) { renderHomeHtml(_homeCache); return; }
   loading();
   try {
-    var [d, presenca, grupos] = await Promise.all([
+    var [d, presenca, grupos, ofertasData] = await Promise.all([
       fetch(API+'/api/admin?secret='+S+'&action=dashboard-home'+(force?'&refresh=1':'')).then(r=>r.json()),
       fetch(API+'/api/checkout?action=contar').then(r=>r.json()).catch(function(){return {ativos:0,totalDia:0};}),
-      fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json()).catch(function(){return {};})
+      fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json()).catch(function(){return {};}),
+      fetch(API+'/api/ofertas?action=listar-json&secret='+S).then(r=>r.json()).catch(function(){return {ofertas:[]};})
     ]);
     d.presenca = presenca;
     d.gruposVip = { total: grupos.totalMembros||0, entradasHoje: grupos.entradasHoje||0, grupoAtivo: grupos.grupoAtivo||{} };
+
+    // Processar ofertas — hoje e amanhã
+    var agora = new Date();
+    var hoje = agora.toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+    var amanha = new Date(agora.getTime() + 86400000).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+    var ofertas = ofertasData.ofertas || [];
+    var ofertasHoje = ofertas.filter(function(o){
+      if (o.status === 'enviada') return false;
+      var d = new Date(o.dataHora).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+      return d === hoje;
+    });
+    var ofertasAmanha = ofertas.filter(function(o){
+      if (o.status === 'enviada') return false;
+      var d = new Date(o.dataHora).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+      return d === amanha;
+    });
+    d.ofertasHoje = ofertasHoje.length;
+    d.ofertasAmanha = ofertasAmanha.length;
+
     _homeCache = d;
     renderHomeHtml(d);
   } catch(e) { errMsg('Erro: '+e.message); }
@@ -1846,6 +1866,27 @@ function renderHomeHtml(d) {
   html += '</div>';
   html += '</div>'; // fim grid 2 colunas
 
+  // Ofertas widget
+  var ofHoje = d.ofertasHoje || 0;
+  var ofAmanha = d.ofertasAmanha || 0;
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
+  // Card Hoje
+  html += '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 18px;display:flex;align-items:center;gap:12px">';
+  html += '<span style="font-size:22px">📣</span>';
+  html += '<div><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">Ofertas hoje</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:'+(ofHoje>0?'#16a34a':'#9ca3af')+'">'+ofHoje+'</div></div>';
+  html += '</div>';
+  // Card Amanhã
+  html += '<div style="background:'+(ofAmanha===0?'#fef9c3':'#fff')+';border-radius:12px;border:1.5px solid '+(ofAmanha===0?'#fde68a':'#e8eaf0')+';padding:14px 18px;display:flex;align-items:center;gap:12px">';
+  html += '<span style="font-size:22px">📅</span>';
+  html += '<div style="flex:1"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">Ofertas amanhã</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:'+(ofAmanha>0?'#16a34a':'#f59e0b')+'">'+ofAmanha+'</div>';
+  if (ofAmanha === 0) html += '<div style="font-size:11px;color:#92400e;margin-top:2px">⚠️ Nenhuma oferta programada</div>';
+  html += '</div>';
+  if (ofAmanha === 0) html += '<button id="btn-prog-amanha" style="padding:6px 12px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">Programar →</button>';
+  html += '</div>';
+  html += '</div>';
+
   // Top produtos + Últimos pedidos
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
 
@@ -1891,6 +1932,10 @@ function renderHomeHtml(d) {
   html += '</div>'; // fim grid top+últimos
 
   ct().innerHTML = html;
+
+  // Botão programar ofertas amanhã
+  var btnProg = get('btn-prog-amanha');
+  if (btnProg) btnProg.addEventListener('click', function() { renderAba('ofertas'); });
 
   // Live update da presença a cada 30s
   if (window._presencaInterval) clearInterval(window._presencaInterval);
