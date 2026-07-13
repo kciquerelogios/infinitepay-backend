@@ -868,7 +868,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           if (typeof snapOntem === 'string') snapOntem = JSON.parse(snapOntem);
         } catch(e) {}
       }
-      const entradasHoje = snapOntem ? Math.max(0, totalAtual - (snapOntem.total || 0)) : 0;
+      // Calcular entradas só nos grupos que tiveram sucesso em ambos os snapshots
+      let entradasHoje = 0;
+      if (snapOntem && snapOntem.grupos) {
+        grupos.forEach(function(g) {
+          if (g.falhou) return; // ignorar grupos que falharam
+          const gOntem = snapOntem.grupos.find(function(x){ return x.nome === g.nome; });
+          if (gOntem && !gOntem.falhou && g.membros > gOntem.membros) {
+            entradasHoje += g.membros - gOntem.membros;
+          }
+        });
+      } else if (snapOntem) {
+        entradasHoje = Math.max(0, totalAtual - (snapOntem.total || 0));
+      }
 
       // Histórico dos últimos 7 dias
       const historico = [];
