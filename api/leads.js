@@ -57,26 +57,51 @@ export default async function handler(req, res) {
     };
 
     try {
-      lead.criado_em = new Date().toISOString();
-
-      // Salvar lead com ID único por sessão (timestamp)
-      const sessionId = `${id}-${Date.now()}`;
-      lead.id = sessionId;
-
-      // Salvar lead
-      await fetch(`${KV_URL}/set/${sessionId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
-      });
-
-      // Sempre adicionar na lista
-      await fetch(`${KV_URL}/lpush/leads-lista/${sessionId}`, {
-        method: 'POST',
+      // Verificar se já existe lead com esse email
+      const existeResp = await fetch(`${KV_URL}/get/${id}`, {
         headers: { Authorization: `Bearer ${KV_TOKEN}` }
       });
+      const existeData = await existeResp.json();
+      const jaExiste = !!existeData.result;
 
-      return res.status(200).json({ ok: true, id: sessionId });
+      if (jaExiste) {
+        // Atualizar lead existente preservando criado_em e só avançar estágio
+        let leadAtual = existeData.result;
+        while (typeof leadAtual === 'string') { try { leadAtual = JSON.parse(leadAtual); } catch(e) { break; } }
+        const ordemEstagio = ['dados','endereco','frete_calculado','frete_selecionado','pagamento_pendente'];
+        const estagioAtual = ordemEstagio.indexOf(leadAtual.estagio || 'dados');
+        const estagioNovo = ordemEstagio.indexOf(lead.estagio || 'dados');
+        // Só avança estágio, nunca volta (exceto pagamento_pendente)
+        if (estagioNovo > estagioAtual || lead.estagio === 'pagamento_pendente') {
+          leadAtual.estagio = lead.estagio;
+        }
+        // Atualizar campos preenchidos
+        ['nome','telefone','cpf','cep','rua','numero','complemento','bairro','cidade','estado','frete','carrinho'].forEach(k => {
+          if (lead[k] && lead[k] !== '' && lead[k] !== null) leadAtual[k] = lead[k];
+        });
+        leadAtual.atualizado_em = new Date().toISOString();
+        await fetch(`${KV_URL}/set/${id}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: JSON.stringify(leadAtual), ex: 604800 })
+        });
+      } else {
+        // Criar novo lead
+        lead.id = id;
+        lead.criado_em = new Date().toISOString();
+        await fetch(`${KV_URL}/set/${id}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
+        });
+        // Adicionar na lista só uma vez
+        await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${KV_TOKEN}` }
+        });
+      }
+
+      return res.status(200).json({ ok: true, id });
     } catch(e) {
       console.error('Erro leads POST:', e.message);
       return res.status(500).json({ erro: e.message });
