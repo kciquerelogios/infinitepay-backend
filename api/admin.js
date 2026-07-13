@@ -225,26 +225,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── RECUPERAÇÃO CONFIG ──────────────────────────────────────
-  if (req.query.action === 'recuperacao-config') {
-    try {
-      const r = await fetch(`${KV_URL}/get/recuperacao-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-      const d = await r.json();
-      let config = d.result;
-      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
-      return res.status(200).json({ ok: true, config: config || {} });
-    } catch(e) { return res.status(200).json({ ok: true, config: {} }); }
-  }
-
-  if (req.query.action === 'recuperacao-config-salvar' && req.method === 'POST') {
-    await fetch(`${KV_URL}/set/recuperacao-config`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(req.body || {}) })
-    });
-    return res.status(200).json({ ok: true });
-  }
-
   if (secret !== process.env.REPROCESSAR_SECRET) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(401).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kcique Admin</title>
@@ -266,6 +246,33 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+
+  // ── RECUPERAÇÃO CONFIG (precisa de KV_URL) ───────────────────
+  if (req.query.action === 'recuperacao-config') {
+    try {
+      const r = await fetch(`${KV_URL}/get/recuperacao-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (config && typeof config === 'object' && config.value) {
+        try { config = JSON.parse(config.value); } catch(e) {}
+      }
+      return res.status(200).json({ ok: true, config: config || {} });
+    } catch(e) { return res.status(200).json({ ok: true, config: {} }); }
+  }
+
+  if (req.query.action === 'recuperacao-config-salvar' && req.method === 'POST') {
+    try {
+      await fetch(`${KV_URL}/set/recuperacao-config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(req.body || {}) })
+      });
+      return res.status(200).json({ ok: true });
+    } catch(e) {
+      return res.status(500).json({ ok: false, erro: e.message });
+    }
+  }
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
   const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
   const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
