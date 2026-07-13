@@ -65,6 +65,14 @@ export default async function handler(req, res) {
     // Remover campos undefined
     Object.keys(user_data).forEach(k => user_data[k] === undefined && delete user_data[k]);
 
+    // custom_data com value e currency (obrigatório para Lead/Purchase)
+    const value = req.body.value || (event_name === 'Lead' ? 189.90 : undefined);
+    const currency = req.body.currency || 'BRL';
+    const finalCustomData = {
+      ...(value !== undefined ? { value: parseFloat(value), currency } : {}),
+      ...(custom_data || {}),
+    };
+
     const payload = {
       data: [{
         event_name,
@@ -73,7 +81,7 @@ export default async function handler(req, res) {
         event_source_url: event_source_url || 'https://kcique.com.br/pages/vip',
         action_source: 'website',
         user_data,
-        ...(custom_data ? { custom_data } : {}),
+        ...(Object.keys(finalCustomData).length > 0 ? { custom_data: finalCustomData } : {}),
       }],
       test_event_code: process.env.META_TEST_CODE || 'TEST73050',
     };
