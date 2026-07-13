@@ -1900,9 +1900,10 @@ function renderLeadsList(leads) {
     pagamento_pendente:'💳 Abandonou no pagamento'
   };
   var total = leads.reduce(function(s,l){return s+(l.carrinho||[]).reduce(function(sv,i){return sv+(i.preco*i.quantidade/100);},0);},0);
-  var html = '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">';
+  var html = '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">';
   html += '<span style="font-size:13px;color:#6b7280">'+leads.length+' carrinhos · '+fmt(total)+' em aberto</span>';
-  html += '<input id="lead-search" style="flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none" placeholder="Buscar...">';
+  html += '<input id="lead-search" style="flex:1;min-width:160px;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none" placeholder="Buscar...">';
+  html += '<button id="btn-limpar-leads" class="btn btn-danger btn-sm">🗑 Limpar todos</button>';
   html += '</div>';
   if (!leads.length) { html += '<div class="vazio">Nenhum carrinho abandonado</div>'; ct().innerHTML=html; _attachLeadSearch(); return; }
   html += '<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Etapa</th><th>Produtos</th><th>Valor</th><th>Atualizado</th><th></th></tr></thead><tbody>';
@@ -1935,6 +1936,19 @@ function _attachLeadSearch() {
     var q = this.value.toLowerCase();
     var f = q ? _leads.filter(function(l){return (l.nome||l.email||'').toLowerCase().includes(q);}) : _leads;
     renderLeadsList(f);
+  });
+  var bl = get('btn-limpar-leads');
+  if (bl) bl.addEventListener('click', function(){
+    if (!confirm('Deletar TODOS os carrinhos abandonados?')) return;
+    bl.disabled = true; bl.textContent = 'Limpando...';
+    fetch(API+'/api/leads', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'limpar_leads', secret:S})
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.ok) { alert('✅ '+d.deletados+' carrinhos removidos'); renderCarrinhos(); }
+      else { alert('❌ Erro'); bl.disabled=false; bl.textContent='🗑 Limpar todos'; }
+    }).catch(function(){ bl.disabled=false; bl.textContent='🗑 Limpar todos'; });
   });
 }
 
