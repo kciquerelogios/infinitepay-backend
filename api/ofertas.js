@@ -285,14 +285,56 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
       {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
       {nome:'#17',id:'120363406426269657-group'},
     ];
-    const membros = await Promise.all(GRUPOS_VIP_SNAP.map(async g => {
+    // Buscar membros com retry (2 tentativas) para evitar 0 falso
+    const fetchGrupo = async (g, tentativa = 1) => {
       try {
-        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
+        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
+          headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+        });
         const d = await r.json();
-        return { nome: g.nome, membros: d.participants ? d.participants.length : 0 };
-      } catch(e) { return { nome: g.nome, membros: 0 }; }
-    }));
-    const total = membros.reduce((s, g) => s + g.membros, 0);
+        const membros = d.participants ? d.participants.length : null;
+        if (membros === null || membros === 0) {
+          if (tentativa < 2) {
+            await new Promise(res => setTimeout(res, 2000));
+            return fetchGrupo(g, tentativa + 1);
+          }
+        }
+        return { nome: g.nome, membros: membros || 0 };
+      } catch(e) {
+        if (tentativa < 2) {
+          await new Promise(res => setTimeout(res, 2000));
+          return fetchGrupo(g, tentativa + 1);
+        }
+        console.error(`Erro ao buscar ${g.nome}:`, e.message);
+        return { nome: g.nome, membros: -1 }; // -1 = falha real, não zero real
+      }
+    };
+
+    // Buscar em lotes de 5 para não sobrecarregar Z-API
+    const membros = [];
+    for (let i = 0; i < GRUPOS_VIP_SNAP.length; i += 5) {
+      const lote = GRUPOS_VIP_SNAP.slice(i, i + 5);
+      const resultados = await Promise.all(lote.map(g => fetchGrupo(g)));
+      membros.push(...resultados);
+      if (i + 5 < GRUPOS_VIP_SNAP.length) await new Promise(res => setTimeout(res, 1000));
+    }
+
+    // Se algum grupo retornou -1 (falha), manter o valor do snapshot anterior
+    const snapAnterior = await fetch(`${KV_URL}/get/vip-snapshot-${new Date(new Date().getTime() - 3*60*60*1000).toISOString().split('T')[0]}`, {
+      headers: { Authorization: `Bearer ${KV_TOKEN}` }
+    }).then(r => r.json()).catch(() => ({}));
+    let snapAnt = snapAnterior.result;
+    while (typeof snapAnt === 'string') { try { snapAnt = JSON.parse(snapAnt); } catch(e) { break; } }
+    const gruposAnt = (snapAnt && snapAnt.grupos) ? snapAnt.grupos : [];
+
+    const membrosFinais = membros.map(g => {
+      if (g.membros === -1) {
+        const ant = gruposAnt.find(a => a.nome === g.nome);
+        return { nome: g.nome, membros: ant ? ant.membros : 0, falhou: true };
+      }
+      return g;
+    });
+    const total = membrosFinais.filter(g => g.membros > 0).reduce((s, g) => s + g.membros, 0);
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
@@ -300,7 +342,7 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
     await fetch(`${KV_URL}/set/${chave}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ total, grupos: membros, ts: new Date().toISOString() })
+      body: JSON.stringify({ total, grupos: membrosFinais, ts: new Date().toISOString() })
     });
     await fetch(`${KV_URL}/expire/${chave}/5184000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     console.log('Snapshot grupos VIP salvo:', hojeStr, '| Total:', total);
@@ -449,6 +491,14 @@ export default async function handler(req, res) {
     try {
       const ofertas = await listarOfertas(KV_URL, KV_TOKEN);
       return res.status(200).json({ ok: true, ofertas });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // Forçar snapshot dos grupos agora
+  if (action === 'snapshot-grupos') {
+    try {
+      await salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN);
+      return res.status(200).json({ ok: true, msg: 'Snapshot salvo com sucesso' });
     } catch(e) { return res.status(500).json({ error: e.message }); }
   }
 
