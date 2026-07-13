@@ -1903,7 +1903,9 @@ async function renderCarrinhos() {
   loading();
   try {
     var d = await fetch(API+'/api/leads?secret='+S+'&ts='+Date.now()).then(r=>r.json());
-    _leads = (d.leads||[]).sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
+    _leads = (d.leads||[])
+      .filter(function(l){ return l.email && l.email.includes('@'); }) // só leads com email válido
+      .sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
     renderLeadsList(_leads);
   } catch(e) { errMsg('Erro: '+e.message); }
 }
