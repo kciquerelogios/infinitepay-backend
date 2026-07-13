@@ -132,5 +132,24 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
+  // LIMPAR TODOS OS LEADS
+  if (req.method === 'POST' && req.body?.action === 'limpar_leads') {
+    if (req.body.secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/500`, {
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      const listaData = await listaResp.json();
+      const ids = [...new Set(listaData.result || [])];
+      await Promise.all([
+        ...ids.map(id => fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })),
+        fetch(`${KV_URL}/del/leads-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })
+      ]);
+      return res.status(200).json({ ok: true, deletados: ids.length });
+    } catch(e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  }
+
   return res.status(405).end();
 }
