@@ -68,17 +68,20 @@ export default async function handler(req, res) {
         // Atualizar lead existente preservando criado_em e só avançar estágio
         let leadAtual = existeData.result;
         while (typeof leadAtual === 'string') { try { leadAtual = JSON.parse(leadAtual); } catch(e) { break; } }
-        const ordemEstagio = ['dados','endereco','frete_calculado','frete_selecionado','pagamento_pendente'];
-        const estagioAtual = ordemEstagio.indexOf(leadAtual.estagio || 'dados');
-        const estagioNovo = ordemEstagio.indexOf(lead.estagio || 'dados');
-        // Só avança estágio, nunca volta (exceto pagamento_pendente)
-        if (estagioNovo > estagioAtual || lead.estagio === 'pagamento_pendente') {
-          leadAtual.estagio = lead.estagio;
-        }
+        // Estágio será recalculado pelo merge de tags abaixo
         // Atualizar campos preenchidos
         ['nome','telefone','cpf','cep','rua','numero','complemento','bairro','cidade','estado','frete','carrinho'].forEach(k => {
           if (lead[k] && lead[k] !== '' && lead[k] !== null) leadAtual[k] = lead[k];
         });
+        // Merge tags — nunca perder tags anteriores
+        const tagsAntigas = leadAtual.tags || [];
+        const tagsNovas = lead.tags || [];
+        const tagsMerged = [...new Set([...tagsAntigas, ...tagsNovas])];
+        leadAtual.tags = tagsMerged;
+        // Estagio = tag mais avançada
+        const ordemTags = ['cep_produto','identificacao','endereco','calculou_frete','frete_selecionado','pagamento_pendente'];
+        const melhorTag = tagsMerged.filter(t => ordemTags.includes(t)).sort((a,b) => ordemTags.indexOf(b) - ordemTags.indexOf(a))[0];
+        if (melhorTag) leadAtual.estagio = melhorTag;
         leadAtual.atualizado_em = new Date().toISOString();
         await fetch(`${KV_URL}/set/${id}`, {
           method: 'POST',
