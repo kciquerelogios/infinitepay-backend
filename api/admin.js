@@ -1888,20 +1888,26 @@ async function renderCarrinhos() {
 }
 function renderLeadsList(leads) {
   var ec={
-    dados:'#e5e7eb',
     cep_produto:'#d1fae5',
-    endereco:'#bfdbfe',
-    frete_calculado:'#fef9c3',
+    identificacao:'#dbeafe',
+    endereco:'#ede9fe',
+    calculou_frete:'#fef9c3',
     frete_selecionado:'#fde68a',
-    pagamento_pendente:'#fca5a5'
+    pagamento_pendente:'#fca5a5',
+    // legado
+    dados:'#e5e7eb',
+    sem_info:'#f3f4f6'
   };
   var et={
+    cep_produto:'📦 CEP produto',
+    identificacao:'📋 Identificação',
+    endereco:'📍 Endereço',
+    calculou_frete:'🔍 Calc. frete',
+    frete_selecionado:'🚚 Frete',
+    pagamento_pendente:'💳 No pagamento',
+    // legado
     dados:'📋 Identificação',
-    cep_produto:'📦 Veio do produto',
-    endereco:'📍 Digitou endereço',
-    frete_calculado:'🔍 Calculou frete',
-    frete_selecionado:'🚚 Escolheu frete',
-    pagamento_pendente:'💳 Abandonou no pag.'
+    sem_info:'?'
   };
   var total = leads.reduce(function(s,l){return s+(l.carrinho||[]).reduce(function(sv,i){return sv+(i.preco*i.quantidade/100);},0);},0);
   var html = '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">';
@@ -1916,7 +1922,12 @@ function renderLeadsList(leads) {
     var chips=(l.carrinho||[]).map(function(i){return '<span class="chip">'+(i.nome||'').split(' ').slice(0,3).join(' ')+(i.cor&&i.cor!=='Default Title'?' · '+i.cor:'')+'</span>';}).join('');
     html += '<tr>';
     html += '<td><div style="font-weight:600;font-size:13px">'+(l.nome||'Sem nome')+'</div><div style="font-size:11px;color:#9ca3af">'+(l.email||'')+'</div></td>';
-    html += '<td><span class="badge" style="background:'+(ec[l.estagio]||'#e5e7eb')+'">'+(et[l.estagio]||l.estagio||'?')+'</span></td>';
+    var tagsList = l.tags && l.tags.length ? l.tags : [l.estagio||'?'];
+  html += '<td style="display:flex;gap:3px;flex-wrap:wrap">';
+  tagsList.forEach(function(t){
+    html += '<span class="badge" style="background:'+(ec[t]||'#e5e7eb')+';font-size:10px">'+(et[t]||t)+'</span>';
+  });
+  html += '</td>';
     html += '<td>'+chips+'</td>';
     html += '<td><strong>'+fmt(val)+'</strong></td>';
     html += '<td style="font-size:11px;color:#9ca3af">'+fmtDate(l.atualizado_em||l.criado_em)+'</td>';
