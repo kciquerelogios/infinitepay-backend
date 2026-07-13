@@ -1887,8 +1887,18 @@ async function renderCarrinhos() {
   } catch(e) { errMsg('Erro: '+e.message); }
 }
 function renderLeadsList(leads) {
-  var ec={dados:'#e5e7eb',endereco:'#bfdbfe',frete_selecionado:'#fde68a',pagamento_pendente:'#fca5a5'};
-  var et={dados:'Dados',endereco:'Endereço',frete_selecionado:'Frete',pagamento_pendente:'Pagando'};
+  var ec={
+    dados:'#e5e7eb',
+    endereco:'#bfdbfe',
+    frete_selecionado:'#fde68a',
+    pagamento_pendente:'#fca5a5'
+  };
+  var et={
+    dados:'📋 Identificação',
+    endereco:'📍 Endereço',
+    frete_selecionado:'🚚 Frete escolhido',
+    pagamento_pendente:'💳 Abandonou no pagamento'
+  };
   var total = leads.reduce(function(s,l){return s+(l.carrinho||[]).reduce(function(sv,i){return sv+(i.preco*i.quantidade/100);},0);},0);
   var html = '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">';
   html += '<span style="font-size:13px;color:#6b7280">'+leads.length+' carrinhos · '+fmt(total)+' em aberto</span>';
