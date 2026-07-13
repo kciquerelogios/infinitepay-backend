@@ -83,12 +83,8 @@ export default async function handler(req, res) {
         user_data,
         ...(Object.keys(finalCustomData).length > 0 ? { custom_data: finalCustomData } : {}),
       }],
-      test_event_code: process.env.META_TEST_CODE || 'TEST73050',
+      ...(process.env.META_TEST_CODE ? { test_event_code: process.env.META_TEST_CODE } : {}),
     };
-
-    // Só remover se realmente vazio
-    if (!payload.test_event_code) delete payload.test_event_code;
-    console.log('test_event_code:', payload.test_event_code);
 
     const response = await fetch(`${API_URL}?access_token=${ACCESS_TOKEN}`, {
       method: 'POST',
