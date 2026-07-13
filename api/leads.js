@@ -1,182 +1,136 @@
+import fetch from 'node-fetch';
+
+const KV = () => ({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
+
+const kv = {
+  get: async (key) => {
+    const { url, token } = KV();
+    const r = await fetch(`${url}/get/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    if (!d.result) return null;
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    return v;
+  },
+  set: async (key, value, ex = 604800) => {
+    const { url, token } = KV();
+    await fetch(`${url}/set/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(value), ex })
+    });
+  },
+  del: async (key) => {
+    const { url, token } = KV();
+    await fetch(`${url}/del/${encodeURIComponent(key)}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+  },
+  sadd: async (key, member) => {
+    const { url, token } = KV();
+    await fetch(`${url}/sadd/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([member])
+    });
+  },
+  srem: async (key, member) => {
+    const { url, token } = KV();
+    await fetch(`${url}/srem/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([member])
+    });
+  },
+  smembers: async (key) => {
+    const { url, token } = KV();
+    const r = await fetch(`${url}/smembers/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    return d.result || [];
+  }
+};
+
 export default async function handler(req, res) {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const KV_URL = process.env.KV_REST_API_URL;
-  const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+  const SECRET = process.env.REPROCESSAR_SECRET;
 
-  // LIMPAR TODOS OS LEADS (verificar ANTES do salvar)
-  if (req.method === 'POST' && req.body?.action === 'limpar_leads') {
-    if (req.body.secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-    try {
-      const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/500`, {
-        headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-      const listaData = await listaResp.json();
-      const ids = [...new Set(listaData.result || [])];
-      await Promise.all([
-        ...ids.map(id => fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })),
-        fetch(`${KV_URL}/del/leads-lista`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })
-      ]);
-      return res.status(200).json({ ok: true, deletados: ids.length });
-    } catch(e) {
-      return res.status(500).json({ ok: false, error: e.message });
-    }
+  // ── LIMPAR TODOS ──────────────────────────────────────────
+  if (req.method === 'POST' && req.body?.action === 'limpar_todos') {
+    if (req.body.secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    const ids = await kv.smembers('leads-set');
+    await Promise.all(ids.map(id => kv.del(id)));
+    await kv.del('leads-set');
+    return res.status(200).json({ ok: true, deletados: ids.length });
   }
 
-  // SALVAR LEAD
-  if (req.method === 'POST') {
-    const body = req.body;
-    const email = body.email;
-    if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
+  // ── DELETAR UM LEAD ───────────────────────────────────────
+  if (req.method === 'DELETE') {
+    const { secret, id } = req.query;
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    await kv.del(id);
+    await kv.srem('leads-set', id);
+    return res.status(200).json({ ok: true });
+  }
 
-    const id = `lead-${email.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+  // ── LISTAR LEADS ──────────────────────────────────────────
+  if (req.method === 'GET') {
+    const { secret } = req.query;
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    const ids = await kv.smembers('leads-set');
+    const leads = (await Promise.all(ids.map(id => kv.get(id)))).filter(Boolean);
+    leads.sort((a, b) => new Date(b.atualizado_em) - new Date(a.atualizado_em));
+    return res.status(200).json({ leads });
+  }
+
+  // ── SALVAR / ATUALIZAR LEAD ───────────────────────────────
+  if (req.method === 'POST') {
+    const body = req.body || {};
+    const email = (body.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      return res.status(400).json({ erro: 'Email inválido' });
+    }
+
+    const id = `lead:${email.replace(/[^a-z0-9]/g, '_')}`;
+    const agora = new Date().toISOString();
+    const existente = await kv.get(id);
+
+    // Merge de tags — nunca perder o histórico
+    const tagsAntigas = existente?.tags || [];
+    const tagsNovas = body.tags || [];
+    const tags = [...new Set([...tagsAntigas, ...tagsNovas])];
+
+    // Ordem de estágio para exibição
+    const ordemEstagio = ['cep_produto','identificacao','calculou_frete','endereco','frete_selecionado','pagamento_pendente'];
+    const estagio = tags.filter(t => ordemEstagio.includes(t))
+      .sort((a,b) => ordemEstagio.indexOf(b) - ordemEstagio.indexOf(a))[0] || 'dados';
 
     const lead = {
       id,
-      nome: body.nome || '',
       email,
-      telefone: body.telefone || '',
-      cpf: body.cpf || '',
-      estagio: body.estagio || 'dados',
-      carrinho: body.carrinho || [],
-      frete: body.frete || null,
-      cep: body.cep || '',
-      rua: body.rua || '',
-      numero: body.numero || '',
-      complemento: body.complemento || '',
-      bairro: body.bairro || '',
-      cidade: body.cidade || '',
-      estado: body.estado || '',
-      atualizado_em: new Date().toISOString(),
-      contatado: false
+      nome: body.nome || existente?.nome || '',
+      telefone: body.telefone || existente?.telefone || '',
+      cpf: body.cpf || existente?.cpf || '',
+      cep: body.cep || existente?.cep || '',
+      rua: body.rua || existente?.rua || '',
+      numero: body.numero || existente?.numero || '',
+      complemento: body.complemento || existente?.complemento || '',
+      bairro: body.bairro || existente?.bairro || '',
+      cidade: body.cidade || existente?.cidade || '',
+      estado: body.estado || existente?.estado || '',
+      frete: body.frete || existente?.frete || null,
+      carrinho: body.carrinho || existente?.carrinho || [],
+      tags,
+      estagio,
+      recuperacao_enviada: existente?.recuperacao_enviada || false,
+      criado_em: existente?.criado_em || agora,
+      atualizado_em: agora,
     };
 
-    try {
-      // Verificar se já existe lead com esse email
-      const existeResp = await fetch(`${KV_URL}/get/${id}`, {
-        headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-      const existeData = await existeResp.json();
-      const jaExiste = !!existeData.result;
-
-      if (jaExiste) {
-        // Atualizar lead existente preservando criado_em e só avançar estágio
-        let leadAtual = existeData.result;
-        while (typeof leadAtual === 'string') { try { leadAtual = JSON.parse(leadAtual); } catch(e) { break; } }
-        // Estágio será recalculado pelo merge de tags abaixo
-        // Atualizar campos preenchidos
-        ['nome','telefone','cpf','cep','rua','numero','complemento','bairro','cidade','estado','frete','carrinho'].forEach(k => {
-          if (lead[k] && lead[k] !== '' && lead[k] !== null) leadAtual[k] = lead[k];
-        });
-        // Merge tags — nunca perder tags anteriores
-        const tagsAntigas = leadAtual.tags || [];
-        const tagsNovas = lead.tags || [];
-        const tagsMerged = [...new Set([...tagsAntigas, ...tagsNovas])];
-        leadAtual.tags = tagsMerged;
-        // Estagio = tag mais avançada
-        const ordemTags = ['cep_produto','identificacao','endereco','calculou_frete','frete_selecionado','pagamento_pendente'];
-        const melhorTag = tagsMerged.filter(t => ordemTags.includes(t)).sort((a,b) => ordemTags.indexOf(b) - ordemTags.indexOf(a))[0];
-        if (melhorTag) leadAtual.estagio = melhorTag;
-        leadAtual.atualizado_em = new Date().toISOString();
-        await fetch(`${KV_URL}/set/${id}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: JSON.stringify(leadAtual), ex: 604800 })
-        });
-      } else {
-        // Criar novo lead
-        lead.id = id;
-        lead.criado_em = new Date().toISOString();
-        await fetch(`${KV_URL}/set/${id}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: JSON.stringify(lead), ex: 604800 })
-        });
-        // Adicionar na lista só uma vez
-        await fetch(`${KV_URL}/lpush/leads-lista/${id}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${KV_TOKEN}` }
-        });
-      }
-
-      return res.status(200).json({ ok: true, id });
-    } catch(e) {
-      console.error('Erro leads POST:', e.message);
-      return res.status(500).json({ erro: e.message });
-    }
-  }
-
-  // LISTAR LEADS
-  if (req.method === 'GET') {
-    const { secret } = req.query;
-    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-
-    try {
-      const listaResp = await fetch(`${KV_URL}/lrange/leads-lista/0/500`, {
-        headers: { Authorization: `Bearer ${KV_TOKEN}` }
-      });
-      const listaData = await listaResp.json();
-      const idsRaw = listaData.result || [];
-
-      const ids = idsRaw.map(i => {
-        if (typeof i === 'string') { try { const p = JSON.parse(i); return p.value || i; } catch(e) { return i; } }
-        return i.value || i;
-      });
-
-      function desencapsular(val) {
-        let v = val;
-        for (let i = 0; i < 10; i++) {
-          if (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
-          else if (v && typeof v === 'object') {
-            if (v.value !== undefined) { v = v.value; continue; }
-            if (v.result !== undefined) { v = v.result; continue; }
-            break;
-          } else break;
-        }
-        return v;
-      }
-
-      // Buscar todos em paralelo (muito mais rápido que sequencial)
-      const idsUnicos = [...new Set(ids)].slice(0, 200); // max 200
-      const resultados = await Promise.all(
-        idsUnicos.map(id =>
-          fetch(`${KV_URL}/get/${id}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } })
-            .then(r => r.json()).catch(() => ({}))
-        )
-      );
-
-      const leads = [];
-      const idsVistos = new Set();
-      for (const d of resultados) {
-        try {
-          if (!d.result) continue;
-          const parsed = desencapsular(d.result);
-          if (parsed && parsed.email && !idsVistos.has(parsed.id)) {
-            idsVistos.add(parsed.id);
-            leads.push(parsed);
-          }
-        } catch(e) {}
-      }
-
-      leads.sort((a, b) => new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em));
-      return res.status(200).json({ leads });
-    } catch(e) {
-      return res.status(500).json({ erro: e.message });
-    }
-  }
-
-  // DELETAR LEAD
-  if (req.method === 'DELETE') {
-    const { secret, id } = req.query;
-    if (secret !== process.env.REPROCESSAR_SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-    await fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-    await fetch(`${KV_URL}/lrem/leads-lista/0/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-    return res.status(200).json({ ok: true });
+    await kv.set(id, lead);
+    await kv.sadd('leads-set', id); // Set garante sem duplicatas
+    return res.status(200).json({ ok: true, id });
   }
 
   return res.status(405).end();
