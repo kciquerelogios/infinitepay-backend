@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 const KV = () => ({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
 
 const kv = {
@@ -26,25 +24,29 @@ const kv = {
   },
   sadd: async (key, member) => {
     const { url, token } = KV();
-    await fetch(`${url}/sadd/${encodeURIComponent(key)}`, {
+    await fetch(`${url}/pipeline`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify([member])
+      body: JSON.stringify([['SADD', key, member]])
     });
   },
   srem: async (key, member) => {
     const { url, token } = KV();
-    await fetch(`${url}/srem/${encodeURIComponent(key)}`, {
+    await fetch(`${url}/pipeline`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify([member])
+      body: JSON.stringify([['SREM', key, member]])
     });
   },
   smembers: async (key) => {
     const { url, token } = KV();
-    const r = await fetch(`${url}/smembers/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SMEMBERS', key]])
+    });
     const d = await r.json();
-    return d.result || [];
+    return (d[0]?.result) || [];
   }
 };
 
