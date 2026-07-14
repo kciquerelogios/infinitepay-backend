@@ -1264,7 +1264,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div></div>
+      <div class="stat-card" style="position:relative"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div>${pedidosPendentes>0?'<button onclick="sincronizarRastreios(this)" style="position:absolute;top:10px;right:10px;padding:4px 8px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer;font-weight:600">🔄 Sincronizar</button>':''}</div>
       <div class="stat-card"><div class="stat-label">↩️ Devoluções no Mês</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
       <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
       <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
@@ -1507,8 +1507,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           : '<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;color:#92400e">⚠️ Sem código de rastreio ainda</div>')
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
           + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
-          + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
+          + (tel && msgRastreio && rastreios.length > 0
+            ? '<button onclick="enviarRastreioCliente(this,\'' + order.id + '\',\'' + rastreios[0] + '\',\'55' + tel + '\',\'' + msgRastreio + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">' + (order.fulfillment_status === 'fulfilled' ? '✅ Rastreio Enviado' : '📦 Enviar Rastreio') + '</button>'
+            : '')
           + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\',\'' + (trackingToMeId[rastreios[0]]||'') + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
+          + (order.fulfillment_status !== 'fulfilled'
+            ? '<button id="btn-fulfil-' + order.id + '" onclick="marcarEnviado(' + JSON.stringify(String(order.id)) + ',' + JSON.stringify(rastreios[0]||'') + ',' + JSON.stringify(order.email||'') + ')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">✅ Marcar Enviado no Shopify</button>'
+            : '<span style="padding:8px 14px;background:#f0fdf4;color:#16a34a;border-radius:6px;font-size:13px;font-weight:600">✅ Já enviado no Shopify</span>')
         + '</div>'
       + '</div>'
     + '</div>';
@@ -2541,6 +2546,28 @@ async function renderRecuperacao() {
     });
 
   } catch(e) { errMsg('Erro: '+e.message); }
+}
+
+// Sincronizar rastreios manualmente
+async function sincronizarRastreios(btn) {
+  if (!confirm('Isso vai verificar todos os pedidos do Melhor Envio, atualizar o Shopify e enviar WhatsApp para os clientes. Confirmar?')) return;
+  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  try {
+    var r = await fetch(API+'/api/cron?secret='+S, {
+      method: 'POST',
+      headers: {'x-vercel-cron': '1'}
+    }).then(function(r){return r.json();});
+    if (r.rastreiosEnviados > 0) {
+      alert('✅ '+r.rastreiosEnviados+' rastreio(s) sincronizado(s)! Atualizando dashboard...');
+      renderAba('home');
+    } else {
+      alert('ℹ️ Nenhum rastreio novo encontrado no Melhor Envio.');
+      btn.disabled = false; btn.textContent = '🔄 Sincronizar';
+    }
+  } catch(e) {
+    alert('❌ Erro: '+e.message);
+    btn.disabled = false; btn.textContent = '🔄 Sincronizar';
+  }
 }
 
 // INICIAR
