@@ -193,7 +193,7 @@ export default async function handler(req, res) {
 
   const body = {
     handle: HANDLE,
-    redirect_url: process.env.URL_REDIRECIONADA || 'https://kcique.com.br/pages/obrigado',
+    redirect_url: process.env.REDIRECT_URL || process.env.URL_REDIRECIONADA || 'https://kcique.com.br/pages/obrigado',
     webhook_url: 'https://infinitepay-backend.vercel.app/api/webhook',
     order_nsu: orderNsu,
     items
@@ -246,20 +246,45 @@ export default async function handler(req, res) {
       });
     }
 
-    const response = await fetch('https://api.checkout.infinitepay.io/links', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    // Garantir que nenhum item tem preço zero ou negativo
+    body.items = body.items.map(item => ({
+      ...item,
+      price: Math.max(1, Math.round(item.price))
+    }));
 
-    const data = await response.json();
+    if (!body.items.length) {
+      return res.status(400).json({ erro: 'Carrinho vazio' });
+    }
 
-    if (data.url) {
+    // Tentar até 2 vezes (timeout intermitente da InfinitePay)
+    let response, data;
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        response = await fetch('https://api.checkout.infinitepay.io/links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(15000) // 15s timeout
+        });
+        data = await response.json();
+        if (data.url) break; // Sucesso
+        console.log(`Tentativa ${tentativa} falhou:`, JSON.stringify(data));
+        if (tentativa < 2) await new Promise(r => setTimeout(r, 1000)); // esperar 1s
+      } catch(e) {
+        console.log(`Tentativa ${tentativa} erro:`, e.message);
+        if (tentativa === 2) throw e;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (data && data.url) {
       res.status(200).json({ url: data.url });
     } else {
-      res.status(500).json({ erro: 'Falha ao gerar link', detalhe: data });
+      console.log('InfinitePay erro final:', JSON.stringify(data));
+      res.status(500).json({ erro: 'Falha ao gerar link. Tente novamente em alguns instantes.', detalhe: data });
     }
   } catch (error) {
+    console.log('Checkout erro geral:', error.message);
     res.status(500).json({ erro: error.message });
   }
 }
