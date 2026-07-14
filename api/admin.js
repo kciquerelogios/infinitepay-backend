@@ -247,6 +247,58 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
+  // ── PEDIDOS UNFULFILLED ─────────────────────────────────────
+  if (req.query.action === 'pedidos-unfulfilled') {
+    try {
+      let all = [];
+      for (let page = 1; page <= 5; page++) {
+        const r = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&page=${page}`,
+          { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+        ).then(r => r.json()).catch(() => ({ orders: [] }));
+        const orders = r.orders || [];
+        all = all.concat(orders.map(o => ({ id: o.id, number: o.order_number, email: o.email, name: o.shipping_address?.name || o.email })));
+        if (orders.length < 250) break;
+      }
+      return res.status(200).json({ pedidos: all, total: all.length });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
+  // ── FULFILLMENT EM MASSA ─────────────────────────────────────
+  if (req.query.action === 'fulfillment-massa' && req.method === 'POST') {
+    const ids = req.body?.pedidos || [];
+    let atualizados = 0, erros = 0;
+    for (const orderId of ids) {
+      try {
+        // Buscar fulfillment_orders do pedido
+        const foResp = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${orderId}/fulfillment_orders.json`,
+          { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+        ).then(r => r.json()).catch(() => ({}));
+        const fo = (foResp.fulfillment_orders || []).find(f => f.status === 'open');
+        if (!fo) continue;
+        const fulfillResp = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+            body: JSON.stringify({
+              fulfillment: {
+                line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
+                notify_customer: false
+              }
+            })
+          }
+        ).then(r => r.json()).catch(() => ({}));
+        if (fulfillResp.fulfillment?.id) atualizados++;
+        else erros++;
+        // Pequena pausa para não sobrecarregar a API do Shopify
+        await new Promise(r => setTimeout(r, 200));
+      } catch(e) { erros++; }
+    }
+    return res.status(200).json({ ok: true, atualizados, erros });
+  }
+
   // ── RECUPERAÇÃO CONFIG (precisa de KV_URL) ───────────────────
   if (req.query.action === 'recuperacao-config') {
     try {
@@ -1116,8 +1168,13 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMesAnt}&created_at_max=${fimMesAnt}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify novos clientes hoje
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?created_at_min=${inicioDia}&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({customers:[]})),
-    // Shopify pedidos aguardando pagamento/envio
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+    // Shopify pedidos de hoje aguardando envio
+    (() => {
+      const hoje = new Date();
+      hoje.setHours(0,0,0,0);
+      const hojeISO = hoje.toISOString();
+      return fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&created_at_min=${encodeURIComponent(hojeISO)}`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]}));
+    })(),
     // Shopify produtos (estoque + imagens)
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Shopify pedidos recentes com fulfillment
@@ -2563,24 +2620,43 @@ async function renderRecuperacao() {
 
 // Sincronizar rastreios manualmente
 async function sincronizarRastreios(btn) {
-  if (!confirm('Isso vai verificar todos os pedidos do Melhor Envio, atualizar o Shopify e enviar WhatsApp para os clientes. Confirmar?')) return;
-  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  btn.disabled = true; btn.textContent = '⏳ Buscando...';
   try {
-    var r = await fetch(API+'/api/cron?secret='+S, {
-      method: 'POST',
-      headers: {'x-vercel-cron': '1'}
-    }).then(function(r){return r.json();});
-    if (r.rastreiosEnviados > 0) {
-      alert('✅ '+r.rastreiosEnviados+' rastreio(s) sincronizado(s)! Atualizando dashboard...');
+    // Buscar pedidos unfulfilled do Shopify
+    var shopResp = await fetch(API+'/api/admin?secret='+S+'&action=pedidos-unfulfilled').then(function(r){return r.json();});
+    var pedidos = shopResp.pedidos || [];
+    if (!pedidos.length) {
+      alert('Nenhum pedido aguardando envio encontrado.');
+      btn.disabled = false; btn.textContent = '🔄 Sincronizar Rastreios do Melhor Envio';
+      return;
+    }
+    var msg = pedidos.length + ' pedidos aguardando envio no Shopify.\n\n';
+    msg += 'O que deseja fazer?\n\n';
+    msg += 'OK = Marcar TODOS como enviados (sem código de rastreio)\n';
+    msg += 'Cancelar = Apenas sincronizar com Melhor Envio';
+    if (confirm(msg)) {
+      // Marcar todos como fulfilled sem tracking
+      btn.textContent = '⏳ Marcando '+pedidos.length+' pedidos...';
+      var r = await fetch(API+'/api/admin?secret='+S+'&action=fulfillment-massa', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({pedidos: pedidos.map(function(p){return p.id;})})
+      }).then(function(r){return r.json();});
+      alert('✅ '+( r.atualizados||0)+' pedidos marcados como enviados!');
       renderAba('home');
     } else {
-      alert('ℹ️ Nenhum rastreio novo encontrado no Melhor Envio.');
-      btn.disabled = false; btn.textContent = '🔄 Sincronizar';
+      // Só sincronizar Melhor Envio
+      btn.textContent = '⏳ Sincronizando Melhor Envio...';
+      var r2 = await fetch(API+'/api/cron?secret='+S, {method:'POST'}).then(function(r){return r.json();});
+      alert(r2.rastreiosEnviados > 0
+        ? '✅ '+r2.rastreiosEnviados+' rastreio(s) sincronizado(s)!'
+        : 'ℹ️ Nenhum rastreio novo no Melhor Envio.');
+      renderAba('home');
     }
   } catch(e) {
     alert('❌ Erro: '+e.message);
-    btn.disabled = false; btn.textContent = '🔄 Sincronizar';
   }
+  btn.disabled = false; btn.textContent = '🔄 Sincronizar Rastreios do Melhor Envio';
 }
 
 // INICIAR
