@@ -1264,7 +1264,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card" style="position:relative"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div><button onclick="sincronizarRastreios(this)" style="position:absolute;top:10px;right:10px;padding:4px 8px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer;font-weight:600">🔄 Sync</button></div>
+      <div class="stat-card" style="position:relative"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div><button id="btn-sync-rastreio" style="position:absolute;top:10px;right:10px;padding:4px 8px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer;font-weight:600">🔄 Sync</button></div>
       <div class="stat-card"><div class="stat-label">↩️ Devoluções no Mês</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
       <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
       <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
@@ -1941,6 +1941,10 @@ function renderHomeHtml(d) {
   // Botão programar ofertas amanhã
   var btnProg = get('btn-prog-amanha');
   if (btnProg) btnProg.addEventListener('click', function() { renderAba('ofertas'); });
+
+  // Botão sincronizar rastreios
+  var btnSync = get('btn-sync-rastreio');
+  if (btnSync) btnSync.addEventListener('click', function() { sincronizarRastreios(btnSync); });
 
   // Live update da presença a cada 30s
   if (window._presencaInterval) clearInterval(window._presencaInterval);
