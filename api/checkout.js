@@ -193,7 +193,7 @@ export default async function handler(req, res) {
 
   const body = {
     handle: HANDLE,
-    redirect_url: process.env.URL_REDIRECIONADA,
+    redirect_url: process.env.URL_REDIRECIONADA || 'https://kcique.com.br/pages/obrigado',
     webhook_url: 'https://infinitepay-backend.vercel.app/api/webhook',
     order_nsu: orderNsu,
     items
