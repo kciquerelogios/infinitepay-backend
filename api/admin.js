@@ -1936,7 +1936,16 @@ function renderHomeHtml(d) {
   html += '</div>';
   html += '</div>'; // fim grid top+últimos
 
+  // Botão sincronizar rastreios
+  html += '<div style="margin-top:16px;text-align:right">';
+  html += '<button id="btn-sync-rastreio" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🔄 Sincronizar Rastreios do Melhor Envio</button>';
+  html += '</div>';
+
   ct().innerHTML = html;
+
+  // Botão sincronizar rastreios
+  var btnSync = document.getElementById('btn-sync-rastreio');
+  if (btnSync) btnSync.addEventListener('click', function() { sincronizarRastreios(this); });
 
   // Botão programar ofertas amanhã
   var btnProg = get('btn-prog-amanha');
