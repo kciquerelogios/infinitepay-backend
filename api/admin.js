@@ -1321,7 +1321,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card" style="position:relative"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div><button id="btn-sync-rastreio" style="position:absolute;top:10px;right:10px;padding:4px 8px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer;font-weight:600">🔄 Sync</button></div>
+      <div class="stat-card"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos de hoje</div></div>
       <div class="stat-card"><div class="stat-label">↩️ Devoluções no Mês</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
       <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
       <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
@@ -1993,24 +1993,17 @@ function renderHomeHtml(d) {
   html += '</div>';
   html += '</div>'; // fim grid top+últimos
 
-  // Botão sincronizar rastreios
-  html += '<div style="margin-top:16px;text-align:right">';
-  html += '<button id="btn-sync-rastreio" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🔄 Sincronizar Rastreios do Melhor Envio</button>';
-  html += '</div>';
+
 
   ct().innerHTML = html;
 
-  // Botão sincronizar rastreios
-  var btnSync = document.getElementById('btn-sync-rastreio');
-  if (btnSync) btnSync.addEventListener('click', function() { sincronizarRastreios(this); });
+
 
   // Botão programar ofertas amanhã
   var btnProg = get('btn-prog-amanha');
   if (btnProg) btnProg.addEventListener('click', function() { renderAba('ofertas'); });
 
-  // Botão sincronizar rastreios
-  var btnSync = get('btn-sync-rastreio');
-  if (btnSync) btnSync.addEventListener('click', function() { sincronizarRastreios(btnSync); });
+
 
   // Live update da presença a cada 30s
   if (window._presencaInterval) clearInterval(window._presencaInterval);
@@ -2618,46 +2611,7 @@ async function renderRecuperacao() {
   } catch(e) { errMsg('Erro: '+e.message); }
 }
 
-// Sincronizar rastreios manualmente
-async function sincronizarRastreios(btn) {
-  btn.disabled = true; btn.textContent = '⏳ Buscando...';
-  try {
-    // Buscar pedidos unfulfilled do Shopify
-    var shopResp = await fetch(API+'/api/admin?secret='+S+'&action=pedidos-unfulfilled').then(function(r){return r.json();});
-    var pedidos = shopResp.pedidos || [];
-    if (!pedidos.length) {
-      alert('Nenhum pedido aguardando envio encontrado.');
-      btn.disabled = false; btn.textContent = '🔄 Sincronizar Rastreios do Melhor Envio';
-      return;
-    }
-    var msg = pedidos.length + ' pedidos aguardando envio no Shopify.\n\n';
-    msg += 'O que deseja fazer?\n\n';
-    msg += 'OK = Marcar TODOS como enviados (sem código de rastreio)\n';
-    msg += 'Cancelar = Apenas sincronizar com Melhor Envio';
-    if (confirm(msg)) {
-      // Marcar todos como fulfilled sem tracking
-      btn.textContent = '⏳ Marcando '+pedidos.length+' pedidos...';
-      var r = await fetch(API+'/api/admin?secret='+S+'&action=fulfillment-massa', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({pedidos: pedidos.map(function(p){return p.id;})})
-      }).then(function(r){return r.json();});
-      alert('✅ '+( r.atualizados||0)+' pedidos marcados como enviados!');
-      renderAba('home');
-    } else {
-      // Só sincronizar Melhor Envio
-      btn.textContent = '⏳ Sincronizando Melhor Envio...';
-      var r2 = await fetch(API+'/api/cron?secret='+S, {method:'POST'}).then(function(r){return r.json();});
-      alert(r2.rastreiosEnviados > 0
-        ? '✅ '+r2.rastreiosEnviados+' rastreio(s) sincronizado(s)!'
-        : 'ℹ️ Nenhum rastreio novo no Melhor Envio.');
-      renderAba('home');
-    }
-  } catch(e) {
-    alert('❌ Erro: '+e.message);
-  }
-  btn.disabled = false; btn.textContent = '🔄 Sincronizar Rastreios do Melhor Envio';
-}
+
 
 // INICIAR
 renderAba('home');
