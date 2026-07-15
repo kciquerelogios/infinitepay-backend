@@ -34,11 +34,14 @@ const kv = {
   },
   sadd: async (key, member) => {
     const { url, token } = KV();
-    await fetch(`${url}/pipeline`, {
+    const r = await fetch(`${url}/pipeline`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify([['SADD', key, member]])
     });
+    const d = await r.json();
+    console.log('SADD', key, member, '->', JSON.stringify(d));
+    return d;
   },
   srem: async (key, member) => {
     const { url, token } = KV();
@@ -91,6 +94,7 @@ export default async function handler(req, res) {
     const { secret } = req.query;
     if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
     const ids = await kv.smembers('leads-set');
+    console.log('leads-set IDs:', ids.length, ids);
     const leadsRaw = await Promise.all(ids.map(id => kv.get(id)));
     const leads = leadsRaw
       .filter(Boolean)
