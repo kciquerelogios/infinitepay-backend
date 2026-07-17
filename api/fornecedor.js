@@ -73,8 +73,13 @@ export default async function handler(req, res) {
     const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
     try {
       const agoraBR = new Date(Date.now() - 3 * 60 * 60 * 1000);
-      const ontem = new Date(agoraBR); ontem.setDate(ontem.getDate() - 1);
-      const ontemStr = ontem.toISOString().split('T')[0];
+      // Usar data passada pelo cliente, ou ontem como padrão
+      let dataStr = req.query.data || '';
+      if (!dataStr || !/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
+        const ontem = new Date(agoraBR); ontem.setDate(ontem.getDate() - 1);
+        dataStr = ontem.toISOString().split('T')[0];
+      }
+      const ontemStr = dataStr;
 
       const [pedidosResp, prodResp, meResp] = await Promise.all([
         fetch('https://' + SHOPIFY_STORE + '/admin/api/2026-04/orders.json?status=any&financial_status=paid&created_at_min=' + ontemStr + 'T00:00:00-03:00&created_at_max=' + ontemStr + 'T23:59:59-03:00&limit=250',
@@ -169,12 +174,25 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
 
-  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;cursor:default}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}';
+  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;cursor:default}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}.ds{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 20px;margin-bottom:20px;flex-wrap:wrap}.dl2{font-size:13px;font-weight:600;color:#374151;white-space:nowrap}input[type=date]{padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none;cursor:pointer}input[type=date]:focus{border-color:#111}.db{padding:9px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.db:hover{background:#333}';
 
   const senhaJS = JSON.stringify(senha);
 
   const loginHTML = '<div class="ct"><div class="lb"><h2>Acesso Restrito</h2><p>Digite a senha para ver os pedidos</p><form onsubmit="go(event)"><input type="password" id="sp" placeholder="Senha" autofocus><button class="bl" type="submit">Entrar</button></form></div></div>';
-  const appHTML = '<div class="ct" id="app"><div class="ld">Carregando...</div></div>';
+  // Calcular ontem e hoje para os limites do seletor
+  const agoraBR2 = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const hojeStr = agoraBR2.toISOString().split('T')[0];
+  const ontemDefault = new Date(agoraBR2); ontemDefault.setDate(ontemDefault.getDate() - 1);
+  const ontemStr2 = ontemDefault.toISOString().split('T')[0];
+
+  const appHTML = '<div class="ct">' +
+    '<div class="ds">' +
+    '<label class="dl2">Data dos pedidos:</label>' +
+    '<input type="date" id="dt" value="' + ontemStr2 + '" max="' + hojeStr + '" onchange="load(this.value)">' +
+    '<button onclick="load(document.getElementById(\'dt\').value)" class="db">Buscar</button>' +
+    '</div>' +
+    '<div id="app"><div class="ld">Carregando...</div></div>' +
+    '</div>';
 
   return res.status(200).send(
     '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kcique Fornecedor</title><style>' + CSS + '</style></head><body>' +
@@ -209,12 +227,16 @@ export default async function handler(req, res) {
     '    else{btn.disabled=false;btn.textContent=orig;}' +
     '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
     '}' +
-    'async function load(){var app=document.getElementById("app");if(!app||!S)return;' +
-    '  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=pedidos-json");' +
+    'async function load(data){' +
+    '  var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");' +
+    '  var app=document.getElementById("app");if(!S)return;' +
+    '  if(app)app.innerHTML="Carregando...";' +
+    '  try{var url=A+"?senha="+encodeURIComponent(S)+"&action=pedidos-json"+(dt?"&data="+encodeURIComponent(dt):"");' +
+    '  var r=await fetch(url);' +
     '  var d=await r.json();' +
     '  if(!r.ok||d.erro){app.innerHTML="<div class=\'vz\'>Erro: "+(d.erro||"acesso negado")+"</div>";return;}' +
     '  var ps=d.pedidos||[];' +
-    '  if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];}' +
+    '  if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}' +
     '  if(!ps.length){app.innerHTML="<div class=\'vz\'>Nenhum pedido ontem</div>";return;}' +
     '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>pedidos de ontem para separar</div></div>";' +
     '  ps.forEach(function(p){' +
