@@ -1128,15 +1128,25 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== ACTION: DEBUG VARIANTES =====
   if (req.query.action === 'variantes-debug') {
     const titulo = req.query.titulo || '';
-    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?title=${encodeURIComponent(titulo)}&fields=id,title,variants,images&limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
-    const d = await r.json();
-    const produtos = (d.products||[]).map(p => ({
+    // Busca exata por titulo
+    const r1 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?title=${encodeURIComponent(titulo)}&fields=id,title,variants,images&limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d1 = await r1.json();
+    // Busca geral nos produtos já carregados (busca parcial)
+    let produtos = (d1.products||[]);
+    if (!produtos.length) {
+      // Tentar busca com primeiras palavras
+      const palavras = titulo.split(' ').slice(0,2).join(' ');
+      const r2 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?title=${encodeURIComponent(palavras)}&fields=id,title,variants,images&limit=10`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+      const d2 = await r2.json();
+      produtos = (d2.products||[]).filter(p => p.title.toLowerCase().includes(titulo.toLowerCase().split(' ')[0].toLowerCase()));
+    }
+    const result = produtos.map(p => ({
       id: p.id,
       title: p.title,
       imagens: (p.images||[]).map(i => ({ id: i.id, src: i.src.split('/').pop().split('?')[0] })),
-      variantes: (p.variants||[]).map(v => ({ id: v.id, title: v.title, image_id: v.image_id, featured_image: v.featured_image?.src?.split('/').pop().split('?')[0] || null }))
+      variantes: (p.variants||[]).map(v => ({ id: v.id, title: v.title, image_id: v.image_id, tem_imagem: !!(v.image_id || (v.featured_image && v.featured_image.src)) }))
     }));
-    return res.status(200).json({ produtos });
+    return res.status(200).json({ produtos: result });
   }
 
   // ===== ACTION: DEBUG LINE ITEMS =====
