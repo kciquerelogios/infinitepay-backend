@@ -252,6 +252,7 @@ export default async function handler(req, res) {
     '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split(\"-\").reverse().join("/"):"data selecionada")+"</div></div>";' +
     '  ps.forEach(function(p){' +
     '    var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";' +
+    '    var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};' +
     '    var bgCls=st==="enviado"?"bg bfn":st==="enviado_diferente"?"bg bd2":"bg bpd";' +
     '    var bgTxt=lbl2[st]||"Pendente";' +
     '    h+="<div class=\'pd\'>";' +
