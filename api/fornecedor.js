@@ -224,7 +224,7 @@ export default async function handler(req, res) {
     'async function setStatus(btn,id,status){' +
     '  var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente"};' +
     '  var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2"};' +
-    '  btn.disabled=true;var orig=btn.textContent;btn.textContent="...";' +
+    '  var orig=btn.textContent;' +
     '  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status})});' +
     '  var d=await r.json();' +
     '  if(d.ok){var bg=document.getElementById("bg"+id);if(bg){bg.className=bgC[status]||"bg bpd";bg.textContent=lbl[status]||status;}' +
