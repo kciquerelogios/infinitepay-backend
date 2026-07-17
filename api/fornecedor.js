@@ -238,7 +238,7 @@ export default async function handler(req, res) {
     '  var ps=d.pedidos||[];' +
     '  if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}' +
     '  if(!ps.length){app.innerHTML="<div class=\'vz\'>Nenhum pedido ontem</div>";return;}' +
-    '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>pedidos de ontem para separar</div></div>";' +
+    '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split(\"-\").reverse().join("/"):"data selecionada")+"</div></div>";' +
     '  ps.forEach(function(p){' +
     '    var env=p.enviado_fornecedor||p.fulfillment==="fulfilled";' +
     '    h+="<div class=\'pd\'>";' +
