@@ -478,7 +478,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
     } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&fields=id,order_number,created_at,customer,email,phone,shipping_address,billing_address,line_items,fulfillments,financial_status,fulfillment_status,total_price,subtotal_price,total_discounts,total_shipping_price_set,note,tags,discount_codes,refunds`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     ]);
     const prods = prodShopify.products || [];
@@ -537,14 +537,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       cupom: (o.discount_codes||[]).map(d => d.code).join(', '),
       meOrderId: '',
       criado_em: o.created_at,
-      imagem: getImgVariant((o.line_items||[])[0] || {}),
-      imagens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title||'', img: getImgVariant(i) })),
+      imagem: (o.line_items||[])[0]?.image?.src || getImgVariant((o.line_items||[])[0] || {}),
+      imagens: (o.line_items||[]).map(i => ({
+        nome: i.title,
+        variante: i.variant_title||'',
+        variant_id: String(i.variant_id||''),
+        img: i.image?.src || getImgVariant(i)
+      })),
     }));
     const pedResult = { pedidos };
     fetch(`${KV_URL}/set/${cachePedidos}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(pedResult), ex: 300 })
+      body: JSON.stringify({ value: JSON.stringify(pedResult), ex: 60 })
     }).catch(()=>{});
     return res.status(200).json(pedResult);
   }
@@ -1221,7 +1226,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Shopify produtos (estoque + imagens) — incluir variantes e imagens
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants,inventory_management`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Shopify pedidos recentes com fulfillment
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&fields=id,order_number,created_at,customer,email,phone,shipping_address,billing_address,line_items,fulfillments,financial_status,fulfillment_status,total_price,subtotal_price,total_discounts,total_shipping_price_set,note,tags,discount_codes,refunds`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
@@ -1588,9 +1593,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
-      // Prioridade: imagem exata da variante por ID
-      const vid = String(item.variant_id||'');
-      const img = (vid && variantImgMap[vid]) ? variantImgMap[vid] : getImgPedido(item.title, item.variant_title);
+      // Prioridade: imagem do line_item (sempre correta), depois variante, depois produto
+      const img = item.image?.src
+        || (String(item.variant_id||'') && variantImgMap[String(item.variant_id||'')])
+        || getImgPedido(item.title, item.variant_title);
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
         + (img
           ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
