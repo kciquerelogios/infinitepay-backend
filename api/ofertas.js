@@ -90,7 +90,23 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
     const dataEnvio = new Date(oferta.dataHora);
     const diffMin = (agora - dataEnvio) / 1000 / 60;
     console.log('  -> diffMin:', diffMin.toFixed(1), '| agoraUTC:', agora.toISOString(), '| dataEnvioUTC:', dataEnvio.toISOString());
-    if (diffMin < 0 || diffMin > 2) { console.log('  -> PULANDO: fora da janela'); continue; }
+    if (diffMin < 0 || diffMin > 20) { console.log('  -> PULANDO: fora da janela'); continue; }
+
+    // Lock atômico via SET NX EX — só um cron consegue adquirir
+    const lockKey = `oferta-lock-${oferta.id}`;
+    const lockResp = await fetch(`${KV_URL}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SET', lockKey, '1', 'EX', '120', 'NX']])
+    });
+    const lockData = await lockResp.json();
+    // SET NX retorna "OK" se adquiriu o lock, null se já existia
+    const lockOk = Array.isArray(lockData) && lockData[0]?.result === 'OK';
+    if (!lockOk) {
+      console.log('  -> PULANDO: lock já existe — outro cron está processando esta oferta');
+      continue;
+    }
+    console.log('  -> LOCK adquirido, enviando...');
 
     let gruposEnviar = GRUPOS_VIP;
     if (oferta.grupos && oferta.grupos !== 'todos') {
@@ -122,11 +138,15 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
 
     oferta.status = erros === 0 ? 'enviada' : 'erro';
     oferta.enviada_em = new Date().toISOString();
-    await fetch(`${KV_URL}/set/${oferta.id}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(oferta)
-    });
+    // Salvar status final e liberar lock
+    await Promise.all([
+      fetch(`${KV_URL}/set/${oferta.id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(oferta)
+      }),
+      fetch(`${KV_URL}/del/${lockKey}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })
+    ]);
     disparadas.push({ id: oferta.id, grupos: gruposEnviar.length, erros });
   }
   return disparadas;
