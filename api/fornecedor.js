@@ -49,7 +49,16 @@ export default async function handler(req, res) {
       });
       const s3Data = await s3Resp.json();
       const s3Urls = Array.isArray(s3Data) ? s3Data : [];
-      if (s3Urls.length > 0) return res.redirect(302, s3Urls[0]);
+      if (s3Urls.length > 0) {
+        // Baixar o PDF no servidor e repassar (evita CORS no browser)
+        const s3Download = await fetch(s3Urls[0]);
+        if (s3Download.ok) {
+          const s3Buf = await s3Download.arrayBuffer();
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'attachment; filename="etiqueta-' + tracking + '.pdf"');
+          return res.status(200).send(Buffer.from(s3Buf));
+        }
+      }
     } catch(e) {}
     return res.status(404).json({ erro: 'Etiqueta nao disponivel. Gere no Melhor Envio primeiro.' });
   }
