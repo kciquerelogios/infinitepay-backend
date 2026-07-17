@@ -1719,7 +1719,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const varLabel = item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : '';
       return '<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;border-bottom:1px solid #f3f4f6">'
         + (img
-          ? '<img src="' + img + '" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="window.open(this.src)">'
+          ? '<img src="' + img + '" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="abrirFoto(this.src)">'
           : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>')
         + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:14px;font-weight:700;line-height:1.4">' + item.title + '</div>'
@@ -2497,7 +2497,7 @@ function abrirModalPedido(i) {
       var img = imgObj ? imgObj.img : (p.imagem||'');
       html+='<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6">';
       html+=(img
-        ? '<img src="'+img+'" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="window.open(this.src)">'
+        ? '<img src="'+img+'" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="abrirFoto(this.src)">'
         : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>');
       html+='<div style="flex:1;min-width:0">';
       html+='<div style="font-size:14px;font-weight:700;line-height:1.4">'+it.nome+'</div>';
@@ -2823,6 +2823,19 @@ async function renderRecuperacao() {
 }
 
 
+
+// Popup de foto
+function abrirFoto(src) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  overlay.onclick = function() { document.body.removeChild(overlay); };
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.6);object-fit:contain';
+  img.onclick = function(e) { e.stopPropagation(); };
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
 
 // INICIAR
 renderAba('home');
