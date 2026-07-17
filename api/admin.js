@@ -512,16 +512,25 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const corTitulo = corMatch ? norm(corMatch[1]) : '';
 
       let melhor = null, melhorPts = 0;
+      const palavrasBase = baseNorm.split(' ').filter(w=>w.length>2);
       for (const p of prods) {
         const pt = norm(p.title);
         let pts = 0;
         if (pt === baseNorm) pts = 200;
         else if (modelo && p.title.toUpperCase().includes(modelo)) pts = 100;
         else if (pt.includes(baseNorm) || baseNorm.includes(pt)) pts = 50;
-        else pts = baseNorm.split(' ').filter(w=>w.length>2).filter(w=>pt.includes(w)).length * 10;
+        else {
+          // Pontuação proporcional: precisa de pelo menos 50% das palavras
+          const matches = palavrasBase.filter(w=>pt.includes(w)).length;
+          if (matches > 0 && palavrasBase.length > 0) {
+            const pct = matches / palavrasBase.length;
+            if (pct >= 0.5) pts = Math.round(pct * 40); // máx 40 pts para match parcial
+          }
+        }
         if (pts > melhorPts) { melhorPts = pts; melhor = p; }
       }
-      if (!melhor) return '';
+      // Só usar match se tiver pontuação mínima razoável
+      if (!melhor || melhorPts < 20) return '';
 
       // Tentar imagem da variante pela cor extraída do título
       if (corTitulo) {
@@ -1643,16 +1652,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       if (pt === baseNorm) { pontos = 200; }
       // Match do código do modelo (mais confiável)
       else if (modelo && p.title.toUpperCase().includes(modelo)) { pontos = 100; }
-      // Match parcial por palavras
+      // Match parcial por palavras — exige mínimo 50% das palavras
       else {
         const palavras = baseNorm.split(' ').filter(w => w.length > 2);
-        pontos = palavras.filter(w => pt.includes(w)).length * 10;
+        const matches = palavras.filter(w => pt.includes(w)).length;
+        if (palavras.length > 0 && matches / palavras.length >= 0.5) {
+          pontos = Math.round((matches / palavras.length) * 40);
+        }
       }
 
       if (pontos > melhorPontos) { melhorPontos = pontos; melhor = p; }
     }
 
-    if (!melhor || melhorPontos === 0) return '';
+    if (!melhor || melhorPontos < 20) return '';
 
     // Tentar imagem da variante pela cor
     if (varianteTitulo && varianteTitulo !== 'Default Title') {
