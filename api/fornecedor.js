@@ -345,7 +345,7 @@ async function load(data){
     h+="<input type='file' accept='image/*' capture='environment' id='fi"+p.id+"' style='display:none' data-oid='"+(p.id)+"' onchange='uFoto(this)'>";
     h+="<button class='foto-btn' data-fid='"+(p.id)+"'>Foto do Pacote</button>";
     h+="</div>";
-    h+="<div class='fotos-grid' id='fg"+p.id+"'"></div>";
+    h+="<div class='fotos-grid' id='fg"+p.id+"'></div>";
     h+="</div></div></div>";
   });
   app.innerHTML=h;
