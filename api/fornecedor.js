@@ -3,6 +3,51 @@ export default async function handler(req, res) {
   const senha = req.query.senha || '';
   const action = req.query.action || '';
 
+  // ── UPLOAD FOTO ──────────────────────────────────────────────
+  if (action === 'upload-foto' && req.method === 'POST') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+    const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET;
+    const orderId = (req.body && req.body.orderId) || '';
+    const fotoBase64 = (req.body && req.body.foto) || '';
+    if (!orderId || !fotoBase64) return res.status(400).json({ erro: 'orderId e foto obrigatorios' });
+    try {
+      // Upload para Cloudinary
+      const cloudResp = await fetch('https://api.cloudinary.com/v1_1/' + CLOUD_NAME + '/image/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: fotoBase64, upload_preset: UPLOAD_PRESET, folder: 'kcique-pedidos', public_id: 'pedido-' + orderId + '-' + Date.now() })
+      });
+      const cloudData = await cloudResp.json();
+      if (!cloudData.secure_url) return res.status(500).json({ erro: 'Erro no upload: ' + (cloudData.error && cloudData.error.message || 'desconhecido') });
+      const fotoUrl = cloudData.secure_url;
+      // Salvar URL no Redis vinculada ao pedido
+      await fetch(KV_URL + '/pipeline', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['LPUSH', 'forn-fotos-' + orderId, fotoUrl]])
+      });
+      return res.status(200).json({ ok: true, url: fotoUrl });
+    } catch(e) {
+      return res.status(500).json({ erro: e.message });
+    }
+  }
+
+  // ── LISTAR FOTOS ──────────────────────────────────────────────
+  if (action === 'fotos' && req.method === 'GET') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const orderId = req.query.orderId || '';
+    if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
+    const r = await fetch(KV_URL + '/lrange/forn-fotos-' + orderId + '/0/-1', {
+      headers: { Authorization: 'Bearer ' + KV_TOKEN }
+    }).then(function(r){return r.json();}).catch(function(){return {result:[]};});
+    return res.status(200).json({ fotos: r.result || [] });
+  }
+
   // ── MARCAR ENVIADO ───────────────────────────────────────────
   if (action === 'set-status' && req.method === 'POST') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
@@ -133,19 +178,28 @@ export default async function handler(req, res) {
       var statusKeys = orders.map(function(o){return 'forn-status-'+o.id;});
       var statusMap = {};
       if (statusKeys.length > 0) {
+        var fotoKeys = orders.map(function(o){return 'forn-fotos-'+o.id;});
+        var allKeys = statusKeys.concat(fotoKeys);
         var kvR = await fetch(KV_URL + '/pipeline', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify(statusKeys.map(function(k){return ['GET',k];}))
+          body: JSON.stringify(
+            statusKeys.map(function(k){return ['GET',k];}).concat(
+            fotoKeys.map(function(k){return ['LRANGE',k,'0','-1'];}))
+          )
         }).then(function(r){return r.json();}).catch(function(){return [];});
+        var fotoMap = {};
         statusKeys.forEach(function(k,i){
           if(kvR[i]&&kvR[i].result) {
             var v = kvR[i].result;
-            // Parse if nested object
             if (typeof v === 'object' && v.value) v = v.value;
-            try { var p = JSON.parse(v); if (typeof p === 'string') v = p; } catch(e) {}
+            try { var p2 = JSON.parse(v); if (typeof p2 === 'string') v = p2; } catch(e) {}
             statusMap[k] = v;
           }
+        });
+        fotoKeys.forEach(function(k,i){
+          var idx2 = statusKeys.length + i;
+          if(kvR[idx2]&&kvR[idx2].result) fotoMap[k] = kvR[idx2].result;
         });
       }
 
@@ -167,6 +221,7 @@ export default async function handler(req, res) {
           tracking: (o.fulfillments&&o.fulfillments[0]&&o.fulfillments[0].tracking_number)||( meOrder&&meOrder.tracking)||'',
           meOrderId: meOrder?String(meOrder.id):'',
           status_forn: statusMap['forn-status-'+o.id] || 'nao_enviado',
+          fotos: fotoMap['forn-fotos-'+o.id] || [],
           criado_em: o.created_at,
           itens: (o.line_items||[]).map(function(i){return {
             nome:i.title, variante:i.variant_title||'', quantidade:i.quantity,
@@ -183,7 +238,7 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
 
-  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;color:#16a34a;cursor:default}.bn{padding:11px 18px;background:#fff;color:#dc2626;border:2px solid #dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bn:hover{background:#fef2f2}.bn.dn{background:#fee2e2;cursor:default}.bd{padding:11px 18px;background:#fff;color:#7c3aed;border:2px solid #7c3aed;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bd:hover{background:#f5f3ff}.bd.dn{background:#ede9fe;color:#7c3aed;cursor:default}.bp{padding:11px 18px;background:#fff;color:#92400e;border:2px solid #f59e0b;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bp:hover{background:#fffbeb}.bp.dn{background:#fef3c7;color:#92400e;cursor:default}.bd2{background:#ede9fe;color:#7c3aed}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}.ds{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 20px;margin-bottom:20px;flex-wrap:wrap}.dl2{font-size:13px;font-weight:600;color:#374151;white-space:nowrap}input[type=date]{padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none;cursor:pointer}input[type=date]:focus{border-color:#111}.db{padding:9px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.db:hover{background:#333}';
+  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;color:#16a34a;cursor:default}.bn{padding:11px 18px;background:#fff;color:#dc2626;border:2px solid #dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bn:hover{background:#fef2f2}.bn.dn{background:#fee2e2;cursor:default}.bd{padding:11px 18px;background:#fff;color:#7c3aed;border:2px solid #7c3aed;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bd:hover{background:#f5f3ff}.bd.dn{background:#ede9fe;color:#7c3aed;cursor:default}.bp{padding:11px 18px;background:#fff;color:#92400e;border:2px solid #f59e0b;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bp:hover{background:#fffbeb}.bp.dn{background:#fef3c7;color:#92400e;cursor:default}.bd2{background:#ede9fe;color:#7c3aed}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}.foto-btn{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;background:#fff;color:#2563eb;border:2px solid #2563eb;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.foto-btn:hover{background:#eff6ff}.fotos-grid{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.foto-thumb{width:90px;height:90px;object-fit:cover;border-radius:10px;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1);border:2px solid #e8eaf0}.foto-count{font-size:12px;color:#6b7280;margin-top:6px}.ds{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 20px;margin-bottom:20px;flex-wrap:wrap}.dl2{font-size:13px;font-weight:600;color:#374151;white-space:nowrap}input[type=date]{padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none;cursor:pointer}input[type=date]:focus{border-color:#111}.db{padding:9px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.db:hover{background:#333}';
 
   const senhaJS = JSON.stringify(senha);
 
@@ -238,6 +293,26 @@ export default async function handler(req, res) {
     '  }else{btn.disabled=false;btn.textContent=orig;}' +
     '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
     '}' +
+'async function uploadFoto(input,orderId){' +
+    '  var file=input.files[0];if(!file)return;' +
+    '  var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";' +
+    '  if(btn){btn.disabled=true;btn.textContent="Enviando foto...";}' +
+    '  try{' +
+    '    var reader=new FileReader();' +
+    '    reader.onload=async function(e){' +
+    '      try{' +
+    '        var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:String(orderId),foto:e.target.result})});' +
+    '        var d=await r.json();' +
+    '        if(d.ok&&d.url){' +
+    '          var grid=document.getElementById("fotos-"+orderId);' +
+    '          if(grid){var img=document.createElement("img");img.src=d.url;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);}' +
+    '          if(btn){btn.disabled=false;btn.textContent=orig;}' +
+    '        }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}' +
+    '      }catch(err){alert("Erro: "+err.message);if(btn){btn.disabled=false;btn.textContent=orig;}}' +
+    '    };' +
+    '    reader.readAsDataURL(file);' +
+    '  }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}' +
+    '}' +
     'async function load(data){' +
     '  var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");' +
     '  var app=document.getElementById("app");if(!S)return;' +
@@ -280,6 +355,12 @@ export default async function handler(req, res) {
     '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"nao_enviado\\")\'>Nao Enviado</button>";' +
     '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado_diferente\\")\'>Enviado Diferente</button>";' +
     '    h+="<button class=\'bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"pendente\\")\'>Pendente</button>";' +
+    '    h+="<input type=\'file\' accept=\'image/*\' capture=\'environment\' id=\'foto-input-"+p.id+"\' style=\'display:none\' onchange=\'uploadFoto(this,"+String(p.id)+")\'>";' +
+    '    h+="<button class=\'foto-btn\' onclick=\'document.getElementById(\\\'foto-input-"+p.id+"\\\').click()\'>Foto do Pacote</button>";' +
+    '    h+="</div>";' +
+    '    h+="<div class=\'fotos-grid\' id=\'fotos-"+p.id+"\">";' +
+    '    (p.fotos||[]).forEach(function(f){h+="<img src=\'"+f+"\' class=\'foto-thumb\' onclick=\'af(this.src)\'>";});' +
+    '    h+="</div>";' +
     '    h+="</div></div></div>";' +
     '  });' +
     '  app.innerHTML=h;' +
