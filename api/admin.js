@@ -388,6 +388,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
     });
     const prods = prodShopify.products || [];
+
+    // Mapa variant_id -> imagem exata
+    const varImgMap = {};
+    prods.forEach(p => {
+      (p.variants||[]).forEach(v => {
+        if (v.featured_image?.src) varImgMap[String(v.id)] = v.featured_image.src;
+        else if (v.image_id) {
+          const img = (p.images||[]).find(i => i.id === v.image_id);
+          if (img) varImgMap[String(v.id)] = img.src;
+        }
+        if (!varImgMap[String(v.id)] && p.image) varImgMap[String(v.id)] = p.image.src;
+      });
+    });
+
     const getImg = (nome) => {
       const base = nome.split(' - ')[0].trim();
       const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
@@ -468,11 +482,39 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     ]);
     const prods = prodShopify.products || [];
+
+    // Mapa variant_id -> imagem exata da variante
+    const variantImgMap = {};
+    prods.forEach(p => {
+      (p.variants||[]).forEach(v => {
+        if (v.featured_image && v.featured_image.src) {
+          variantImgMap[String(v.id)] = v.featured_image.src;
+        } else if (v.image_id) {
+          const img = (p.images||[]).find(i => i.id === v.image_id);
+          if (img) variantImgMap[String(v.id)] = img.src;
+        }
+        // Fallback: imagem principal do produto
+        if (!variantImgMap[String(v.id)] && p.image) {
+          variantImgMap[String(v.id)] = p.image.src;
+        }
+      });
+    });
+
     const getImg = (nome) => {
       const base = nome.split(' - ')[0].trim();
       const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
       return p?.image?.src || '';
     };
+
+    // Buscar imagem exata por variant_id do line_item
+    const getImgVariant = (lineItem) => {
+      if (lineItem.variant_id && variantImgMap[String(lineItem.variant_id)]) {
+        return variantImgMap[String(lineItem.variant_id)];
+      }
+      // Fallback por título
+      return getImg(lineItem.title);
+    };
+
     const pedidos = (pedidosR.orders||[]).map(o => ({
       id: o.id,
       numero: o.order_number,
@@ -481,7 +523,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       telefone: o.shipping_address?.phone || o.billing_address?.phone || o.customer?.phone || o.phone || '',
       endereco: o.shipping_address ? `${o.shipping_address.address1||''}, ${o.shipping_address.city||''} - ${o.shipping_address.province_code||''}, ${o.shipping_address.zip||''}` : '',
       produto: (o.line_items||[]).map(i => i.title + (i.variant_title&&i.variant_title!=='Default Title'?' - '+i.variant_title:'')).join(', '),
-      itens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title, quantidade: i.quantity, preco: i.price })),
+      itens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title, quantidade: i.quantity, preco: i.price, variant_id: String(i.variant_id||'') })),
       subtotal: o.subtotal_price,
       frete_valor: o.total_shipping_price_set?.shop_money?.amount || '0',
       desconto: o.total_discounts,
@@ -495,8 +537,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       cupom: (o.discount_codes||[]).map(d => d.code).join(', '),
       meOrderId: '',
       criado_em: o.created_at,
-      imagem: getImg((o.line_items||[])[0]?.title || ''),
-      imagens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title||'', img: getImg(i.title) })),
+      imagem: getImgVariant((o.line_items||[])[0] || {}),
+      imagens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title||'', img: getImgVariant(i) })),
     }));
     const pedResult = { pedidos };
     fetch(`${KV_URL}/set/${cachePedidos}`, {
@@ -1486,20 +1528,35 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   });
 
   const getImgPedido = (titulo, varianteTitulo) => {
-    const base = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
-    const p = (produtosSemEstoque.products||[]).find(p => p.title === titulo || p.title === base || p.title.includes(base) || base.includes(p.title));
-    if (!p) return '';
-    // Tentar pegar imagem da variante específica
+    if (!titulo) return '';
+    // Extrair palavras-chave do título (remover variante, cor, etc)
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
+    const base = norm(titulo.split(' - Cor:')[0].split(' - ')[0]);
+    const palavras = base.split(' ').filter(w => w.length > 2);
+
+    // Pontuar cada produto pelo número de palavras em comum
+    let melhor = null, melhorPontos = 0;
+    for (const p of (produtosSemEstoque.products||[])) {
+      const pt = norm(p.title);
+      let pontos = 0;
+      if (pt === base) pontos = 100;
+      else if (pt.includes(base) || base.includes(pt)) pontos = 50;
+      else pontos = palavras.filter(w => pt.includes(w)).length;
+      if (pontos > melhorPontos) { melhorPontos = pontos; melhor = p; }
+    }
+    if (!melhor || melhorPontos === 0) return '';
+
+    // Tentar imagem da variante específica
     if (varianteTitulo && varianteTitulo !== 'Default Title') {
-      const v = (p.variants||[]).find(v => v.title === varianteTitulo);
+      const normV = norm(varianteTitulo);
+      const v = (melhor.variants||[]).find(v => norm(v.title) === normV || norm(v.title).includes(normV));
       if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
-      // Tentar por imagem associada à variante
       if (v && v.image_id) {
-        const img = (p.images||[]).find(i => i.id === v.image_id);
+        const img = (melhor.images||[]).find(i => i.id === v.image_id);
         if (img) return img.src;
       }
     }
-    return p.image ? p.image.src : '';
+    return melhor.image ? melhor.image.src : '';
   };
 
   const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
@@ -1531,7 +1588,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
-      const img = getImgPedido(item.title, item.variant_title);
+      // Prioridade: imagem exata da variante por ID
+      const vid = String(item.variant_id||'');
+      const img = (vid && variantImgMap[vid]) ? variantImgMap[vid] : getImgPedido(item.title, item.variant_title);
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
         + (img
           ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
