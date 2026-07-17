@@ -4,29 +4,17 @@ export default async function handler(req, res) {
   const action = req.query.action || '';
 
   // ── MARCAR ENVIADO ───────────────────────────────────────────
-  if (action === 'marcar-nao-enviado' && req.method === 'POST') {
+  if (action === 'set-status' && req.method === 'POST') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
     const KV_URL = process.env.KV_REST_API_URL;
     const KV_TOKEN = process.env.KV_REST_API_TOKEN;
     const orderId = (req.body && req.body.orderId) || '';
+    const status = (req.body && req.body.status) || 'nao_enviado';
     if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
-    await fetch(KV_URL + '/del/forn-enviado-' + orderId, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + KV_TOKEN }
-    }).catch(function(){});
-    return res.status(200).json({ ok: true });
-  }
-
-  if (action === 'marcar-enviado' && req.method === 'POST') {
-    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
-    const KV_URL = process.env.KV_REST_API_URL;
-    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-    const orderId = (req.body && req.body.orderId) || '';
-    if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
-    await fetch(KV_URL + '/set/forn-enviado-' + orderId, {
+    await fetch(KV_URL + '/set/forn-status-' + orderId, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: '1', ex: 604800 })
+      body: JSON.stringify({ value: status, ex: 604800 })
     }).catch(function(){});
     return res.status(200).json({ ok: true });
   }
@@ -142,15 +130,17 @@ export default async function handler(req, res) {
       }
 
       var orders = pedidosResp.orders || [];
-      var envKeys = orders.map(function(o){return 'forn-enviado-'+o.id;});
-      var enviadosSet = {};
-      if (envKeys.length > 0) {
+      var statusKeys = orders.map(function(o){return 'forn-status-'+o.id;});
+      var statusMap = {};
+      if (statusKeys.length > 0) {
         var kvR = await fetch(KV_URL + '/pipeline', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify(envKeys.map(function(k){return ['GET',k];}))
+          body: JSON.stringify(statusKeys.map(function(k){return ['GET',k];}))
         }).then(function(r){return r.json();}).catch(function(){return [];});
-        envKeys.forEach(function(k,i){if(kvR[i]&&kvR[i].result)enviadosSet[k]=true;});
+        statusKeys.forEach(function(k,i){
+          if(kvR[i]&&kvR[i].result) statusMap[k] = kvR[i].result;
+        });
       }
 
       var pedidos = orders.map(function(o) {
@@ -170,7 +160,7 @@ export default async function handler(req, res) {
           fulfillment: o.fulfillment_status||'unfulfilled',
           tracking: (o.fulfillments&&o.fulfillments[0]&&o.fulfillments[0].tracking_number)||( meOrder&&meOrder.tracking)||'',
           meOrderId: meOrder?String(meOrder.id):'',
-          enviado_fornecedor: !!enviadosSet['forn-enviado-'+o.id],
+          status_forn: statusMap['forn-status-'+o.id] || 'nao_enviado',
           criado_em: o.created_at,
           itens: (o.line_items||[]).map(function(i){return {
             nome:i.title, variante:i.variant_title||'', quantidade:i.quantity,
@@ -187,7 +177,7 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
 
-  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;color:#16a34a;cursor:default}.bn{padding:11px 18px;background:#fff;color:#dc2626;border:2px solid #dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bn:hover{background:#fef2f2}.bn.dn{background:#fee2e2;cursor:default}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}.ds{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 20px;margin-bottom:20px;flex-wrap:wrap}.dl2{font-size:13px;font-weight:600;color:#374151;white-space:nowrap}input[type=date]{padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none;cursor:pointer}input[type=date]:focus{border-color:#111}.db{padding:9px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.db:hover{background:#333}';
+  const CSS = '*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f7f8fa;min-height:100vh}.hd{background:#111;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:10px}.hd h1{font-size:16px;font-weight:700;flex:1}.hd .dt{font-size:12px;color:#999}.ct{padding:20px;max-width:900px;margin:0 auto}.lb{max-width:340px;margin:80px auto;background:#fff;border-radius:16px;border:1px solid #e8eaf0;padding:40px;text-align:center}.lb h2{font-size:20px;margin-bottom:8px}.lb p{color:#6b7280;font-size:13px;margin-bottom:20px}input[type=password]{width:100%;padding:12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;outline:none;margin-bottom:12px}input:focus{border-color:#111}.bl{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}.st{background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:16px 20px;margin-bottom:20px}.sn{font-size:32px;font-weight:800}.sl{font-size:13px;color:#6b7280}.pd{background:#fff;border-radius:12px;border:1px solid #e8eaf0;margin-bottom:10px;overflow:hidden}.ph{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}.ph:hover{background:#fafafa}.pn{font-weight:800;font-size:15px}.pm{font-size:14px;flex:1}.bg{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}.bok{background:#dcfce7;color:#16a34a}.bpd{background:#fef3c7;color:#92400e}.bfn{background:#dbeafe;color:#1e40af}.pb{display:none;padding:20px;border-top:1px solid #f3f4f6}.pb.op{display:block}.ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.ic{background:#f9fafb;border-radius:8px;padding:12px}.il{font-size:10px;color:#9ca3af;text-transform:uppercase;margin-bottom:4px}.iv{font-size:13px;font-weight:600;word-break:break-word}.it{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6}.it:last-child{border-bottom:none}.it img{width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.1)}.ii{width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px}.in{font-size:14px;font-weight:700;line-height:1.4}.iv2{font-size:12px;color:#6b7280;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px;margin-top:4px}.iq{font-size:13px;font-weight:600;margin-top:6px}.tk{background:#f0f9ff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px}.br{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.be{padding:11px 18px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.be:hover{background:#333}.be:disabled{opacity:.5;cursor:not-allowed}.bm{padding:11px 18px;background:#fff;color:#16a34a;border:2px solid #16a34a;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bm:hover{background:#f0fff4}.bm.dn{background:#dcfce7;color:#16a34a;cursor:default}.bn{padding:11px 18px;background:#fff;color:#dc2626;border:2px solid #dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bn:hover{background:#fef2f2}.bn.dn{background:#fee2e2;cursor:default}.bd{padding:11px 18px;background:#fff;color:#d97706;border:2px solid #d97706;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.bd:hover{background:#fffbeb}.bd.dn{background:#fef3c7;color:#d97706;cursor:default}.bd2{background:#fef3c7;color:#d97706}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}.ov.on{display:flex}.ov img{max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;cursor:default}.ld{text-align:center;padding:60px;color:#9ca3af}.vz{text-align:center;padding:60px;color:#9ca3af;background:#fff;border-radius:12px;border:1px solid #e8eaf0}.ds{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 20px;margin-bottom:20px;flex-wrap:wrap}.dl2{font-size:13px;font-weight:600;color:#374151;white-space:nowrap}input[type=date]{padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;outline:none;cursor:pointer}input[type=date]:focus{border-color:#111}.db{padding:9px 20px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}.db:hover{background:#333}';
 
   const senhaJS = JSON.stringify(senha);
 
@@ -231,23 +221,17 @@ export default async function handler(req, res) {
     '    btn.textContent="Baixado!";setTimeout(function(){btn.disabled=false;btn.textContent=orig;},3000);' +
     '  }catch(e){alert("Erro: "+e.message);btn.disabled=false;btn.textContent=orig;}' +
     '}' +
-    'async function marcar(btn,id){' +
-    '  btn.disabled=true;var orig=btn.textContent;btn.textContent="Salvando...";' +
-    '  try{' +
-    '    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=marcar-enviado",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id})});' +
-    '    var d=await r.json();' +
-    '    if(d.ok){btn.textContent="Marcado como Enviado";btn.classList.add("dn");var bg=document.getElementById("bg"+id);if(bg){bg.className="bg bfn";bg.textContent="Enviado";}}' +
-    '    else{btn.disabled=false;btn.textContent=orig;}' +
+    'async function setStatus(btn,id,status){' +
+    '  var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente"};' +
+    '  var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2"};' +
+    '  btn.disabled=true;var orig=btn.textContent;btn.textContent="...";' +
+    '  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status})});' +
+    '  var d=await r.json();' +
+    '  if(d.ok){var bg=document.getElementById("bg"+id);if(bg){bg.className=bgC[status]||"bg bpd";bg.textContent=lbl[status]||status;}' +
+    '    var pb=document.getElementById("pb"+id);if(pb){pb.querySelectorAll(".bm,.bn,.bd").forEach(function(b){b.disabled=false;b.classList.remove("dn");});btn.disabled=true;btn.classList.add("dn");}' +
+    '  }else{btn.disabled=false;btn.textContent=orig;}' +
     '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
     '}' +
-    'async function naoEnviado(btn,id){' +
-    '  btn.disabled=true;var orig=btn.textContent;btn.textContent="Salvando...";' +
-    '  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=marcar-nao-enviado",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id})});' +
-    '  var d=await r.json();' +
-    '  if(d.ok){btn.textContent="Marcado";btn.classList.add("dn");var bg=document.getElementById("bg"+id);if(bg){bg.className="bg bpd";bg.textContent="Nao Enviado";}}' +
-    '  else{btn.disabled=false;btn.textContent=orig;}' +
-    '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
-    '}' + '\n' +
     'async function load(data){' +
     '  var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");' +
     '  var app=document.getElementById("app");if(!S)return;' +
@@ -261,9 +245,11 @@ export default async function handler(req, res) {
     '  if(!ps.length){app.innerHTML="<div class=\'vz\'>Nenhum pedido ontem</div>";return;}' +
     '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split(\"-\").reverse().join("/"):"data selecionada")+"</div></div>";' +
     '  ps.forEach(function(p){' +
-    '    var env=p.enviado_fornecedor||p.fulfillment==="fulfilled";' +
+    '    var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";' +
+    '    var bgCls=st==="enviado"?"bg bfn":st==="enviado_diferente"?"bg bd2":"bg bpd";' +
+    '    var bgTxt=st==="enviado"?"Enviado":st==="enviado_diferente"?"Enviado Diferente":"Pendente";' +
     '    h+="<div class=\'pd\'>";' +
-    '    h+="<div class=\'ph\' onclick=\'tp("+p.id+")\'><span class=\'pn\'>#"+p.numero+"</span><span id=\'bg"+p.id+"\' class=\'"+(env?"bg bfn":"bg bpd")+"\'>"+( env?"Enviado":"Pendente")+"</span><span class=\'pm\'>"+p.nome+"</span></div>";' +
+    '    h+="<div class=\'ph\' onclick=\'tp("+p.id+")\'><span class=\'pn\'>#"+p.numero+"</span><span id=\'bg"+p.id+"\' class=\'"+bgCls+"\'>"+( bgTxt)+"</span><span class=\'pm\'>"+p.nome+"</span></div>";' +
     '    h+="<div class=\'pb\' id=\'pb"+p.id+"\'>";' +
     '    h+="<div class=\'ig\'>";' +
     '    h+="<div class=\'ic\'><div class=\'il\'>Cliente</div><div class=\'iv\'>"+p.nome+"</div></div>";' +
@@ -282,8 +268,10 @@ export default async function handler(req, res) {
     '    h+="</div>";' +
     '    h+="<div class=\'br\'>";' +
     '    h+="<button class=\'be\' onclick=\'baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")\'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";' +
-    '    if(!env)h+="<button class=\'bm\' onclick=\'marcar(this,"+JSON.stringify(String(p.id))+")\'>&#9989; Enviado</button><button class=\'bn\' onclick=\'naoEnviado(this,"+JSON.stringify(String(p.id))+")\'>&#10060; Nao Enviado</button>";' +
-    '    else h+="<button class=\'bm dn\' disabled>&#9989; Enviado</button><button class=\'bn\' onclick=\'naoEnviado(this,"+JSON.stringify(String(p.id))+")\'>&#10060; Desmarcar</button>";' +
+    '    var st=p.status_forn||"nao_enviado";' +
+    '    h+="<button class=\'bm"+(st==="enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'enviado\')\'>Enviado</button>";' +
+    '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'nao_enviado\')\'>Nao Enviado</button>";' +
+    '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'enviado_diferente\')\'>Enviado Diferente</button>";' +
     '    h+="</div></div></div>";' +
     '  });' +
     '  app.innerHTML=h;' +
