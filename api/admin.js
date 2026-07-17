@@ -1075,6 +1075,23 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
+  // ===== ACTION: DEBUG LINE ITEMS =====
+  if (req.query.action === 'lineitems-debug') {
+    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=2&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d = await r.json();
+    const items = (d.orders||[]).map(o => ({
+      order: o.order_number,
+      line_items: (o.line_items||[]).map(i => ({
+        title: i.title,
+        variant_id: i.variant_id,
+        variant_title: i.variant_title,
+        image: i.image,
+        properties: i.properties,
+      }))
+    }));
+    return res.status(200).json({ items });
+  }
+
   // ===== ACTION: DEBUG PRODUTOS =====
   if (req.query.action === 'prod-debug') {
     const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
