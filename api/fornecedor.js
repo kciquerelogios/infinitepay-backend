@@ -84,7 +84,130 @@ export default async function handler(req, res) {
         const pdfBuf = await pdfResp.arrayBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename="etiqueta-' + tracking + '.pdf"');
-        return res.status(200).send(Buffer.from(pdfBuf));
+        const JS_CODE = `var S=` + senhaJS + `;var A='/api/fornecedor';
+function go(e){e.preventDefault();var v=document.getElementById("sp").value;if(v)window.location.href=A+"?senha="+encodeURIComponent(v);}
+function af(s){document.getElementById("oi").src=s;document.getElementById("ov").classList.add("on");}
+function ff(){document.getElementById("ov").classList.remove("on");}
+document.addEventListener("keydown",function(e){if(e.key==="Escape")ff();});
+function tp(id){
+  var b=document.getElementById("pb"+id);if(!b)return;
+  b.classList.toggle("op");
+  if(b.classList.contains("op")&&!b.getAttribute("data-fotos-loaded")){
+    b.setAttribute("data-fotos-loaded","1");
+    carregarFotos(id);
+  }
+}
+async function baixar(btn,meId,trk){
+  if(!meId){alert("Etiqueta nao encontrada no Melhor Envio para este pedido.");return;}
+  btn.disabled=true;var orig=btn.textContent;btn.textContent="Buscando...";
+  try{
+    var url=A+"?senha="+encodeURIComponent(S)+"&action=etiqueta&meOrderId="+encodeURIComponent(meId)+"&tracking="+encodeURIComponent(trk||meId);
+    var r=await fetch(url);
+    if(!r.ok){var d=await r.json().catch(function(){return{};});alert(d.erro||"Erro ao baixar etiqueta");btn.disabled=false;btn.textContent=orig;return;}
+    var blob=await r.blob();var a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="etiqueta-"+(trk||meId)+".pdf";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    btn.textContent="Baixado!";setTimeout(function(){btn.disabled=false;btn.textContent=orig;},3000);
+  }catch(e){alert("Erro: "+e.message);btn.disabled=false;btn.textContent=orig;}
+}
+async function setStatus(btn,id,status){
+  var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
+  var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2",pendente:"bg bpd"};var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
+  var orig=btn.textContent;
+  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status})});
+  var d=await r.json();
+  if(d.ok){var bg=document.getElementById("bg"+id);if(bg){bg.className=bgC[status]||"bg bpd";bg.textContent=lbl[status]||status;}
+    var pb=document.getElementById("pb"+id);if(pb){pb.querySelectorAll(".bm,.bn,.bd").forEach(function(b){b.disabled=false;b.classList.remove("dn");});btn.disabled=true;btn.classList.add("dn");}
+  }else{btn.disabled=false;btn.textContent=orig;}
+  }catch(e){btn.disabled=false;btn.textContent=orig;}
+}
+async function carregarFotos(orderId){
+  try{
+    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=fotos&orderId="+orderId);
+    var d=await r.json();
+    var grid=document.getElementById("fg"+orderId);
+    if(grid&&d.fotos&&d.fotos.length){
+      grid.innerHTML="";
+      d.fotos.forEach(function(f){var img=document.createElement("img");img.src=f;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);});
+    }
+  }catch(e){}
+}
+async function uFoto(input){var orderId=input.getAttribute("data-oid");
+  var file=input.files[0];if(!file)return;
+  var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="Enviando foto...";}
+  try{
+    var reader=new FileReader();
+    reader.onload=async function(e){
+      try{
+        var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:String(orderId),foto:e.target.result})});
+        var d=await r.json();
+        if(d.ok&&d.url){
+          var grid=document.getElementById("fg"+orderId);
+          if(grid){var img=document.createElement("img");img.src=d.url;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);}
+          if(btn){btn.disabled=false;btn.textContent=orig;}
+        }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}
+      }catch(err){alert("Erro: "+err.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
+    };
+    reader.readAsDataURL(file);
+  }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
+}
+async function load(data){
+  var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");
+  var app=document.getElementById("app");if(!S)return;
+  if(app)app.innerHTML="Carregando...";
+  try{var url=A+"?senha="+encodeURIComponent(S)+"&action=pedidos-json"+(dt?"&data="+encodeURIComponent(dt):"");
+  var r=await fetch(url);
+  var d=await r.json();
+  if(!r.ok||d.erro){app.innerHTML="<div class='vz'>Erro: "+(d.erro||"acesso negado")+"</div>";return;}
+  var ps=d.pedidos||[];
+  if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}
+  if(!ps.length){app.innerHTML="<div class='vz'>Nenhum pedido ontem</div>";return;}
+  var h="<div class='st'><div class='sn'>"+ps.length+"</div><div class='sl'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split("-").reverse().join("/"):"data selecionada")+"</div></div>";
+  ps.forEach(function(p){
+    var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";
+    var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
+    var bgCls=st==="enviado"?"bg bfn":st==="enviado_diferente"?"bg bd2":"bg bpd";
+    var bgTxt=lbl2[st]||"Pendente";
+    h+="<div class='pd'>";
+    h+="<div class='ph' onclick='tp("+p.id+")'><span class='pn'>#"+p.numero+"</span><span id='bg"+p.id+"' class='"+bgCls+"'>"+( bgTxt)+"</span><span class='pm'>"+p.nome+"</span></div>";
+    h+="<div class='pb' id='pb"+p.id+"'>";
+    h+="<div class='ig'>";
+    h+="<div class='ic'><div class='il'>Cliente</div><div class='iv'>"+p.nome+"</div></div>";
+    h+="<div class='ic'><div class='il'>Telefone</div><div class='iv'>"+(p.telefone?"+55 "+p.telefone:"nao informado")+"</div></div>";
+    h+="<div class='ic' style='grid-column:span 2'><div class='il'>Endereco</div><div class='iv'>"+(p.endereco||"nao informado")+"</div></div>";
+    h+="</div>";
+    if(p.tracking)h+="<div class='tk'>Rastreio: "+p.tracking+"</div>";
+    h+="<div>";
+    (p.itens||[]).forEach(function(it){
+      h+="<div class='it'>";
+      h+=it.img?"<img src='"+it.img+"' onclick='af(this.src)'>":"<div class='ii'>&#8987;</div>";
+      h+="<div style='flex:1'><div class='in'>"+it.nome+"</div>";
+      if(it.variante&&it.variante!=="Default Title")h+="<div class='iv2'>"+it.variante+"</div>";
+      h+="<div class='iq'>Quantidade: <strong>"+it.quantidade+"</strong></div></div></div>";
+    });
+    h+="</div>";
+    h+="<div class='br'>";
+    h+="<button class='be' onclick='baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";
+    var st=p.status_forn||"nao_enviado";
+    h+="<button class='bm"+(st==="enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"enviado\")'>Enviado</button>";
+    h+="<button class='bn"+(st==="nao_enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"nao_enviado\")'>Nao Enviado</button>";
+    h+="<button class='bd"+(st==="enviado_diferente"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"enviado_diferente\")'>Enviado Diferente</button>";
+    h+="<button class='bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"pendente\")'>Pendente</button>";
+    h+="<input type='file' accept='image/*' capture='environment' id='fi"+p.id+"' style='display:none' data-oid='"+(p.id)+"' onchange='uFoto(this)'>";
+    h+="<button class='foto-btn' data-fid='"+(p.id)+"'>Foto do Pacote</button>";
+    h+="</div>";
+    h+="<div class='fotos-grid' id='fg"+p.id+"'"></div>";
+    h+="</div></div></div>";
+  });
+  app.innerHTML=h;
+  app.addEventListener("click",function handler(e){var b=e.target.closest("[data-fid]");if(!b)return;document.getElementById("fi"+b.getAttribute("data-fid")).click();app.removeEventListener("click",handler);});
+  }catch(e){if(app)app.innerHTML="<div class='vz'>Erro: "+e.message+"</div>";}
+}
+` + (senhaOk ? 'load();' : '') + `
+`;
+
+  return res.status(200).send(Buffer.from(pdfBuf));
       }
     } catch(e) { console.log('Railway falhou:', e.message); }
     // Fallback S3
@@ -251,127 +374,6 @@ export default async function handler(req, res) {
     '<div class="hd"><h1>Kcique - Pedidos para Separar</h1><span class="dt" id="dl"></span></div>' +
     (senhaOk ? appHTML : loginHTML) +
     '<div class="ov" id="ov" onclick="ff()"><img id="oi" src=""></div>' +
-    '<script>var S=' + senhaJS + ';var A="/api/fornecedor";' +
-    'function go(e){e.preventDefault();var v=document.getElementById("sp").value;if(v)window.location.href=A+"?senha="+encodeURIComponent(v);}' +
-    'function af(s){document.getElementById("oi").src=s;document.getElementById("ov").classList.add("on");}' +
-    'function ff(){document.getElementById("ov").classList.remove("on");}' +
-    'document.addEventListener("keydown",function(e){if(e.key==="Escape")ff();});' +
-    'function tp(id){' +
-    '  var b=document.getElementById("pb"+id);if(!b)return;' +
-    '  b.classList.toggle("op");' +
-    '  if(b.classList.contains("op")&&!b.getAttribute("data-fotos-loaded")){' +
-    '    b.setAttribute("data-fotos-loaded","1");' +
-    '    carregarFotos(id);' +
-    '  }' +
-    '}' +
-    'async function baixar(btn,meId,trk){' +
-    '  if(!meId){alert("Etiqueta nao encontrada no Melhor Envio para este pedido.");return;}' +
-    '  btn.disabled=true;var orig=btn.textContent;btn.textContent="Buscando...";' +
-    '  try{' +
-    '    var url=A+"?senha="+encodeURIComponent(S)+"&action=etiqueta&meOrderId="+encodeURIComponent(meId)+"&tracking="+encodeURIComponent(trk||meId);' +
-    '    var r=await fetch(url);' +
-    '    if(!r.ok){var d=await r.json().catch(function(){return{};});alert(d.erro||"Erro ao baixar etiqueta");btn.disabled=false;btn.textContent=orig;return;}' +
-    '    var blob=await r.blob();var a=document.createElement("a");' +
-    '    a.href=URL.createObjectURL(blob);a.download="etiqueta-"+(trk||meId)+".pdf";' +
-    '    document.body.appendChild(a);a.click();document.body.removeChild(a);' +
-    '    btn.textContent="Baixado!";setTimeout(function(){btn.disabled=false;btn.textContent=orig;},3000);' +
-    '  }catch(e){alert("Erro: "+e.message);btn.disabled=false;btn.textContent=orig;}' +
-    '}' +
-    'async function setStatus(btn,id,status){' +
-    '  var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};' +
-    '  var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2",pendente:"bg bpd"};var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};' +
-    '  var orig=btn.textContent;' +
-    '  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status})});' +
-    '  var d=await r.json();' +
-    '  if(d.ok){var bg=document.getElementById("bg"+id);if(bg){bg.className=bgC[status]||"bg bpd";bg.textContent=lbl[status]||status;}' +
-    '    var pb=document.getElementById("pb"+id);if(pb){pb.querySelectorAll(".bm,.bn,.bd").forEach(function(b){b.disabled=false;b.classList.remove("dn");});btn.disabled=true;btn.classList.add("dn");}' +
-    '  }else{btn.disabled=false;btn.textContent=orig;}' +
-    '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
-    '}' +
-'async function carregarFotos(orderId){' +
-    '  try{' +
-    '    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=fotos&orderId="+orderId);' +
-    '    var d=await r.json();' +
-    '    var grid=document.getElementById("fg"+orderId);' +
-    '    if(grid&&d.fotos&&d.fotos.length){' +
-    '      grid.innerHTML="";' +
-    '      d.fotos.forEach(function(f){var img=document.createElement("img");img.src=f;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);});' +
-    '    }' +
-    '  }catch(e){}' +
-    '}' +
-'async function uFoto(input){var orderId=input.getAttribute("data-oid");' +
-    '  var file=input.files[0];if(!file)return;' +
-    '  var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";' +
-    '  if(btn){btn.disabled=true;btn.textContent="Enviando foto...";}' +
-    '  try{' +
-    '    var reader=new FileReader();' +
-    '    reader.onload=async function(e){' +
-    '      try{' +
-    '        var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:String(orderId),foto:e.target.result})});' +
-    '        var d=await r.json();' +
-    '        if(d.ok&&d.url){' +
-    '          var grid=document.getElementById("fg"+orderId);' +
-    '          if(grid){var img=document.createElement("img");img.src=d.url;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);}' +
-    '          if(btn){btn.disabled=false;btn.textContent=orig;}' +
-    '        }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}' +
-    '      }catch(err){alert("Erro: "+err.message);if(btn){btn.disabled=false;btn.textContent=orig;}}' +
-    '    };' +
-    '    reader.readAsDataURL(file);' +
-    '  }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}' +
-    '}' +
-    'async function load(data){' +
-    '  var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");' +
-    '  var app=document.getElementById("app");if(!S)return;' +
-    '  if(app)app.innerHTML="Carregando...";' +
-    '  try{var url=A+"?senha="+encodeURIComponent(S)+"&action=pedidos-json"+(dt?"&data="+encodeURIComponent(dt):"");' +
-    '  var r=await fetch(url);' +
-    '  var d=await r.json();' +
-    '  if(!r.ok||d.erro){app.innerHTML="<div class=\'vz\'>Erro: "+(d.erro||"acesso negado")+"</div>";return;}' +
-    '  var ps=d.pedidos||[];' +
-    '  if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}' +
-    '  if(!ps.length){app.innerHTML="<div class=\'vz\'>Nenhum pedido ontem</div>";return;}' +
-    '  var h="<div class=\'st\'><div class=\'sn\'>"+ps.length+"</div><div class=\'sl\'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split(\"-\").reverse().join("/"):"data selecionada")+"</div></div>";' +
-    '  ps.forEach(function(p){' +
-    '    var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";' +
-    '    var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};' +
-    '    var bgCls=st==="enviado"?"bg bfn":st==="enviado_diferente"?"bg bd2":"bg bpd";' +
-    '    var bgTxt=lbl2[st]||"Pendente";' +
-    '    h+="<div class=\'pd\'>";' +
-    '    h+="<div class=\'ph\' onclick=\'tp("+p.id+")\'><span class=\'pn\'>#"+p.numero+"</span><span id=\'bg"+p.id+"\' class=\'"+bgCls+"\'>"+( bgTxt)+"</span><span class=\'pm\'>"+p.nome+"</span></div>";' +
-    '    h+="<div class=\'pb\' id=\'pb"+p.id+"\'>";' +
-    '    h+="<div class=\'ig\'>";' +
-    '    h+="<div class=\'ic\'><div class=\'il\'>Cliente</div><div class=\'iv\'>"+p.nome+"</div></div>";' +
-    '    h+="<div class=\'ic\'><div class=\'il\'>Telefone</div><div class=\'iv\'>"+(p.telefone?"+55 "+p.telefone:"nao informado")+"</div></div>";' +
-    '    h+="<div class=\'ic\' style=\'grid-column:span 2\'><div class=\'il\'>Endereco</div><div class=\'iv\'>"+(p.endereco||"nao informado")+"</div></div>";' +
-    '    h+="</div>";' +
-    '    if(p.tracking)h+="<div class=\'tk\'>Rastreio: "+p.tracking+"</div>";' +
-    '    h+="<div>";' +
-    '    (p.itens||[]).forEach(function(it){' +
-    '      h+="<div class=\'it\'>";' +
-    '      h+=it.img?"<img src=\'"+it.img+"\' onclick=\'af(this.src)\'>":"<div class=\'ii\'>&#8987;</div>";' +
-    '      h+="<div style=\'flex:1\'><div class=\'in\'>"+it.nome+"</div>";' +
-    '      if(it.variante&&it.variante!=="Default Title")h+="<div class=\'iv2\'>"+it.variante+"</div>";' +
-    '      h+="<div class=\'iq\'>Quantidade: <strong>"+it.quantidade+"</strong></div></div></div>";' +
-    '    });' +
-    '    h+="</div>";' +
-    '    h+="<div class=\'br\'>";' +
-    '    h+="<button class=\'be\' onclick=\'baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")\'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";' +
-    '    var st=p.status_forn||"nao_enviado";' +
-    '    h+="<button class=\'bm"+(st==="enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado\\")\'>Enviado</button>";' +
-    '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"nao_enviado\\")\'>Nao Enviado</button>";' +
-    '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado_diferente\\")\'>Enviado Diferente</button>";' +
-    '    h+="<button class=\'bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"pendente\\")\'>Pendente</button>";' +
-    '    h+="<input type=\'file\' accept=\'image/*\' capture=\'environment\' id=\'fi"+p.id+"\' style=\'display:none\' data-oid=\'"+(p.id)+"\' onchange=\'uFoto(this)\'>";' +
-    '    h+="<button class=\'foto-btn\' data-fid=\'"+(p.id)+"\'>Foto do Pacote</button>";' +
-    '    h+="</div>";' +
-    '    h+="<div class=\'fotos-grid\' id=\'fg"+p.id+"\'"></div>";' +
-    '    h+="</div></div></div>";' +
-    '  });' +
-    '  app.innerHTML=h;' +
-    '  app.addEventListener("click",function handler(e){var b=e.target.closest("[data-fid]");if(!b)return;document.getElementById("fi"+b.getAttribute("data-fid")).click();app.removeEventListener("click",handler);});' +
-    '  }catch(e){if(app)app.innerHTML="<div class=\'vz\'>Erro: "+e.message+"</div>";}' +
-    '}' +
-    (senhaOk ? 'load();' : '') +
-    '<\/script></body></html>'
+    '<script>' + JS_CODE + '<\/script></body></html>'
   );
 }
