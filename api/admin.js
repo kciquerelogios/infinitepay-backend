@@ -2491,12 +2491,20 @@ function abrirModalPedido(i) {
   // Itens
   if (p.itens && p.itens.length) {
     html+='<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Itens do Pedido</div>';
-    html+='<div style="background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:16px">';
-    p.itens.forEach(function(it){
-      html+='<div style="padding:10px 12px;border-bottom:1px solid #e8eaf0;display:flex;justify-content:space-between;align-items:center">';
-      html+='<div><div style="font-size:13px;font-weight:600">'+it.nome+'</div>';
-      if(it.variante&&it.variante!=='Default Title')html+='<div style="font-size:11px;color:#9ca3af">'+it.variante+'</div>';
-      html+='</div><div style="text-align:right"><div style="font-size:12px;color:#6b7280">x'+it.quantidade+'</div><div style="font-size:13px;font-weight:600">'+fmt(parseFloat(it.preco)*it.quantidade)+'</div></div></div>';
+    html+='<div style="margin-bottom:16px">';
+    p.itens.forEach(function(it, idx){
+      var imgObj = p.imagens && p.imagens[idx];
+      var img = imgObj ? imgObj.img : (p.imagem||'');
+      html+='<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6">';
+      html+=(img
+        ? '<img src="'+img+'" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="window.open(this.src)">'
+        : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>');
+      html+='<div style="flex:1;min-width:0">';
+      html+='<div style="font-size:14px;font-weight:700;line-height:1.4">'+it.nome+'</div>';
+      if(it.variante&&it.variante!=='Default Title')html+='<div style="font-size:12px;color:#6b7280;margin-top:4px;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px">'+it.variante+'</div>';
+      html+='<div style="font-size:13px;color:#374151;margin-top:6px;font-weight:600">x'+it.quantidade+' &nbsp;·&nbsp; R$ '+parseFloat(it.preco||0).toFixed(2).replace('.',',')+'</div>';
+      html+='<div style="font-size:13px;color:#16a34a;font-weight:700;margin-top:2px">Total: R$ '+(parseFloat(it.preco||0)*it.quantidade).toFixed(2).replace('.',',')+'</div>';
+      html+='</div></div>';
     });
     html+='</div>';
   }
