@@ -269,9 +269,9 @@ export default async function handler(req, res) {
     '    h+="<div class=\'br\'>";' +
     '    h+="<button class=\'be\' onclick=\'baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")\'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";' +
     '    var st=p.status_forn||"nao_enviado";' +
-    '    h+="<button class=\'bm"+(st==="enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'enviado\')\'>Enviado</button>";' +
-    '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'nao_enviado\')\'>Nao Enviado</button>";' +
-    '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+JSON.stringify(String(p.id))+",\'enviado_diferente\')\'>Enviado Diferente</button>";' +
+    '    h+="<button class=\'bm"+(st==="enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado\\")\'>Enviado</button>";' +
+    '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"nao_enviado\\")\'>Nao Enviado</button>";' +
+    '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado_diferente\\")\'>Enviado Diferente</button>";' +
     '    h+="</div></div></div>";' +
     '  });' +
     '  app.innerHTML=h;' +
