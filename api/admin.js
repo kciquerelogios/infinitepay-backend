@@ -1534,33 +1534,65 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   const getImgPedido = (titulo, varianteTitulo) => {
     if (!titulo) return '';
-    // Extrair palavras-chave do título (remover variante, cor, etc)
-    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
-    const base = norm(titulo.split(' - Cor:')[0].split(' - ')[0]);
-    const palavras = base.split(' ').filter(w => w.length > 2);
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
 
-    // Pontuar cada produto pelo número de palavras em comum
+    // Extrair nome base — remover tudo após " - Cor:", " - ", etc
+    const tituloBase = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
+    const baseNorm = norm(tituloBase);
+
+    // Extrair código do modelo (ex: "GA-1017", "GBX-100", "GXW-56")
+    const modeloMatch = titulo.match(/[A-Z]{1,5}-?\d{3,5}[A-Z0-9]*/i);
+    const modelo = modeloMatch ? modeloMatch[0].toUpperCase() : '';
+
+    const prds = produtosSemEstoque.products || [];
     let melhor = null, melhorPontos = 0;
-    for (const p of (produtosSemEstoque.products||[])) {
+
+    for (const p of prds) {
       const pt = norm(p.title);
       let pontos = 0;
-      if (pt === base) pontos = 100;
-      else if (pt.includes(base) || base.includes(pt)) pontos = 50;
-      else pontos = palavras.filter(w => pt.includes(w)).length;
+
+      // Match exato do base
+      if (pt === baseNorm) { pontos = 200; }
+      // Match do código do modelo (mais confiável)
+      else if (modelo && p.title.toUpperCase().includes(modelo)) { pontos = 100; }
+      // Match parcial por palavras
+      else {
+        const palavras = baseNorm.split(' ').filter(w => w.length > 2);
+        pontos = palavras.filter(w => pt.includes(w)).length * 10;
+      }
+
       if (pontos > melhorPontos) { melhorPontos = pontos; melhor = p; }
     }
+
     if (!melhor || melhorPontos === 0) return '';
 
-    // Tentar imagem da variante específica
+    // Tentar imagem da variante pela cor
     if (varianteTitulo && varianteTitulo !== 'Default Title') {
       const normV = norm(varianteTitulo);
-      const v = (melhor.variants||[]).find(v => norm(v.title) === normV || norm(v.title).includes(normV));
+      const v = (melhor.variants||[]).find(v => norm(v.title) === normV || norm(v.title).includes(normV) || normV.includes(norm(v.title)));
       if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
       if (v && v.image_id) {
         const img = (melhor.images||[]).find(i => i.id === v.image_id);
         if (img) return img.src;
       }
     }
+
+    // Tentar encontrar imagem pela cor no título (ex: "Preto pulseira verde")
+    const corMatch = titulo.match(/Cor:\s*(.+?)(?:\s*-|$)/i);
+    if (corMatch) {
+      const cor = norm(corMatch[1]);
+      const v = (melhor.variants||[]).find(v => {
+        const vt = norm(v.title);
+        return cor.split(' ').some(w => w.length > 2 && vt.includes(w));
+      });
+      if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
+      if (v && v.image_id) {
+        const img = (melhor.images||[]).find(i => i.id === v.image_id);
+        if (img) return img.src;
+      }
+    }
+
+    // Fallback: primeira imagem do produto
     return melhor.image ? melhor.image.src : '';
   };
 
