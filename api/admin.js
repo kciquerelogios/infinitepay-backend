@@ -496,6 +496,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       meOrderId: '',
       criado_em: o.created_at,
       imagem: getImg((o.line_items||[])[0]?.title || ''),
+      imagens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title||'', img: getImg(i.title) })),
     }));
     const pedResult = { pedidos };
     fetch(`${KV_URL}/set/${cachePedidos}`, {
@@ -1175,8 +1176,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const hojeISO = hoje.toISOString();
       return fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&created_at_min=${encodeURIComponent(hojeISO)}`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]}));
     })(),
-    // Shopify produtos (estoque + imagens)
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    // Shopify produtos (estoque + imagens) — incluir variantes e imagens
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants,inventory_management`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Shopify pedidos recentes com fulfillment
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
@@ -1484,10 +1485,21 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
   });
 
-  const getImgPedido = (titulo) => {
+  const getImgPedido = (titulo, varianteTitulo) => {
     const base = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
     const p = (produtosSemEstoque.products||[]).find(p => p.title === titulo || p.title === base || p.title.includes(base) || base.includes(p.title));
-    return p && p.image ? p.image.src : '';
+    if (!p) return '';
+    // Tentar pegar imagem da variante específica
+    if (varianteTitulo && varianteTitulo !== 'Default Title') {
+      const v = (p.variants||[]).find(v => v.title === varianteTitulo);
+      if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
+      // Tentar por imagem associada à variante
+      if (v && v.image_id) {
+        const img = (p.images||[]).find(i => i.id === v.image_id);
+        if (img) return img.src;
+      }
+    }
+    return p.image ? p.image.src : '';
   };
 
   const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
@@ -1519,7 +1531,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
-      const img = getImgPedido(item.title);
+      const img = getImgPedido(item.title, item.variant_title);
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
         + (img
           ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
@@ -2231,7 +2243,11 @@ async function renderPedidos(force) {
     _pedidos.forEach(function(p,i){
       var origem=(p.nota||'').split('Origem: ')[1];if(origem)origem=origem.split('|')[0].trim();
       html+='<tr style="cursor:pointer" data-pi="'+i+'">';
-      html+='<td>'+(p.imagem?'<img src="'+p.imagem+'" style="width:32px;height:32px;object-fit:cover;border-radius:6px">':'')+'</td>';
+      // Show all item images (up to 3) in the list using pre-computed imagens array
+      var imgsHtml = (p.imagens||[{img:p.imagem}]).slice(0,3).map(function(it){
+        return it.img ? '<img src="'+it.img+'" title="'+((it.nome||'')+(it.variante&&it.variante!=='Default Title'?' - '+it.variante:'')).substring(0,40)+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #e8eaf0">' : '';
+      }).filter(Boolean).join('');
+      html+='<td><div style="display:flex;gap:2px;align-items:center">'+(imgsHtml||'<span style="color:#d1d5db;font-size:16px">⌚</span>')+'</div></td>';
       html+='<td><strong>#'+p.numero+'</strong><div style="font-size:11px;color:#9ca3af">'+fmtDate(p.criado_em)+'</div></td>';
       html+='<td>'+p.cliente+'</td>';
       html+='<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.produto+'</td>';
