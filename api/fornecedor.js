@@ -67,7 +67,6 @@ export default async function handler(req, res) {
   // ── ETIQUETA: recebe meOrderId direto, sem busca ─────────────
   if (action === 'etiqueta') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
-    const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
     const meOrderId = req.query.meOrderId || '';
     const tracking = req.query.tracking || meOrderId;
     if (!meOrderId) return res.status(400).json({ erro: 'meOrderId obrigatorio' });
@@ -116,7 +115,6 @@ export default async function handler(req, res) {
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
     const KV_URL = process.env.KV_REST_API_URL;
     const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-    const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
     try {
       const agoraBR = new Date(Date.now() - 3 * 60 * 60 * 1000);
       // Usar data passada pelo cliente, ou ontem como padrão
@@ -127,6 +125,7 @@ export default async function handler(req, res) {
       }
       const ontemStr = dataStr;
 
+      const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
       const [pedidosResp, prodResp, meResp] = await Promise.all([
         fetch('https://' + SHOPIFY_STORE + '/admin/api/2026-04/orders.json?status=any&financial_status=paid&created_at_min=' + ontemStr + 'T00:00:00-03:00&created_at_max=' + ontemStr + 'T23:59:59-03:00&limit=250',
           { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
@@ -134,7 +133,6 @@ export default async function handler(req, res) {
         fetch('https://' + SHOPIFY_STORE + '/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants',
           { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
         ).then(function(r){return r.json();}).catch(function(){return {products:[]};}),
-        // Buscar purchases do ME (só página 1 e 2 para ser rápido)
         Promise.all([1,2].map(function(p) {
           return fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + p, {
             headers: { Authorization: 'Bearer ' + ME_TOKEN, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
@@ -294,14 +292,14 @@ export default async function handler(req, res) {
     '  try{' +
     '    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=fotos&orderId="+orderId);' +
     '    var d=await r.json();' +
-    '    var grid=document.getElementById("fotos-"+orderId);' +
+    '    var grid=document.getElementById("fg"+orderId);' +
     '    if(grid&&d.fotos&&d.fotos.length){' +
     '      grid.innerHTML="";' +
     '      d.fotos.forEach(function(f){var img=document.createElement("img");img.src=f;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);});' +
     '    }' +
     '  }catch(e){}' +
     '}' +
-'async function uploadFoto(input,orderId){' +
+'async function uFoto(input){var orderId=input.getAttribute("data-oid");' +
     '  var file=input.files[0];if(!file)return;' +
     '  var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";' +
     '  if(btn){btn.disabled=true;btn.textContent="Enviando foto...";}' +
@@ -312,7 +310,7 @@ export default async function handler(req, res) {
     '        var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:String(orderId),foto:e.target.result})});' +
     '        var d=await r.json();' +
     '        if(d.ok&&d.url){' +
-    '          var grid=document.getElementById("fotos-"+orderId);' +
+    '          var grid=document.getElementById("fg"+orderId);' +
     '          if(grid){var img=document.createElement("img");img.src=d.url;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);}' +
     '          if(btn){btn.disabled=false;btn.textContent=orig;}' +
     '        }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}' +
@@ -363,13 +361,14 @@ export default async function handler(req, res) {
     '    h+="<button class=\'bn"+(st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"nao_enviado\\")\'>Nao Enviado</button>";' +
     '    h+="<button class=\'bd"+(st==="enviado_diferente"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"enviado_diferente\\")\'>Enviado Diferente</button>";' +
     '    h+="<button class=\'bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"\' onclick=\'setStatus(this,"+String(p.id)+",\\"pendente\\")\'>Pendente</button>";' +
-    '    h+="<input type=\'file\' accept=\'image/*\' capture=\'environment\' id=\'foto-input-"+p.id+"\' style=\'display:none\' onchange=\'uploadFoto(this,"+String(p.id)+")\'>";' +
-    '    h+="<button class=\'foto-btn\' onclick=\'document.getElementById(\\\'foto-input-"+p.id+"\\\').click()\'>Foto do Pacote</button>";' +
+    '    h+="<input type=\'file\' accept=\'image/*\' capture=\'environment\' id=\'fi"+p.id+"\' style=\'display:none\' data-oid=\'"+(p.id)+"\' onchange=\'uFoto(this)\'>";' +
+    '    h+="<button class=\'foto-btn\' data-fid=\'"+(p.id)+"\'>Foto do Pacote</button>";' +
     '    h+="</div>";' +
-    '    h+="<div class=\'fotos-grid\' id=\'fotos-"+p.id+"\'"></div>";' +
+    '    h+="<div class=\'fotos-grid\' id=\'fg"+p.id+"\'"></div>";' +
     '    h+="</div></div></div>";' +
     '  });' +
     '  app.innerHTML=h;' +
+    '  app.addEventListener("click",function handler(e){var b=e.target.closest("[data-fid]");if(!b)return;document.getElementById("fi"+b.getAttribute("data-fid")).click();app.removeEventListener("click",handler);});' +
     '  }catch(e){if(app)app.innerHTML="<div class=\'vz\'>Erro: "+e.message+"</div>";}' +
     '}' +
     (senhaOk ? 'load();' : '') +
