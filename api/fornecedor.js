@@ -50,9 +50,27 @@ export default async function handler(req, res) {
       const printData = await printResp.json();
       const printUrl = printData.url || '';
       const printHash = printUrl.split('/imprimir/')[1] || meOrderId;
-      const pdfResp = await fetch(`${PDF_SERVICE}/pdf/${printHash}?secret=${PDF_SECRET}`);
-      if (!pdfResp.ok) throw new Error('PDF service erro: ' + pdfResp.status);
-      const pdfBuf = await pdfResp.arrayBuffer();
+      // Tentar Railway PDF service primeiro
+      let pdfBuf = null;
+      try {
+        const pdfResp = await fetch(`${PDF_SERVICE}/pdf/${printHash}?secret=${PDF_SECRET}`);
+        if (pdfResp.ok) pdfBuf = await pdfResp.arrayBuffer();
+      } catch(e) { console.log('Railway PDF falhou:', e.message); }
+
+      // Fallback: URL S3 direta do Melhor Envio
+      if (!pdfBuf) {
+        const s3Resp = await fetch(`https://melhorenvio.com.br/api/v2/me/imprimir/pdf/${meOrderId}`, {
+          headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+        });
+        const s3Data = await s3Resp.json();
+        const s3Urls = Array.isArray(s3Data) ? s3Data : [];
+        if (s3Urls.length > 0) {
+          // Redirecionar para URL S3
+          return res.redirect(302, s3Urls[0]);
+        }
+        throw new Error('Não foi possível gerar a etiqueta. Verifique se a etiqueta foi gerada no Melhor Envio.');
+      }
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'attachment; filename="etiqueta-' + (tracking || meOrderId) + '.pdf"');
       res.setHeader('Content-Length', pdfBuf.byteLength);
@@ -249,15 +267,10 @@ input[type=password]:focus{border-color:#111}
   <span class="data" id="data-label"></span>
 </div>
 
-${senhaOk ? '<div class="content" id="app"><div class="loading">⏳ Carregando pedidos...</div></div>' : `<div class="content"><div class="login-box">
-  <h2>🔒 Acesso Restrito</h2>
-  <p>Digite a senha para acessar os pedidos</p>
-  <form onsubmit="entrar(event)">
-    <input type="password" id="inp-senha" placeholder="Senha" autofocus>
-    <button class="btn-login" type="submit">Entrar</button>
-  </form>
-  <div id="msg-erro" style="color:#ef4444;font-size:13px;margin-top:10px"></div>
-</div></div>`}
+${senhaOk
+  ? '<div class="content" id="app"><div class="loading">\u23F3 Carregando pedidos...</div></div>'
+  : '<div class="content"><div class="login-box"><h2>\uD83D\uDD12 Acesso Restrito</h2><p>Digite a senha para acessar os pedidos</p><form onsubmit="entrar(event)"><input type="password" id="inp-senha" placeholder="Senha" autofocus><br><br><button class="btn-login" type="submit">Entrar</button></form><div id="msg-erro" style="color:#ef4444;font-size:13px;margin-top:10px"></div></div></div>'
+}
 
 <div class="overlay" id="overlay" onclick="fecharFoto()">
   <img id="overlay-img" src="" onclick="event.stopPropagation()">
