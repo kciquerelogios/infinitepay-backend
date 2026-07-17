@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     await fetch(KV_URL + '/pipeline', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify([['SET', 'forn-status-' + orderId, String(status), 'EX', '604800']])
+      body: JSON.stringify([['SET', 'forn-status-' + orderId, String(status)]])
     }).catch(function(){});
     return res.status(200).json({ ok: true });
   }
