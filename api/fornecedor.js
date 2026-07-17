@@ -257,6 +257,7 @@ async function baixar(btn,meId,trk){
     btn.textContent="Baixado!";setTimeout(function(){btn.disabled=false;btn.textContent=orig;},3000);
   }catch(e){alert("Erro: "+e.message);btn.disabled=false;btn.textContent=orig;}
 }
+function ss(btn){setStatus(btn,btn.getAttribute('data-id'),btn.getAttribute('data-s'));}
 async function setStatus(btn,id,status){
   var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
   var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2",pendente:"bg bpd"};var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
@@ -337,10 +338,10 @@ async function load(data){
     h+="<div class='br'>";
     h+="<button class='be' onclick='baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";
     var st=p.status_forn||"nao_enviado";
-    h+="<button class='bm"+(st==="enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"enviado\")'>Enviado</button>";
-    h+="<button class='bn"+(st==="nao_enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"nao_enviado\")'>Nao Enviado</button>";
-    h+="<button class='bd"+(st==="enviado_diferente"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"enviado_diferente\")'>Enviado Diferente</button>";
-    h+="<button class='bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"' onclick='setStatus(this,"+String(p.id)+",\"pendente\")'>Pendente</button>";
+    h+="<button class='bm"+(st==="enviado"?" dn":"")+"'  data-id='"+p.id+"' data-s='enviado'  onclick='ss(this)'>Enviado</button>";
+    h+="<button class='bn"+(st==="nao_enviado"?" dn":"")+"'  data-id='"+p.id+"' data-s='nao_enviado'  onclick='ss(this)'>Nao Enviado</button>";
+    h+="<button class='bd"+(st==="enviado_diferente"?" dn":"")+"'  data-id='"+p.id+"' data-s='enviado_diferente'  onclick='ss(this)'>Enviado Diferente</button>";
+    h+="<button class='bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"'  data-id='"+p.id+"' data-s='pendente'  onclick='ss(this)'>Pendente</button>";
     h+="<input type='file' accept='image/*' capture='environment' id='fi"+p.id+"' style='display:none' data-oid='"+(p.id)+"' onchange='uFoto(this)'>";
     h+="<button class='foto-btn' data-fid='"+(p.id)+"'>Foto do Pacote</button>";
     h+="</div>";
