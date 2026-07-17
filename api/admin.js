@@ -479,7 +479,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&fields=id,order_number,created_at,customer,email,phone,shipping_address,billing_address,line_items,fulfillments,financial_status,fulfillment_status,total_price,subtotal_price,total_discounts,total_shipping_price_set,note,tags,discount_codes,refunds`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     ]);
     const prods = prodShopify.products || [];
 
@@ -493,25 +493,41 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           const img = (p.images||[]).find(i => i.id === v.image_id);
           if (img) variantImgMap[String(v.id)] = img.src;
         }
-        // Fallback: imagem principal do produto
         if (!variantImgMap[String(v.id)] && p.image) {
           variantImgMap[String(v.id)] = p.image.src;
         }
       });
     });
 
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim();
     const getImg = (nome) => {
-      const base = nome.split(' - ')[0].trim();
-      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
-      return p?.image?.src || '';
+      if (!nome) return '';
+      const base = nome.split(' - Cor:')[0].split(' - ')[0].trim();
+      const baseNorm = norm(base);
+      // Extrair código do modelo (GA-1017, GBX-100, etc)
+      const modelo = (nome.match(/[A-Z]{1,5}-\d{3,5}[A-Z0-9]*/i)||[])[0]?.toUpperCase() || '';
+      let melhor = null, melhorPts = 0;
+      for (const p of prods) {
+        const pt = norm(p.title);
+        let pts = 0;
+        if (pt === baseNorm) pts = 200;
+        else if (modelo && p.title.toUpperCase().includes(modelo)) pts = 100;
+        else if (pt.includes(baseNorm) || baseNorm.includes(pt)) pts = 50;
+        else pts = baseNorm.split(' ').filter(w=>w.length>2).filter(w=>pt.includes(w)).length * 10;
+        if (pts > melhorPts) { melhorPts = pts; melhor = p; }
+      }
+      return melhor?.image?.src || '';
     };
 
     // Buscar imagem exata por variant_id do line_item
     const getImgVariant = (lineItem) => {
+      // 1. Imagem direto do line_item (mais confiável)
+      if (lineItem.image?.src) return lineItem.image.src;
+      // 2. variant_id no mapa
       if (lineItem.variant_id && variantImgMap[String(lineItem.variant_id)]) {
         return variantImgMap[String(lineItem.variant_id)];
       }
-      // Fallback por título
+      // 3. Busca por título
       return getImg(lineItem.title);
     };
 
