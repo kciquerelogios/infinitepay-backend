@@ -525,24 +525,42 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
       // Tentar imagem da variante pela cor extraída do título
       if (corTitulo) {
-        const corPalavras = corTitulo.split(' ').filter(w => w.length > 2);
-        // Encontrar variante que mais coincide com as palavras da cor
-        let melhorVar = null, melhorVarPts = 0;
-        for (const v of (melhor.variants||[])) {
-          const vt = norm(v.title);
-          const pts = corPalavras.filter(w => vt.includes(w)).length;
-          if (pts > melhorVarPts) { melhorVarPts = pts; melhorVar = v; }
-        }
-        if (melhorVar && melhorVarPts > 0) {
-          if (melhorVar.featured_image?.src) return melhorVar.featured_image.src;
-          if (melhorVar.image_id) {
-            const img = (melhor.images||[]).find(i => i.id === melhorVar.image_id);
+        const varianteImg = (v) => {
+          if (v.featured_image?.src) return v.featured_image.src;
+          if (v.image_id) {
+            const img = (melhor.images||[]).find(i => i.id === v.image_id);
             if (img) return img.src;
           }
-        }
+          return '';
+        };
+
+        const variants = melhor.variants || [];
+
+        // 1. Match exato da cor
+        const exato = variants.find(v => norm(v.title) === corTitulo);
+        if (exato) { const img = varianteImg(exato); if (img) return img; }
+
+        // 2. Variante cujo título está CONTIDO na cor (ex: variante "Preto" dentro de "Preto")
+        // Ordenar por comprimento decrescente para pegar o match mais específico primeiro
+        const porLen = [...variants].sort((a,b) => b.title.length - a.title.length);
+        const contido = porLen.find(v => {
+          const vt = norm(v.title);
+          // Evitar match de "Preto" em "Branco com Preto" quando a cor é apenas "Preto"
+          // Só aceitar se a variante inteira está na cor OU a cor inteira está na variante
+          return corTitulo === vt || corTitulo.startsWith(vt + ' ') || corTitulo.endsWith(' ' + vt);
+        });
+        if (contido) { const img = varianteImg(contido); if (img) return img; }
+
+        // 3. Todas as palavras da variante aparecem na cor (match mais específico)
+        const melhorVar = porLen.find(v => {
+          const palavrasVar = norm(v.title).split(' ').filter(w => w.length > 2);
+          return palavrasVar.length > 0 && palavrasVar.every(w => corTitulo.includes(w));
+        });
+        if (melhorVar) { const img = varianteImg(melhorVar); if (img) return img; }
       }
 
-      return melhor.image?.src || '';
+      // Fallback: primeira imagem do produto
+      return melhor.image?.src || '';}
     };
 
     // Buscar imagem exata por variant_id do line_item
