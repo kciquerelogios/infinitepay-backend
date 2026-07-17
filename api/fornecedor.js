@@ -256,7 +256,7 @@ export default async function handler(req, res) {
     'function af(s){document.getElementById("oi").src=s;document.getElementById("ov").classList.add("on");}' +
     'function ff(){document.getElementById("ov").classList.remove("on");}' +
     'document.addEventListener("keydown",function(e){if(e.key==="Escape")ff();});' +
-'function tp(id){' +
+    'function tp(id){' +
     '  var b=document.getElementById("pb"+id);if(!b)return;' +
     '  b.classList.toggle("op");' +
     '  if(b.classList.contains("op")&&!b.getAttribute("data-fotos-loaded")){' +
