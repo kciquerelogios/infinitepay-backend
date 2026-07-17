@@ -403,9 +403,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
 
     const getImg = (nome) => {
-      const base = nome.split(' - ')[0].trim();
-      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
-      return p?.image?.src || '';
+      if (!nome) return '';
+      const base = nome.split(' - Cor:')[0].trim(); // preserva variante do produto
+      const baseNorm2 = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim();
+      const bn = baseNorm2(base);
+      let best = null, bestPts = 0;
+      for (const p of prods) {
+        const pt = baseNorm2(p.title);
+        let pts = 0;
+        if (pt === bn) pts = 200;
+        else if (pt.includes(bn) || bn.includes(pt)) pts = 50;
+        if (pts > bestPts) { bestPts = pts; best = p; }
+      }
+      return (best && bestPts >= 20) ? (best.image?.src || '') : '';
     };
     const topProdutos = Object.entries(prodContagem)
       .filter(([n]) => !n.toLowerCase().includes('frete') && n.length > 5)
@@ -479,7 +489,24 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+      // Buscar todos os produtos com paginação
+      (async () => {
+        let all = [], pageInfo = null, pages = 0;
+        while (pages < 10) {
+          const url = pageInfo
+            ? `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants&page_info=${pageInfo}`
+            : `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants`;
+          const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+          const d = await r.json().catch(()=>({products:[]}));
+          all = all.concat(d.products || []);
+          const link = r.headers.get('link') || '';
+          const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+          pageInfo = m ? m[1] : null;
+          pages++;
+          if (!pageInfo) break;
+        }
+        return { products: all };
+      })(),
     ]);
     const prods = prodShopify.products || [];
 
@@ -503,7 +530,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
     const getImg = (nome) => {
       if (!nome) return '';
-      const base = nome.split(' - Cor:')[0].split(' - ')[0].trim();
+      // Usar título completo antes de "- Cor:" como base (inclui variante do produto ex: "DOURADO")
+      const base = nome.split(' - Cor:')[0].trim();
       const baseNorm = norm(base);
       const modelo = (nome.match(/[A-Z]{1,5}-[0-9]{3,5}[A-Z0-9]*/i)||[])[0]?.toUpperCase() || '';
 
@@ -1644,7 +1672,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
 
     // Extrair nome base — remover tudo após " - Cor:", " - ", etc
-    const tituloBase = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
+    const tituloBase = titulo.split(' - Cor:')[0].trim(); // título completo antes da cor
     const baseNorm = norm(tituloBase);
 
     // Extrair código do modelo (ex: "GA-1017", "GBX-100", "GXW-56")
