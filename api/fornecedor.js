@@ -178,17 +178,11 @@ export default async function handler(req, res) {
       var statusKeys = orders.map(function(o){return 'forn-status-'+o.id;});
       var statusMap = {};
       if (statusKeys.length > 0) {
-        var fotoKeys = orders.map(function(o){return 'forn-fotos-'+o.id;});
-        var allKeys = statusKeys.concat(fotoKeys);
         var kvR = await fetch(KV_URL + '/pipeline', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            statusKeys.map(function(k){return ['GET',k];}).concat(
-            fotoKeys.map(function(k){return ['LRANGE',k,'0','-1'];}))
-          )
+          body: JSON.stringify(statusKeys.map(function(k){return ['GET',k];}))
         }).then(function(r){return r.json();}).catch(function(){return [];});
-        var fotoMap = {};
         statusKeys.forEach(function(k,i){
           if(kvR[i]&&kvR[i].result) {
             var v = kvR[i].result;
@@ -196,10 +190,6 @@ export default async function handler(req, res) {
             try { var p2 = JSON.parse(v); if (typeof p2 === 'string') v = p2; } catch(e) {}
             statusMap[k] = v;
           }
-        });
-        fotoKeys.forEach(function(k,i){
-          var idx2 = statusKeys.length + i;
-          if(kvR[idx2]&&kvR[idx2].result) fotoMap[k] = kvR[idx2].result;
         });
       }
 
@@ -221,7 +211,7 @@ export default async function handler(req, res) {
           tracking: (o.fulfillments&&o.fulfillments[0]&&o.fulfillments[0].tracking_number)||( meOrder&&meOrder.tracking)||'',
           meOrderId: meOrder?String(meOrder.id):'',
           status_forn: statusMap['forn-status-'+o.id] || 'nao_enviado',
-          fotos: fotoMap['forn-fotos-'+o.id] || [],
+
           criado_em: o.created_at,
           itens: (o.line_items||[]).map(function(i){return {
             nome:i.title, variante:i.variant_title||'', quantidade:i.quantity,
@@ -268,7 +258,14 @@ export default async function handler(req, res) {
     'function af(s){document.getElementById("oi").src=s;document.getElementById("ov").classList.add("on");}' +
     'function ff(){document.getElementById("ov").classList.remove("on");}' +
     'document.addEventListener("keydown",function(e){if(e.key==="Escape")ff();});' +
-    'function tp(id){var b=document.getElementById("pb"+id);if(b)b.classList.toggle("op");}' +
+'function tp(id){' +
+    '  var b=document.getElementById("pb"+id);if(!b)return;' +
+    '  b.classList.toggle("op");' +
+    '  if(b.classList.contains("op")&&!b.getAttribute("data-fotos-loaded")){' +
+    '    b.setAttribute("data-fotos-loaded","1");' +
+    '    carregarFotos(id);' +
+    '  }' +
+    '}' +
     'async function baixar(btn,meId,trk){' +
     '  if(!meId){alert("Etiqueta nao encontrada no Melhor Envio para este pedido.");return;}' +
     '  btn.disabled=true;var orig=btn.textContent;btn.textContent="Buscando...";' +
@@ -292,6 +289,17 @@ export default async function handler(req, res) {
     '    var pb=document.getElementById("pb"+id);if(pb){pb.querySelectorAll(".bm,.bn,.bd").forEach(function(b){b.disabled=false;b.classList.remove("dn");});btn.disabled=true;btn.classList.add("dn");}' +
     '  }else{btn.disabled=false;btn.textContent=orig;}' +
     '  }catch(e){btn.disabled=false;btn.textContent=orig;}' +
+    '}' +
+'async function carregarFotos(orderId){' +
+    '  try{' +
+    '    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=fotos&orderId="+orderId);' +
+    '    var d=await r.json();' +
+    '    var grid=document.getElementById("fotos-"+orderId);' +
+    '    if(grid&&d.fotos&&d.fotos.length){' +
+    '      grid.innerHTML="";' +
+    '      d.fotos.forEach(function(f){var img=document.createElement("img");img.src=f;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);});' +
+    '    }' +
+    '  }catch(e){}' +
     '}' +
 'async function uploadFoto(input,orderId){' +
     '  var file=input.files[0];if(!file)return;' +
@@ -358,9 +366,7 @@ export default async function handler(req, res) {
     '    h+="<input type=\'file\' accept=\'image/*\' capture=\'environment\' id=\'foto-input-"+p.id+"\' style=\'display:none\' onchange=\'uploadFoto(this,"+String(p.id)+")\'>";' +
     '    h+="<button class=\'foto-btn\' onclick=\'document.getElementById(\\\'foto-input-"+p.id+"\\\').click()\'>Foto do Pacote</button>";' +
     '    h+="</div>";' +
-    '    h+="<div class=\'fotos-grid\' id=\'fotos-"+p.id+"\">";' +
-    '    (p.fotos||[]).forEach(function(f){h+="<img src=\'"+f+"\' class=\'foto-thumb\' onclick=\'af(this.src)\'>";});' +
-    '    h+="</div>";' +
+    '    h+="<div class=\'fotos-grid\' id=\'fotos-"+p.id+"\'"></div>";' +
     '    h+="</div></div></div>";' +
     '  });' +
     '  app.innerHTML=h;' +
