@@ -1713,17 +1713,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
-      // Prioridade: imagem do line_item (sempre correta), depois variante, depois produto
       const img = item.image?.src
         || (String(item.variant_id||'') && variantImgMap[String(item.variant_id||'')])
         || getImgPedido(item.title, item.variant_title);
-      return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
+      const varLabel = item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : '';
+      return '<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;border-bottom:1px solid #f3f4f6">'
         + (img
-          ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
-          : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px">⌚</div>')
-        + '<div>'
-        + '<div style="font-size:14px;font-weight:600">' + item.title + '</div>'
-        + '<div style="font-size:12px;color:#6b7280;margin-top:2px">x' + item.quantity + ' — R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + '</div>'
+          ? '<img src="' + img + '" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="window.open(this.src)">'
+          : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>')
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:14px;font-weight:700;line-height:1.4">' + item.title + '</div>'
+        + (varLabel ? '<div style="font-size:12px;color:#6b7280;margin-top:4px;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px">' + varLabel + '</div>' : '')
+        + '<div style="font-size:13px;color:#374151;margin-top:6px;font-weight:600">x' + item.quantity + ' &nbsp;·&nbsp; R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + ' cada</div>'
+        + '<div style="font-size:13px;color:#16a34a;font-weight:700;margin-top:2px">Total: R$ ' + (parseFloat(item.price||0) * (item.quantity||1)).toFixed(2).replace('.',',') + '</div>'
         + '</div></div>';
     }).join('');
 
