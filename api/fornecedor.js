@@ -149,7 +149,7 @@ export default async function handler(req, res) {
       function norm(s) { return (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim(); }
       function getImg(nome) {
         if (!nome) return '';
-        var bn = norm(nome.split(' - Cor:')[0].split(' - ')[0].trim());
+        var bn = norm(nome.split(' - Cor:')[0].trim()); // título completo antes da cor
         var mm = nome.match(/[A-Z]{1,5}-[0-9]{3,5}[A-Z0-9]*/i);
         var modelo = mm ? mm[0].toUpperCase() : '';
         var cm = nome.match(/Cor:([^-]+)/i);
