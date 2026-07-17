@@ -500,12 +500,17 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
 
     const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim();
+
     const getImg = (nome) => {
       if (!nome) return '';
       const base = nome.split(' - Cor:')[0].split(' - ')[0].trim();
       const baseNorm = norm(base);
-      // Extrair código do modelo (GA-1017, GBX-100, etc)
-      const modelo = (nome.match(/[A-Z]{1,5}-\d{3,5}[A-Z0-9]*/i)||[])[0]?.toUpperCase() || '';
+      const modelo = (nome.match(/[A-Z]{1,5}-[0-9]{3,5}[A-Z0-9]*/i)||[])[0]?.toUpperCase() || '';
+
+      // Extrair cor do título: "Pro Trek GA-1017 - Cor: Preto pulseira verde" -> "Preto pulseira verde"
+      const corMatch = nome.match(/Cor:\s*(.+?)(?:\s*-\s*|$)/i);
+      const corTitulo = corMatch ? norm(corMatch[1]) : '';
+
       let melhor = null, melhorPts = 0;
       for (const p of prods) {
         const pt = norm(p.title);
@@ -516,18 +521,36 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         else pts = baseNorm.split(' ').filter(w=>w.length>2).filter(w=>pt.includes(w)).length * 10;
         if (pts > melhorPts) { melhorPts = pts; melhor = p; }
       }
-      return melhor?.image?.src || '';
+      if (!melhor) return '';
+
+      // Tentar imagem da variante pela cor extraída do título
+      if (corTitulo) {
+        const corPalavras = corTitulo.split(' ').filter(w => w.length > 2);
+        // Encontrar variante que mais coincide com as palavras da cor
+        let melhorVar = null, melhorVarPts = 0;
+        for (const v of (melhor.variants||[])) {
+          const vt = norm(v.title);
+          const pts = corPalavras.filter(w => vt.includes(w)).length;
+          if (pts > melhorVarPts) { melhorVarPts = pts; melhorVar = v; }
+        }
+        if (melhorVar && melhorVarPts > 0) {
+          if (melhorVar.featured_image?.src) return melhorVar.featured_image.src;
+          if (melhorVar.image_id) {
+            const img = (melhor.images||[]).find(i => i.id === melhorVar.image_id);
+            if (img) return img.src;
+          }
+        }
+      }
+
+      return melhor.image?.src || '';
     };
 
     // Buscar imagem exata por variant_id do line_item
     const getImgVariant = (lineItem) => {
-      // 1. Imagem direto do line_item (mais confiável)
       if (lineItem.image?.src) return lineItem.image.src;
-      // 2. variant_id no mapa
       if (lineItem.variant_id && variantImgMap[String(lineItem.variant_id)]) {
         return variantImgMap[String(lineItem.variant_id)];
       }
-      // 3. Busca por título
       return getImg(lineItem.title);
     };
 
