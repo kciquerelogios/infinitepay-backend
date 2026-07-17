@@ -560,7 +560,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
 
       // Fallback: primeira imagem do produto
-      return melhor.image?.src || '';}
+      return melhor.image?.src || '';
     };
 
     // Buscar imagem exata por variant_id do line_item
