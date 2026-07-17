@@ -478,7 +478,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       }
     } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&fields=id,order_number,created_at,customer,email,phone,shipping_address,billing_address,line_items,fulfillments,financial_status,fulfillment_status,total_price,subtotal_price,total_discounts,total_shipping_price_set,note,tags,discount_codes,refunds`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     ]);
     const prods = prodShopify.products || [];
@@ -1242,7 +1242,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     // Shopify produtos (estoque + imagens) — incluir variantes e imagens
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants,inventory_management`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Shopify pedidos recentes com fulfillment
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&fields=id,order_number,created_at,customer,email,phone,shipping_address,billing_address,line_items,fulfillments,financial_status,fulfillment_status,total_price,subtotal_price,total_discounts,total_shipping_price_set,note,tags,discount_codes,refunds`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
     fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
     // Melhor Envio - carrinho (pending) e purchases (em trânsito)
