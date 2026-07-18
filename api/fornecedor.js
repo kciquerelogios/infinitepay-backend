@@ -308,42 +308,64 @@ async function carregarFotos(orderId){
 }
 async function uFoto(input){
   var orderId=input.getAttribute("data-oid");
-  var file=input.files[0];if(!file)return;
-  var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="Enviando...";}
+  if(!orderId){alert("Erro: orderId nao encontrado");return;}
+  var file=input.files[0];
+  if(!file){return;}
+  // Encontrar o botao pelo data-fid correspondente
+  var btn=document.querySelector("[data-fid='"+orderId+"']");
+  var orig=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="Processando...";}
   try{
-    // FileReader para compatibilidade com iOS/HEIC
     var jpeg=await new Promise(function(resolve,reject){
       var reader=new FileReader();
       reader.onload=function(e){
+        var dataUrl=e.target.result;
         var img=new Image();
         img.onload=function(){
-          var max=1200;var w=img.width,h=img.height;
-          if(w>max){h=Math.round(h*max/w);w=max;}
-          if(h>max){w=Math.round(w*max/h);h=max;}
-          var canvas=document.createElement("canvas");
-          canvas.width=w;canvas.height=h;
-          canvas.getContext("2d").drawImage(img,0,0,w,h);
-          resolve(canvas.toDataURL("image/jpeg",0.82));
+          try{
+            var max=1000;
+            var w=img.width||800,h=img.height||600;
+            if(w>max){h=Math.round(h*max/w);w=max;}
+            if(h>max){w=Math.round(w*max/h);h=max;}
+            var canvas=document.createElement("canvas");
+            canvas.width=w;canvas.height=h;
+            var ctx=canvas.getContext("2d");
+            ctx.fillStyle="#fff";
+            ctx.fillRect(0,0,w,h);
+            ctx.drawImage(img,0,0,w,h);
+            var result=canvas.toDataURL("image/jpeg",0.75);
+            resolve(result);
+          }catch(err){reject(err);}
         };
-        img.onerror=function(){reject(new Error("Erro ao processar imagem"));};
-        img.src=e.target.result;
+        img.onerror=function(){
+          // Fallback: send original dataUrl without canvas processing
+          resolve(dataUrl);
+        };
+        img.src=dataUrl;
       };
-      reader.onerror=function(){reject(new Error("Erro ao ler arquivo"));};
+      reader.onerror=function(e){reject(new Error("FileReader erro: "+e));};
       reader.readAsDataURL(file);
     });
+    if(btn)btn.textContent="Enviando...";
     var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{
-      method:"POST",headers:{"Content-Type":"application/json"},
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
       body:JSON.stringify({orderId:String(orderId),foto:jpeg})
     });
     var d=await r.json();
     if(d.ok&&d.url){
       var grid=document.getElementById("fg"+orderId);
-      if(grid){adicionarFotoGrid(grid,d.url,orderId);}
+      if(grid)adicionarFotoGrid(grid,d.url,orderId);
       if(btn){btn.disabled=false;btn.textContent=orig;}
       input.value="";
-    }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}
-  }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
+    }else{
+      alert("Erro upload: "+(d.erro||JSON.stringify(d)));
+      if(btn){btn.disabled=false;btn.textContent=orig;}
+    }
+  }catch(e){
+    alert("Erro: "+e.message);
+    if(btn){btn.disabled=false;btn.textContent=orig;}
+  }
 }
 function adicionarFotoGrid(grid,url,orderId){
   var wrap=document.createElement("div");
