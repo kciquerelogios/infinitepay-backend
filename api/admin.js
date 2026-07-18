@@ -2893,94 +2893,68 @@ async function renderRoleta(force) {
   loading();
   try {
     var [cfg, hist] = await Promise.all([
-      fetch(API+'/api/roleta?action=config').then(r=>r.json()),
-      fetch(API+'/api/roleta?action=historico&secret='+S).then(r=>r.json()).catch(function(){return {historico:[]};})
+      fetch(API+'/api/roleta?action=config').then(function(r){return r.json();}),
+      fetch(API+'/api/roleta?action=historico&secret='+S).then(function(r){return r.json();}).catch(function(){return {historico:[]};})
     ]);
     var itens = cfg.itens || [];
     var historico = hist.historico || [];
+    window._rkItens = JSON.parse(JSON.stringify(itens));
 
     var itensHtml = itens.map(function(it, i) {
-      return `<tr>
-        <td style="padding:8px 4px"><input type="color" value="${it.cor||'#333'}" data-i="${i}" data-f="cor" onchange="rkUpd(this)" style="width:36px;height:28px;padding:0;border:1px solid #e8eaf0;border-radius:4px;cursor:pointer"></td>
-        <td style="padding:8px 4px"><input type="text" value="${it.label||''}" data-i="${i}" data-f="label" onchange="rkUpd(this)" placeholder="Ex: 10% OFF" style="width:130px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>
-        <td style="padding:8px 4px"><input type="number" value="${it.prob||10}" data-i="${i}" data-f="prob" onchange="rkUpd(this)" min="1" max="100" style="width:60px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>
-        <td style="padding:8px 4px"><input type="text" value="${it.cupom||''}" data-i="${i}" data-f="cupom" onchange="rkUpd(this)" placeholder="Ex: SPIN10" style="width:110px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px;text-transform:uppercase"></td>
-        <td style="padding:8px 4px"><input type="text" value="${it.mensagem||''}" data-i="${i}" data-f="mensagem" onchange="rkUpd(this)" placeholder="(sem cupom)" style="width:140px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>
-        <td style="padding:8px 4px"><button onclick="rkRemove(${i})" style="padding:4px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">✕</button></td>
-      </tr>`;
+      var row = '<tr>';
+      row += '<td style="padding:8px 4px"><input type="color" value="'+(it.cor||'#333')+'" data-i="'+i+'" data-f="cor" onchange="rkUpd(this)" style="width:36px;height:28px;padding:0;border:1px solid #e8eaf0;border-radius:4px;cursor:pointer"></td>';
+      row += '<td style="padding:8px 4px"><input type="text" value="'+(it.label||'')+'" data-i="'+i+'" data-f="label" onchange="rkUpd(this)" placeholder="Ex: 10% OFF" style="width:130px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>';
+      row += '<td style="padding:8px 4px"><input type="number" value="'+(it.prob||10)+'" data-i="'+i+'" data-f="prob" onchange="rkUpd(this)" min="1" max="100" style="width:60px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>';
+      row += '<td style="padding:8px 4px"><input type="text" value="'+(it.cupom||'')+'" data-i="'+i+'" data-f="cupom" onchange="rkUpd(this)" placeholder="Ex: SPIN10" style="width:110px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px;text-transform:uppercase"></td>';
+      row += '<td style="padding:8px 4px"><input type="text" value="'+(it.mensagem||'')+'" data-i="'+i+'" data-f="mensagem" onchange="rkUpd(this)" placeholder="(sem cupom)" style="width:140px;padding:6px 8px;border:1px solid #e8eaf0;border-radius:6px;font-size:13px"></td>';
+      row += '<td style="padding:8px 4px"><button onclick="rkRemove('+i+')" style="padding:4px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">&#10005;</button></td>';
+      row += '</tr>';
+      return row;
     }).join('');
 
-    var histHtml = historico.slice(0,50).map(function(h){
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #f3f4f6;font-size:13px">
-        <span style="font-weight:600">${h.premio||''}</span>
-        <span style="color:#6b7280;font-size:12px">${h.data||''}</span>
-        <span style="background:#f3f4f6;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#374151">${h.cupom||'sem cupom'}</span>
-      </div>`;
-    }).join('') || '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Nenhum giro registrado ainda</div>';
+    var histHtml = historico.length ? historico.slice(0,50).map(function(h){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #f3f4f6;font-size:13px">'
+        + '<span style="font-weight:600">'+(h.premio||'')+'</span>'
+        + '<span style="color:#6b7280;font-size:12px">'+(h.data||'')+'</span>'
+        + '<span style="background:#f3f4f6;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#374151">'+(h.cupom||'sem cupom')+'</span>'
+        + '</div>';
+    }).join('')
+    : '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Nenhum giro registrado ainda</div>';
 
-    var html = `
-    <div style="padding:24px;max-width:900px">
-      <h2 style="font-size:20px;font-weight:700;margin-bottom:6px">🎡 Roleta de Prêmios</h2>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:24px">Configure os itens da roleta. A probabilidade é relativa — os valores não precisam somar 100.</p>
+    var html = '<div style="padding:24px;max-width:900px">'
+      + '<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">&#127905; Roleta de Prêmios</h2>'
+      + '<p style="color:#6b7280;font-size:13px;margin-bottom:24px">Configure os itens da roleta. A probabilidade é relativa — os valores não precisam somar 100.</p>'
+      + '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px;margin-bottom:20px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+      + '<span style="font-size:14px;font-weight:700">Itens da Roleta</span>'
+      + '<button onclick="rkAdd()" style="padding:7px 16px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Adicionar item</button>'
+      + '</div>'
+      + '<div style="overflow-x:auto">'
+      + '<table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">'
+      + '<th style="padding:4px;text-align:left;font-weight:600">Cor</th>'
+      + '<th style="padding:4px;text-align:left;font-weight:600">Label</th>'
+      + '<th style="padding:4px;text-align:left;font-weight:600">Chance</th>'
+      + '<th style="padding:4px;text-align:left;font-weight:600">Cupom</th>'
+      + '<th style="padding:4px;text-align:left;font-weight:600">Mensagem</th>'
+      + '<th></th>'
+      + '</tr></thead>'
+      + '<tbody id="rk-tbody">' + itensHtml + '</tbody>'
+      + '</table></div>'
+      + '<div style="margin-top:16px;display:flex;gap:12px;align-items:center">'
+      + '<button onclick="rkSalvar()" id="rk-save-btn" style="padding:10px 24px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Salvar configuração</button>'
+      + '<a href="https://kcique.com.br/pages/roleta" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:none">Ver roleta ao vivo &#8594;</a>'
+      + '</div></div>'
+      + '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px">'
+      + '<div style="font-size:14px;font-weight:700;margin-bottom:16px">Últimos giros ('+historico.length+')</div>'
+      + histHtml
+      + '</div></div>';
 
-      <div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px;margin-bottom:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <span style="font-size:14px;font-weight:700">Itens da Roleta</span>
-          <button onclick="rkAdd()" style="padding:7px 16px;background:#111;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Adicionar item</button>
-        </div>
-        <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">
-              <th style="padding:4px;text-align:left;font-weight:600">Cor</th>
-              <th style="padding:4px;text-align:left;font-weight:600">Label</th>
-              <th style="padding:4px;text-align:left;font-weight:600">Chance</th>
-              <th style="padding:4px;text-align:left;font-weight:600">Cupom</th>
-              <th style="padding:4px;text-align:left;font-weight:600">Mensagem</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="rk-tbody">${itensHtml}</tbody>
-        </table>
-        </div>
-        <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
-          <button onclick="rkSalvar()" id="rk-save-btn" style="padding:10px 24px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Salvar configuração</button>
-          <a href="https://kcique.com.br/pages/roleta" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:none">Ver roleta ao vivo →</a>
-        </div>
-      </div>
-
-      <div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px">
-        <div style="font-size:14px;font-weight:700;margin-bottom:16px">Últimos giros (${historico.length})</div>
-        ${histHtml}
-      </div>
-    </div>`;
     document.getElementById('content').innerHTML = html;
-    window._rkItens = JSON.parse(JSON.stringify(itens));
   } catch(e) {
-    document.getElementById('content').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">Erro ao carregar roleta: ' + e.message + '</div>';
+    document.getElementById('content').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">Erro: ' + e.message + '</div>';
   }
 }
-
-window.rkUpd = function(el) {
-  var i = parseInt(el.dataset.i), f = el.dataset.f;
-  if (!window._rkItens || !window._rkItens[i]) return;
-  window._rkItens[i][f] = f === 'prob' ? parseInt(el.value)||1 : el.value;
-};
-
-window.rkAdd = function() {
-  if (!window._rkItens) window._rkItens = [];
-  var colors = ['#e74c3c','#27ae60','#2980b9','#8e44ad','#d35400','#f39c12'];
-  var cor = colors[window._rkItens.length % colors.length];
-  window._rkItens.push({ label: 'Novo item', cor: cor, prob: 10, cupom: '', mensagem: '' });
-  renderRoleta();
-};
-
-window.rkRemove = function(i) {
-  if (!window._rkItens) return;
-  window._rkItens.splice(i, 1);
-  renderRoleta();
-};
-
 window.rkSalvar = async function() {
   var btn = document.getElementById('rk-save-btn');
   if (!btn) return;
