@@ -2915,7 +2915,7 @@ async function renderRoleta(force) {
     var histHtml = historico.length ? historico.slice(0,50).map(function(h){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #f3f4f6;font-size:13px">'
         + '<span style="font-weight:600">'+(h.premio||'')+'</span>'
-        + '<span style="color:#6b7280;font-size:12px">'+(h.data||'')+'</span>'
+        + '<span style="color:#6b7280;font-size:12px">'+(h.ts ? new Date(h.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : (h.data||''))+'</span>'
         + '<span style="background:#f3f4f6;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#374151">'+(h.cupom||'sem cupom')+'</span>'
         + '</div>';
     }).join('')
