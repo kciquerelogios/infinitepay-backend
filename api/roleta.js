@@ -29,7 +29,11 @@ export default async function handler(req, res) {
         { label: 'Brinde\nEspecial', cor: '#d35400', prob: 5, cupom: 'BRINDE'   },
       ];
     }
-    return res.status(200).json({ itens });
+    const statusR = await fetch(KV_URL + '/get/roleta-aberta', {
+      headers: { Authorization: 'Bearer ' + KV_TOKEN }
+    }).then(function(r){return r.json();}).catch(function(){return {result:null};});
+    const aberta = statusR.result !== '0';
+    return res.status(200).json({ itens, aberta });
   }
 
   // ── REGISTRAR SPIN ────────────────────────────────────────────
@@ -46,6 +50,18 @@ export default async function handler(req, res) {
       ])
     }).catch(function(){});
     return res.status(200).json({ ok: true });
+  }
+
+  // ── TOGGLE STATUS ────────────────────────────────────────────
+  if (action === 'toggle-status' && req.method === 'POST') {
+    if (req.query.secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    const aberta = req.body && req.body.aberta;
+    await fetch(KV_URL + '/pipeline', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SET', 'roleta-aberta', aberta ? '1' : '0']])
+    });
+    return res.status(200).json({ ok: true, aberta: aberta });
   }
 
   // ── SALVAR CONFIG (dashboard) ─────────────────────────────────
