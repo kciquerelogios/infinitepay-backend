@@ -45,6 +45,22 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── EXCLUIR FOTO ─────────────────────────────────────────────
+  if (action === 'excluir-foto' && req.method === 'POST') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const orderId = (req.body && req.body.orderId) || '';
+    const url = (req.body && req.body.url) || '';
+    if (!orderId || !url) return res.status(400).json({ erro: 'Parametros faltando' });
+    await fetch(KV_URL + '/pipeline', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['LREM', 'forn-fotos-' + orderId, '0', url]])
+    }).catch(function(){});
+    return res.status(200).json({ ok: true });
+  }
+
   // ── LISTAR FOTOS ──────────────────────────────────────────────
   if (action === 'fotos' && req.method === 'GET') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
@@ -286,7 +302,7 @@ async function carregarFotos(orderId){
     var grid=document.getElementById("fg"+orderId);
     if(grid&&d.fotos&&d.fotos.length){
       grid.innerHTML="";
-      d.fotos.forEach(function(f){var img=document.createElement("img");img.src=f;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);});
+      d.fotos.forEach(function(f){adicionarFotoGrid(grid,f,orderId);});
     }
   }catch(e){}
 }
@@ -296,20 +312,25 @@ async function uFoto(input){
   var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="Enviando...";}
   try{
+    // FileReader para compatibilidade com iOS/HEIC
     var jpeg=await new Promise(function(resolve,reject){
-      var img=new Image();var url=URL.createObjectURL(file);
-      img.onload=function(){
-        var canvas=document.createElement("canvas");
-        var max=1200;var w=img.width,h=img.height;
-        if(w>max){h=Math.round(h*max/w);w=max;}
-        if(h>max){w=Math.round(w*max/h);h=max;}
-        canvas.width=w;canvas.height=h;
-        canvas.getContext("2d").drawImage(img,0,0,w,h);
-        URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL("image/jpeg",0.85));
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var img=new Image();
+        img.onload=function(){
+          var max=1200;var w=img.width,h=img.height;
+          if(w>max){h=Math.round(h*max/w);w=max;}
+          if(h>max){w=Math.round(w*max/h);h=max;}
+          var canvas=document.createElement("canvas");
+          canvas.width=w;canvas.height=h;
+          canvas.getContext("2d").drawImage(img,0,0,w,h);
+          resolve(canvas.toDataURL("image/jpeg",0.82));
+        };
+        img.onerror=function(){reject(new Error("Erro ao processar imagem"));};
+        img.src=e.target.result;
       };
-      img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("Erro ao ler imagem"));}
-      img.src=url;
+      reader.onerror=function(){reject(new Error("Erro ao ler arquivo"));};
+      reader.readAsDataURL(file);
     });
     var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{
       method:"POST",headers:{"Content-Type":"application/json"},
@@ -318,10 +339,37 @@ async function uFoto(input){
     var d=await r.json();
     if(d.ok&&d.url){
       var grid=document.getElementById("fg"+orderId);
-      if(grid){var img2=document.createElement("img");img2.src=d.url;img2.className="foto-thumb";img2.onclick=function(){af(this.src);};grid.appendChild(img2);}
+      if(grid){adicionarFotoGrid(grid,d.url,orderId);}
       if(btn){btn.disabled=false;btn.textContent=orig;}
+      input.value="";
     }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}
   }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
+}
+function adicionarFotoGrid(grid,url,orderId){
+  var wrap=document.createElement("div");
+  wrap.style.cssText="position:relative;display:inline-block;";
+  var img=document.createElement("img");
+  img.src=url;img.className="foto-thumb";
+  img.onclick=function(){af(url);};
+  var del=document.createElement("button");
+  del.textContent="×";
+  del.style.cssText="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#ef4444;color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;";
+  del.onclick=function(e){e.stopPropagation();excluirFoto(url,orderId,wrap);};
+  wrap.appendChild(img);
+  wrap.appendChild(del);
+  grid.appendChild(wrap);
+}
+async function excluirFoto(url,orderId,wrap){
+  if(!confirm("Excluir esta foto?"))return;
+  try{
+    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=excluir-foto",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({orderId:String(orderId),url:url})
+    });
+    var d=await r.json();
+    if(d.ok){wrap.remove();}
+    else{alert(d.erro||"Erro ao excluir");}
+  }catch(e){alert("Erro: "+e.message);}
 }
 async function load(data){
   var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");
