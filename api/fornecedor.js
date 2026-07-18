@@ -415,7 +415,6 @@ async function load(data){
     h+="<div class='pb' id='pb"+p.id+"'>";
     h+="<div class='ig'>";
     h+="<div class='ic'><div class='il'>Cliente</div><div class='iv'>"+p.nome+"</div></div>";
-    h+="<div class='ic'><div class='il'>Telefone</div><div class='iv'>"+(p.telefone?"+55 "+p.telefone:"nao informado")+"</div></div>";
     h+="<div class='ic' style='grid-column:span 2'><div class='il'>Endereco</div><div class='iv'>"+(p.endereco||"nao informado")+"</div></div>";
     h+="</div>";
     if(p.tracking)h+="<div class='tk'>Rastreio: "+p.tracking+"</div>";
