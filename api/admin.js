@@ -2898,6 +2898,7 @@ async function renderRoleta(force) {
     ]);
     var itens = cfg.itens || [];
     var historico = hist.historico || [];
+    var aberta = cfg.aberta !== false;
     window._rkItens = JSON.parse(JSON.stringify(itens));
 
     var itensHtml = itens.map(function(it, i) {
@@ -2922,7 +2923,14 @@ async function renderRoleta(force) {
     : '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Nenhum giro registrado ainda</div>';
 
     var html = '<div style="padding:24px;max-width:900px">'
-      + '<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">&#127905; Roleta de Prêmios</h2>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+      + '<h2 style="font-size:20px;font-weight:700">&#127905; Roleta de Prêmios</h2>'
+      + '<button onclick="rkToggle()" id="rk-toggle-btn" style="padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;'+(aberta?'background:#fee2e2;color:#dc2626':'background:#dcfce7;color:#16a34a')+'">'+(aberta?'&#128274; Fechar Roleta':'&#128275; Abrir Roleta')+'</button>'
+      + '</div>'
+      + '<div id="rk-status-badge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:20px;'+(aberta?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626')+'">'
+      + '<span style="width:7px;height:7px;border-radius:50%;background:'+(aberta?'#16a34a':'#dc2626')+'"></span>'
+      + (aberta?'Roleta aberta ao público':'Roleta fechada')
+      + '</div>'
       + '<p style="color:#6b7280;font-size:13px;margin-bottom:24px">Configure os itens da roleta. A probabilidade é relativa — os valores não precisam somar 100.</p>'
       + '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px;margin-bottom:20px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
@@ -2955,6 +2963,52 @@ async function renderRoleta(force) {
     document.getElementById('content').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">Erro: ' + e.message + '</div>';
   }
 }
+window.rkToggle = async function() {
+  var btn = document.getElementById('rk-toggle-btn');
+  var badge = document.getElementById('rk-status-badge');
+  if (!btn) return;
+  var isOpen = btn.innerHTML.includes('Fechar');
+  var novaSituacao = !isOpen;
+  btn.disabled = true;
+  try {
+    var r = await fetch(API+'/api/roleta?action=toggle-status&secret='+S, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ aberta: novaSituacao })
+    });
+    var d = await r.json();
+    if (d.ok) {
+      if (novaSituacao) {
+        btn.style.background='#fee2e2'; btn.style.color='#dc2626';
+        btn.innerHTML='&#128274; Fechar Roleta';
+        badge.style.background='#dcfce7'; badge.style.color='#16a34a';
+        badge.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:6px"></span>Roleta aberta ao público';
+      } else {
+        btn.style.background='#dcfce7'; btn.style.color='#16a34a';
+        btn.innerHTML='&#128275; Abrir Roleta';
+        badge.style.background='#fee2e2'; badge.style.color='#dc2626';
+        badge.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:#dc2626;display:inline-block;margin-right:6px"></span>Roleta fechada';
+      }
+    } else { alert('Erro ao alterar status'); }
+  } catch(e) { alert('Erro: '+e.message); }
+  btn.disabled = false;
+};
+window.rkUpd = function(el) {
+  var i=parseInt(el.dataset.i), f=el.dataset.f;
+  if (!window._rkItens||!window._rkItens[i]) return;
+  window._rkItens[i][f] = f==='prob' ? parseInt(el.value)||1 : el.value;
+};
+window.rkAdd = function() {
+  if (!window._rkItens) window._rkItens=[];
+  var colors=['#1a1a1a','#2d6a4f','#1d4e89','#5c2a8c','#b5451b','#d35400'];
+  window._rkItens.push({label:'Novo item',cor:colors[window._rkItens.length%colors.length],fg:'#fff',prob:10,cupom:'',mensagem:''});
+  renderRoleta();
+};
+window.rkRemove = function(i) {
+  if (!window._rkItens) return;
+  window._rkItens.splice(i,1);
+  renderRoleta();
+};
 window.rkSalvar = async function() {
   var btn = document.getElementById('rk-save-btn');
   if (!btn) return;
