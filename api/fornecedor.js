@@ -404,7 +404,10 @@ async function load(data){
   var ps=d.pedidos||[];
   if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}
   if(!ps.length){app.innerHTML="<div class='vz'>Nenhum pedido ontem</div>";return;}
-  var h="<div class='st'><div class='sn'>"+ps.length+"</div><div class='sl'>"+ps.length+(ps.length!==1?"":"")+" pedido"+(ps.length!==1?"s":"")+" — "+( dt?dt.split("-").reverse().join("/"):"data selecionada")+"</div></div>";
+  var enviados=ps.filter(function(p){return p.status_forn==="enviado"||p.fulfillment==="fulfilled";}).length;
+  var totalRelógios=ps.reduce(function(a,p){return a+(p.itens||[]).reduce(function(b,i){return b+i.quantidade;},0);},0);
+  var dataLabel=dt?dt.split("-").reverse().join("/"):"data selecionada";
+  var h="<div class='st' style='display:flex;gap:24px;flex-wrap:wrap'>"+"<div><div class='sn'>"+ps.length+"</div><div class='sl'>pedido"+(ps.length!==1?"s":"")+" — "+dataLabel+"</div></div>"+"<div style='border-left:1px solid #e8eaf0;padding-left:24px'><div class='sn' style='color:#16a34a'>"+enviados+"</div><div class='sl'>enviado"+(enviados!==1?"s":"")+"</div></div>"+"<div style='border-left:1px solid #e8eaf0;padding-left:24px'><div class='sn' style='color:#2563eb'>"+totalRelógios+"</div><div class='sl'>relógio"+(totalRelógios!==1?"s":"")+"</div></div>"+"</div>";
   ps.forEach(function(p){
     var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";
     var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
