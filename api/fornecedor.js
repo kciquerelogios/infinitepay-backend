@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       formData.append('file', fotoBase64);
       formData.append('upload_preset', UPLOAD_PRESET);
       formData.append('folder', 'kcique-pedidos');
-      formData.append('context', 'pedido=' + orderId);
+      formData.append('public_id', 'pedido_' + orderId + '_' + Date.now());
       const cloudResp = await fetch('https://api.cloudinary.com/v1_1/' + CLOUD_NAME + '/image/upload', {
         method: 'POST',
         body: formData
