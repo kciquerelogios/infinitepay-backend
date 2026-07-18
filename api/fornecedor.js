@@ -13,17 +13,27 @@ export default async function handler(req, res) {
     const orderId = (req.body && req.body.orderId) || '';
     const fotoBase64 = (req.body && req.body.foto) || '';
     if (!orderId || !fotoBase64) return res.status(400).json({ erro: 'orderId e foto obrigatorios' });
+    if (!CLOUD_NAME || !UPLOAD_PRESET) return res.status(500).json({ erro: 'Cloudinary nao configurado. Adicione CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET no Vercel.' });
     try {
-      // Upload para Cloudinary
+      // Upload via FormData (mais confiável que JSON)
+      const formData = new FormData();
+      formData.append('file', fotoBase64);
+      formData.append('upload_preset', UPLOAD_PRESET);
+      formData.append('folder', 'kcique-pedidos');
+      formData.append('context', 'pedido=' + orderId);
       const cloudResp = await fetch('https://api.cloudinary.com/v1_1/' + CLOUD_NAME + '/image/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: fotoBase64, upload_preset: UPLOAD_PRESET, folder: 'kcique-pedidos', public_id: 'pedido-' + orderId + '-' + Date.now() })
+        body: formData
       });
       const cloudData = await cloudResp.json();
-      if (!cloudData.secure_url) return res.status(500).json({ erro: 'Erro no upload: ' + (cloudData.error && cloudData.error.message || 'desconhecido') });
+      if (!cloudData.secure_url) {
+        const msg = (cloudData.error && cloudData.error.message) || JSON.stringify(cloudData);
+        console.error('Cloudinary error:', JSON.stringify(cloudData));
+        console.error('CLOUD_NAME:', CLOUD_NAME, 'UPLOAD_PRESET:', UPLOAD_PRESET);
+        console.error('foto preview:', fotoBase64 ? fotoBase64.substring(0,50) : 'empty');
+        return res.status(500).json({ erro: 'Cloudinary: ' + msg, debug: { cloud: CLOUD_NAME, preset: UPLOAD_PRESET, fotoInicio: fotoBase64 ? fotoBase64.substring(0,30) : 'vazio' } });
+      }
       const fotoUrl = cloudData.secure_url;
-      // Salvar URL no Redis vinculada ao pedido
       await fetch(KV_URL + '/pipeline', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
@@ -280,24 +290,37 @@ async function carregarFotos(orderId){
     }
   }catch(e){}
 }
-async function uFoto(input){var orderId=input.getAttribute("data-oid");
+async function uFoto(input){
+  var orderId=input.getAttribute("data-oid");
   var file=input.files[0];if(!file)return;
   var btn=input.previousElementSibling;var orig=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="Enviando foto...";}
+  if(btn){btn.disabled=true;btn.textContent="Enviando...";}
   try{
-    var reader=new FileReader();
-    reader.onload=async function(e){
-      try{
-        var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:String(orderId),foto:e.target.result})});
-        var d=await r.json();
-        if(d.ok&&d.url){
-          var grid=document.getElementById("fg"+orderId);
-          if(grid){var img=document.createElement("img");img.src=d.url;img.className="foto-thumb";img.onclick=function(){af(this.src);};grid.appendChild(img);}
-          if(btn){btn.disabled=false;btn.textContent=orig;}
-        }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}
-      }catch(err){alert("Erro: "+err.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
-    };
-    reader.readAsDataURL(file);
+    var jpeg=await new Promise(function(resolve,reject){
+      var img=new Image();var url=URL.createObjectURL(file);
+      img.onload=function(){
+        var canvas=document.createElement("canvas");
+        var max=1200;var w=img.width,h=img.height;
+        if(w>max){h=Math.round(h*max/w);w=max;}
+        if(h>max){w=Math.round(w*max/h);h=max;}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg",0.85));
+      };
+      img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("Erro ao ler imagem"));}
+      img.src=url;
+    });
+    var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=upload-foto",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({orderId:String(orderId),foto:jpeg})
+    });
+    var d=await r.json();
+    if(d.ok&&d.url){
+      var grid=document.getElementById("fg"+orderId);
+      if(grid){var img2=document.createElement("img");img2.src=d.url;img2.className="foto-thumb";img2.onclick=function(){af(this.src);};grid.appendChild(img2);}
+      if(btn){btn.disabled=false;btn.textContent=orig;}
+    }else{alert(d.erro||"Erro ao enviar foto");if(btn){btn.disabled=false;btn.textContent=orig;}}
   }catch(e){alert("Erro: "+e.message);if(btn){btn.disabled=false;btn.textContent=orig;}}
 }
 async function load(data){
