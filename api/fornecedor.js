@@ -81,27 +81,11 @@ export default async function handler(req, res) {
     const KV_TOKEN = process.env.KV_REST_API_TOKEN;
     const orderId = (req.body && req.body.orderId) || '';
     const status = (req.body && req.body.status) || 'nao_enviado';
-    const qtd = parseInt((req.body && req.body.qtd) || '0') || 0;
     if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
-    // Verificar status anterior para ajustar contador mensal
-    const prevR = await fetch(KV_URL + '/get/forn-status-' + orderId, {
-      headers: { Authorization: 'Bearer ' + KV_TOKEN }
-    }).then(function(r){return r.json();}).catch(function(){return {result:null};});
-    const prevStatus = prevR.result || 'nao_enviado';
-    const mesKey = 'forn-mes-' + new Date().toISOString().slice(0,7); // YYYY-MM
-    const pipeline = [['SET', 'forn-status-' + orderId, String(status)]];
-    // Incrementar contador do mês quando marca como enviado
-    if (status === 'enviado' && prevStatus !== 'enviado' && qtd > 0) {
-      pipeline.push(['INCRBY', mesKey, String(qtd)]);
-    }
-    // Decrementar se desmarcou enviado
-    if (status !== 'enviado' && prevStatus === 'enviado' && qtd > 0) {
-      pipeline.push(['DECRBY', mesKey, String(qtd)]);
-    }
     await fetch(KV_URL + '/pipeline', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify(pipeline)
+      body: JSON.stringify([['SET', 'forn-status-' + orderId, String(status)]])
     }).catch(function(){});
     return res.status(200).json({ ok: true });
   }
@@ -260,13 +244,7 @@ export default async function handler(req, res) {
           };})
         };
       });
-      // Buscar total do mês
-      const mesKey = 'forn-mes-' + new Date().toISOString().slice(0,7);
-      const mesR = await fetch(KV_URL + '/get/' + mesKey, {
-        headers: { Authorization: 'Bearer ' + KV_TOKEN }
-      }).then(function(r){return r.json();}).catch(function(){return {result:'0'};});
-      const totalMes = parseInt(mesR.result || '0') || 0;
-      return res.status(200).json({ pedidos:pedidos, data:ontemStr, total:pedidos.length, totalMes:totalMes });
+      return res.status(200).json({ pedidos:pedidos, data:ontemStr, total:pedidos.length });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
@@ -310,8 +288,7 @@ async function setStatus(btn,id,status){
   var lbl={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
   var bgC={enviado:"bg bfn",nao_enviado:"bg bpd",enviado_diferente:"bg bd2",pendente:"bg bpd"};var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
   var orig=btn.textContent;
-  var pb2=document.getElementById("pb"+id);var qtd2=0;if(pb2){pb2.querySelectorAll(".iq strong").forEach(function(el){qtd2+=parseInt(el.textContent)||0;});}
-  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status,qtd:qtd2})});
+  try{var r=await fetch(A+"?senha="+encodeURIComponent(S)+"&action=set-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:id,status:status})});
   var d=await r.json();
   if(d.ok){var bg=document.getElementById("bg"+id);if(bg){bg.className=bgC[status]||"bg bpd";bg.textContent=lbl[status]||status;}
     var pb=document.getElementById("pb"+id);if(pb){pb.querySelectorAll(".bm,.bn,.bd").forEach(function(b){b.disabled=false;b.classList.remove("dn");});btn.disabled=true;btn.classList.add("dn");}
@@ -427,18 +404,8 @@ async function load(data){
   var ps=d.pedidos||[];
   if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}
   if(!ps.length){app.innerHTML="<div class='vz'>Nenhum pedido ontem</div>";return;}
-  var enviados=ps.filter(function(p){return p.status_forn==="enviado"||p.fulfillment==="fulfilled";}).length;
-  var totalRel=ps.reduce(function(a,p){return a+(p.itens||[]).reduce(function(b,i){return b+(i.quantidade||0);},0);},0);
   var dataLabel=dt?dt.split("-").reverse().join("/"):"data selecionada";
-  var mesAtual=new Date().toLocaleString("pt-BR",{month:"long",timeZone:"America/Sao_Paulo"});
-  var totalMes=d.totalMes||0;
-  var h="";
-  h+="<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px'>";
-  h+="<div class='st' style='margin-bottom:0'><div class='sn'>"+(ps.length)+"</div><div class='sl'>pedido"+(ps.length!==1?"s":"")+"<br><span style='font-size:11px;color:#9ca3af'>"+(dataLabel)+"</span></div></div>";
-  h+="<div class='st' style='margin-bottom:0'><div class='sn' style='color:#16a34a'>"+(enviados)+"</div><div class='sl'>enviado"+(enviados!==1?"s":"")+"<br><span style='font-size:11px;color:#9ca3af'>do dia</span></div></div>";
-  h+="<div class='st' style='margin-bottom:0'><div class='sn' style='color:#2563eb'>"+(totalRel)+"</div><div class='sl'>rel\u00f3gio"+(totalRel!==1?"s":"")+"<br><span style='font-size:11px;color:#9ca3af'>no dia</span></div></div>";
-  h+="<div class='st' style='margin-bottom:0;background:#f0fdf4;border-color:#bbf7d0'><div class='sn' style='color:#15803d'>"+(totalMes)+"</div><div class='sl'>rel\u00f3gio"+(totalMes!==1?"s":"")+"<br><span style='font-size:11px;color:#9ca3af'>em "+(mesAtual)+"</span></div></div>";
-  h+="</div>";
+  var h="<div class='st'><div class='sn'>"+ps.length+"</div><div class='sl'>pedido"+(ps.length!==1?"s":"")+" — "+dataLabel+"</div></div>";
   ps.forEach(function(p){
     var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";
     var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
