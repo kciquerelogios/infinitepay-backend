@@ -60,10 +60,10 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
 }
 
 async function salvarOferta(KV_URL, KV_TOKEN, dados) {
-  const { texto, imagem, link, dataHora, grupos } = dados;
+  const { texto, imagem, link, dataHora, grupos, mentionEveryOne } = dados;
   if (!texto || !dataHora) throw new Error('Texto e data obrigatorios');
   const id = `oferta_${Date.now()}`;
-  const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', status: 'agendada', criado_em: new Date().toISOString() };
+  const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', mentionEveryOne: mentionEveryOne !== false, status: 'agendada', criado_em: new Date().toISOString() };
   await fetch(`${KV_URL}/set/${id}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
@@ -119,11 +119,12 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
         const isVideo = oferta.imagem && /\.(mp4|mov|avi|webm)(\?|$)/i.test(oferta.imagem);
         const endpoint = oferta.imagem ? (isVideo ? 'send-video' : 'send-image') : 'send-text';
         const caption = oferta.texto + (oferta.link ? '\n\n\uD83D\uDD17 ' + oferta.link : '');
+        const mention = oferta.mentionEveryOne !== false;
         const body = oferta.imagem
           ? (isVideo
-            ? { phone: grupo, video: oferta.imagem, caption }
-            : { phone: grupo, image: oferta.imagem, caption })
-          : { phone: grupo, message: caption };
+            ? { phone: grupo, video: oferta.imagem, caption, mentionEveryOne: mention }
+            : { phone: grupo, image: oferta.imagem, caption, mentionEveryOne: mention })
+          : { phone: grupo, message: caption, mentionEveryOne: mention };
         const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
