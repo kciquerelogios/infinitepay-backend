@@ -2,8 +2,10 @@
 import crypto from 'crypto';
 
 const PIXEL_ID = process.env.META_PIXEL_ID;
+const PIXEL_ID_2 = '1399624871325928';
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const API_URL = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events`;
+const API_URL_2 = `https://graph.facebook.com/v19.0/${PIXEL_ID_2}/events`;
 
 function hash(value) {
   if (!value) return undefined;
@@ -56,13 +58,13 @@ export default async function handler(req, res) {
       st: hash(estado),
       zp: hash(cep),
       country: hash(pais || 'br'),
-      // IP real do cliente: prioridade para o IP passado pelo cliente (via Liquid),
-      // depois x-forwarded-for (primeiro da lista = cliente real), depois fallback
-      client_ip_address: (() => {
-        if (ip && ip !== 'null' && ip !== '') return ip;
-        const forwarded = req.headers['x-forwarded-for'];
-        if (forwarded) return forwarded.split(',')[0].trim();
-        return req.socket?.remoteAddress || '';
+      client_ip_address: (function() {
+        try {
+          if (ip && ip !== 'null' && ip !== '') return ip;
+          var fwd = req.headers['x-forwarded-for'];
+          if (fwd) return fwd.split(',')[0].trim();
+          return (req.socket && req.socket.remoteAddress) || '';
+        } catch(e) { return ''; }
       })(),
       client_user_agent: user_agent || req.headers['user-agent'],
       fbc: fbc,
