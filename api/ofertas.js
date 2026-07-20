@@ -125,6 +125,7 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
             ? { phone: grupo, video: oferta.imagem, caption, mentionEveryOne: mention }
             : { phone: grupo, image: oferta.imagem, caption, mentionEveryOne: mention })
           : { phone: grupo, message: caption, mentionEveryOne: mention };
+        console.log('Z-API body:', JSON.stringify(body).substring(0, 200));
         const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
         });
