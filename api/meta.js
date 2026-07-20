@@ -86,20 +86,32 @@ export default async function handler(req, res) {
       ...(process.env.META_TEST_CODE ? { test_event_code: process.env.META_TEST_CODE } : {}),
     };
 
-    const response = await fetch(`${API_URL}?access_token=${ACCESS_TOKEN}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    // Enviar para os dois pixels em paralelo
+    const [response, response2] = await Promise.all([
+      fetch(`${API_URL}?access_token=${ACCESS_TOKEN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+      fetch(`${API_URL_2}?access_token=${ACCESS_TOKEN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    ]);
 
     const data = await response.json();
+    const data2 = await response2.json().catch(() => ({}));
 
     if (data.error) {
-      console.error('Meta CAPI erro:', JSON.stringify(data.error));
+      console.error('Meta CAPI erro pixel1:', JSON.stringify(data.error));
       return res.status(400).json({ error: data.error.message });
     }
+    if (data2.error) {
+      console.error('Meta CAPI erro pixel2:', JSON.stringify(data2.error));
+    }
 
-    console.log('Meta CAPI ok:', event_name, '| events_received:', data.events_received);
+    console.log('Meta CAPI ok:', event_name, '| pixel1:', data.events_received, '| pixel2:', data2.events_received);
     return res.status(200).json({ ok: true, events_received: data.events_received });
   } catch (e) {
     console.error('Meta CAPI exception:', e.message);
