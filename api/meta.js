@@ -56,7 +56,14 @@ export default async function handler(req, res) {
       st: hash(estado),
       zp: hash(cep),
       country: hash(pais || 'br'),
-      client_ip_address: ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+      // IP real do cliente: prioridade para o IP passado pelo cliente (via Liquid),
+      // depois x-forwarded-for (primeiro da lista = cliente real), depois fallback
+      client_ip_address: (() => {
+        if (ip && ip !== 'null' && ip !== '') return ip;
+        const forwarded = req.headers['x-forwarded-for'];
+        if (forwarded) return forwarded.split(',')[0].trim();
+        return req.socket?.remoteAddress || '';
+      })(),
       client_user_agent: user_agent || req.headers['user-agent'],
       fbc: fbc,
       fbp: fbp,
