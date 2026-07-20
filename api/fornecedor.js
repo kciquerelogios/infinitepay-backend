@@ -93,6 +93,7 @@ export default async function handler(req, res) {
   // ── ETIQUETA: recebe meOrderId direto, sem busca ─────────────
   if (action === 'etiqueta') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
     const meOrderId = req.query.meOrderId || '';
     const tracking = req.query.tracking || meOrderId;
     if (!meOrderId) return res.status(400).json({ erro: 'meOrderId obrigatorio' });
