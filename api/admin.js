@@ -2610,7 +2610,7 @@ async function renderCupons() {
     var cupons=d.cupons||[];
     var html='<div class="form-card"><div class="form-title">🎟 Criar novo cupom</div>';
     html+='<div class="row-3"><div class="field"><label>Código</label><input id="c-cod" placeholder="KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
-    html+='<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option></select></div>';
+    html+='<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option><option value="percentual_mais_frete">% Desconto + Frete Grátis</option></select></div>';
     html+='<div class="field" id="campo-val"><label>Valor</label><input type="number" id="c-val" placeholder="10" min="0" step="0.01"></div></div>';
     html+='<div class="row-3"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
     html+='<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div>';
@@ -2623,7 +2623,7 @@ async function renderCupons() {
       html+='<tr>';
       html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong></td>';
       html+='<td>'+c.tipo+'</td>';
-      html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.valor+'%')+'</td>';
+      html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.tipo==='percentual_mais_frete'?c.valor+'% + Frete Grátis':c.valor+'%')+'</td>';
       html+='<td style="font-size:12px">'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
       html+='<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
       html+='<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo?'#16a34a':'#6b7280')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
