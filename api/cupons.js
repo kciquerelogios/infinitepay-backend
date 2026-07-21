@@ -86,7 +86,7 @@ export default async function handler(req, res) {
       } else if (cupom.tipo === 'frete_gratis') {
         freteGratis = true;
         descontoDesc = 'Frete grátis';
-      } else if (cupom.tipo === 'percentual_frete') {
+      } else if (cupom.tipo === 'percentual_frete' || cupom.tipo === 'percentual_mais_frete') {
         desconto = Math.round(subtotal * cupom.valor / 100);
         freteGratis = true;
         descontoDesc = cupom.valor + '% off + Frete grátis';
