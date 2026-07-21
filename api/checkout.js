@@ -140,8 +140,18 @@ export default async function handler(req, res) {
       const cupomData = await cupomResp.json();
       if (cupomData.ok) {
         cupomValido = cupomData.cupom;
-        descontoTotal = cupomValido.desconto || 0;
-        if (cupomValido.freteGratis) precoFrete = 0;
+        // Recalcular desconto com base no carrinho atual
+        const subtotalParaCupom = carrinho.reduce((s, i) => s + (i.preco * (i.quantidade || 1)), 0);
+        if (cupomValido.tipo === 'percentual' || cupomValido.tipo === 'percentual_frete' || cupomValido.tipo === 'percentual_mais_frete') {
+          descontoTotal = Math.round(subtotalParaCupom * cupomValido.valor / 100);
+        } else if (cupomValido.tipo === 'fixo') {
+          descontoTotal = Math.min(Math.round(cupomValido.valor * 100), subtotalParaCupom);
+        } else {
+          descontoTotal = cupomValido.desconto || 0;
+        }
+        // Frete grátis aplica SOMENTE no PAC
+        const ehPACfrete = frete && frete.nome && frete.nome.toLowerCase().indexOf('pac') !== -1;
+        if (cupomValido.freteGratis && ehPACfrete) precoFrete = 0;
         // Incrementar uso do cupom
         await fetch(`${process.env.KV_REST_API_URL}/get/cupom_${cupom.codigo.toUpperCase()}`, { headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` } })
           .then(r => r.json())
