@@ -1734,6 +1734,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return melhor.image ? melhor.image.src : '';
   };
 
+  // Construir variantImgMap para a aba pedidos (mesmo do pedidos-json)
+  const variantImgMap = {};
+  (produtosSemEstoque.products || []).forEach(p => {
+    (p.variants||[]).forEach(v => {
+      if (v.featured_image && v.featured_image.src) variantImgMap[String(v.id)] = v.featured_image.src;
+      else if (v.image_id) {
+        const img = (p.images||[]).find(i => i.id === v.image_id);
+        if (img) variantImgMap[String(v.id)] = img.src;
+      }
+      if (!variantImgMap[String(v.id)] && p.image) variantImgMap[String(v.id)] = p.image.src;
+    });
+  });
+
   const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
   const pedidosPagosNaoEnviados = pedidosList.filter(o => o.financial_status === 'paid' && !o.fulfillment_status).length;
 
