@@ -100,8 +100,9 @@ export default async function handler(req, res) {
     };
 
     if (cliente) {
-      const primeiroNome = cliente.nome.split(' ')[0] || '';
-      const sobrenome = cliente.nome.split(' ').slice(1).join(' ') || '';
+      const partesNome = cliente.nome.trim().split(' ');
+      const primeiroNome = partesNome[0] || 'Cliente';
+      const sobrenome = partesNome.slice(1).join(' ') || partesNome[0] || 'Cliente';
 
       // Buscar cliente existente pelo email
       try {
@@ -166,8 +167,9 @@ export default async function handler(req, res) {
     const shopifyData = await shopifyResponse.json();
 
     if (!shopifyData.order) {
-      console.error('Erro Shopify:', JSON.stringify(shopifyData));
-      return res.status(400).json({ success: false, message: 'Erro ao criar pedido no Shopify' });
+      console.error('Erro Shopify 422:', JSON.stringify(shopifyData));
+      console.error('OrderData enviado:', JSON.stringify(orderData));
+      return res.status(400).json({ success: false, message: 'Erro ao criar pedido no Shopify', shopify_errors: shopifyData.errors });
     }
 
     console.log('Pedido criado no Shopify:', shopifyData.order.id);
@@ -254,7 +256,7 @@ export default async function handler(req, res) {
           products: [{
             name: produtoDescricao,
             quantity: 1,
-            unitary_value: ((payload.paid_amount || payload.amount || 0) / 100 - frete.preco).toFixed(2),
+            unitary_value: Math.max(1, ((payload.paid_amount || payload.amount || 0) / 100 - (frete ? frete.preco : 0))).toFixed(2),
             weight: 0.5
           }],
           volumes: [{
