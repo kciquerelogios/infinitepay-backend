@@ -3,6 +3,35 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  // ── REPROCESSAR pedido do Redis ────────────────────────────
+  if (req.method === 'GET' && req.query.reprocessar && req.query.secret === process.env.REPROCESSAR_SECRET) {
+    const nsu = req.query.reprocessar;
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const redisResp = await fetch(`${KV_URL}/get/${nsu}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const redisData = await redisResp.json();
+    if (!redisData || !redisData.result) return res.status(404).json({ erro: 'NSU não encontrado no Redis' });
+    let dadosSalvos = redisData.result;
+    while (typeof dadosSalvos === 'string') dadosSalvos = JSON.parse(dadosSalvos);
+    if (dadosSalvos && dadosSalvos.value) { let inner = dadosSalvos.value; while (typeof inner === 'string') inner = JSON.parse(inner); dadosSalvos = inner; }
+    // Montar payload fake igual ao InfinitePay
+    const carrinho = dadosSalvos.carrinho || [];
+    const freteSalvo = dadosSalvos.frete;
+    const fakeItems = carrinho.map(i => ({ price: i.preco, quantity: i.quantidade || 1, description: i.nome + (i.cor && i.cor !== 'Default Title' ? ' - Cor: ' + i.cor : '') }));
+    if (freteSalvo) fakeItems.push({ price: Math.round(freteSalvo.preco * 100), quantity: 1, description: `Frete ${freteSalvo.nome}` });
+    const fakePayload = {
+      items: fakeItems,
+      amount: carrinho.reduce((s, i) => s + i.preco * (i.quantidade || 1), 0) + (freteSalvo ? Math.round(freteSalvo.preco * 100) : 0),
+      paid_amount: carrinho.reduce((s, i) => s + i.preco * (i.quantidade || 1), 0) + (freteSalvo ? Math.round(freteSalvo.preco * 100) : 0),
+      order_nsu: nsu,
+      capture_method: 'reprocessado',
+      receipt_url: dadosSalvos.receipt_url || ''
+    };
+    req.body = fakePayload;
+    req.method = 'POST';
+    // cai no fluxo normal abaixo
+  }
+
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
