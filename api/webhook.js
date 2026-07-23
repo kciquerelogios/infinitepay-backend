@@ -100,9 +100,9 @@ export default async function handler(req, res) {
     };
 
     if (cliente) {
-      const partesNome = cliente.nome.trim().split(' ');
+      const partesNome = (cliente.nome || '').trim().split(/\s+/);
       const primeiroNome = partesNome[0] || 'Cliente';
-      const sobrenome = partesNome.slice(1).join(' ') || partesNome[0] || 'Cliente';
+      const sobrenome = partesNome.length > 1 ? partesNome.slice(1).join(' ') : primeiroNome;
 
       // Buscar cliente existente pelo email
       try {
