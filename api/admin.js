@@ -2618,6 +2618,9 @@ async function enviarFornecedorPed(btn, i) {
 // ===== CUPONS =====
 async function renderCupons(){
   loading();
+  // Limpar flags de listeners para reattach após DOM rebuild
+  var _ct=document.getElementById('content');
+  if(_ct){_ct._cchkListener=null;_ct._cprodListener=null;_ct._dcidListener=null;}
   try{
     var d=await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
     var cupons=d.cupons||[];
@@ -2666,7 +2669,7 @@ function _attachCupons(){
   // Select all
   var sa=get('sel-all-c');
   if(sa)sa.addEventListener('change',function(){document.querySelectorAll('.cchk').forEach(function(c){c.checked=sa.checked;});_atualizarSelCupons();});
-  ct().addEventListener('change',function(e){if(e.target.classList.contains('cchk'))_atualizarSelCupons();});
+  if(!ct()._cchkListener){ct()._cchkListener=function(e){if(e.target.classList.contains('cchk'))_atualizarSelCupons();};ct().addEventListener('change',ct()._cchkListener);}
   var bds=get('btn-del-sel-c');if(bds)bds.addEventListener('click',_delCuponsSel);
   var tipo=get('c-tipo');if(tipo)tipo.addEventListener('change',function(){var cv=get('campo-val');if(cv)cv.style.display=this.value==='frete_gratis'?'none':'block';});
   // Toggle produto grid — lazy load ao clicar
@@ -2696,7 +2699,7 @@ function _attachCupons(){
       if(g)g.innerHTML=h2||'<div style="padding:12px;color:#9ca3af;font-size:13px">Nenhum produto</div>';
     });
   });
-  ct().addEventListener('change',function(e){
+  if(!ct()._cprodListener){ct()._cprodListener=function(e){
     if(e.target.name==='c-prod-chk'){
       var lbl=e.target.closest('.cprod-lbl');
       if(lbl){lbl.style.border='1.5px solid '+(e.target.checked?'#111':'#e8eaf0');lbl.style.background=e.target.checked?'#f3f4f6':'#fff';}
@@ -2704,12 +2707,12 @@ function _attachCupons(){
       var b=get('btn-toggle-prods');if(b)b.textContent='▼ '+(sel.length?sel.length+' produto(s) selecionado(s) — fechar':'Fechar seletor');
     }
   });
-  ct().addEventListener('click',function(e){
+  if(!ct()._dcidListener){ct()._dcidListener=function(e){
     var b=e.target.closest('[data-cid]');if(!b)return;
     var act=b.getAttribute('data-action');
     if(act==='toggle'){fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',secret:S,id:b.getAttribute('data-cid')})}).then(function(){renderCupons();});}
     if(act==='del'){if(!confirm('Deletar cupom '+b.getAttribute('data-ccod')+'?'))return;var tr=b.closest('tr');if(tr)tr.style.opacity='0.4';fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:b.getAttribute('data-cid')})}).then(function(){if(tr)tr.remove();});}
-  },{once:true});
+  };ct().addEventListener('click',ct()._dcidListener);}
 }
 async function salvarCupom(){
   var cod=val('c-cod').trim().toUpperCase(),tipo=val('c-tipo'),v=parseFloat(val('c-val')||0),msg=get('c-msg');
