@@ -2621,24 +2621,28 @@ async function renderCupons() {
   try {
     var [dc, dp] = await Promise.all([
       fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json()),
-      fetch(API+'/api/produtos-json?secret='+S).then(r=>r.json()).catch(function(){return {products:[]};})
+      fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(r=>r.json()).catch(function(){return {produtos:[]};})
     ]);
     var cupons = dc.cupons || [];
-    var produtos = (dp.products || []).map(function(p){return {id:p.id, titulo:p.title};});
+    var produtos = dp.produtos || [];
     var agora = Date.now();
     var expirados = cupons.filter(function(c){return c.validade && new Date(c.validade).getTime() < agora;}).length;
-
-    // Seletor de produtos para o form
-    var prodOptsHtml = '<option value="">Todos os produtos</option>';
-    produtos.forEach(function(p){ prodOptsHtml += '<option value="'+p.titulo+'">'+p.titulo+'</option>'; });
 
     var html = '<div class="form-card"><div class="form-title">🎟 Criar novo cupom</div>';
     html += '<div class="row-3"><div class="field"><label>Código</label><input id="c-cod" placeholder="KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
     html += '<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option><option value="percentual_mais_frete">% Desconto + Frete Grátis</option></select></div>';
     html += '<div class="field" id="campo-val"><label>Valor</label><input type="number" id="c-val" placeholder="10" min="0" step="0.01"></div></div>';
-    html += '<div class="row-3"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
-    html += '<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div>';
-    html += '<div class="field"><label>Produto (opcional)</label><select id="c-prod">'+prodOptsHtml+'</select></div></div>';
+    html += '<div class="row-2"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
+    html += '<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div></div>';
+    html += '<div class="field"><label>Produto específico (opcional) — deixe sem seleção para valer em todos</label>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;max-height:220px;overflow-y:auto;padding:2px;margin-top:6px" id="c-prod-grid">';
+    produtos.forEach(function(p) {
+      html += '<label style="display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;cursor:pointer;border:1.5px solid #e8eaf0;background:#fff" class="prod-lbl" data-pnome="'+p.nome+'">';
+      html += '<input type="radio" name="c-prod-radio" value="'+p.nome+'" style="width:14px;height:14px;accent-color:#111;flex-shrink:0">';
+      html += (p.imagem ? '<img src="'+p.imagem+'" style="width:30px;height:30px;object-fit:cover;border-radius:5px;flex-shrink:0">' : '');
+      html += '<div style="min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div><div style="font-size:10px;color:#9ca3af">'+fmt(p.preco/100)+'</div></div></label>';
+    });
+    html += '</div></div>';
     html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
 
     // Toolbar com botões de ação em massa
@@ -2679,6 +2683,16 @@ function _attachCupons() {
   var bl = get('btn-limpar-cupons'); if (bl) bl.addEventListener('click', limparCupons);
   var be = get('btn-limpar-expirados'); if (be) be.addEventListener('click', limparExpirados);
   var tipo = get('c-tipo'); if (tipo) tipo.addEventListener('change', function(){ var cv=get('campo-val'); if(cv) cv.style.display=this.value==='frete_gratis'?'none':'block'; });
+  // Highlight produto selecionado
+  ct().addEventListener('change', function(e) {
+    if (e.target.name === 'c-prod-radio') {
+      document.querySelectorAll('.prod-lbl').forEach(function(l) {
+        var inp = l.querySelector('input');
+        l.style.border = '1.5px solid ' + (inp && inp.checked ? '#111' : '#e8eaf0');
+        l.style.background = (inp && inp.checked ? '#f3f4f6' : '#fff');
+      });
+    }
+  });
   // Selecionar todos
   var sa = get('sel-all');
   if (sa) sa.addEventListener('change', function() {
@@ -2725,7 +2739,8 @@ async function salvarCupom() {
   if (!cod) { if(msg) msg.textContent='⚠️ Digite o código'; return; }
   var btn=get('btn-criar-cupom'); btn.disabled=true; btn.textContent='Salvando...';
   try {
-    var prodSel = get('c-prod') ? get('c-prod').value : '';
+    var prodRadio = document.querySelector('input[name="c-prod-radio"]:checked');
+    var prodSel = prodRadio ? prodRadio.value : '';
     var d = await fetch(API+'/api/cupons?secret='+S, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:prodSel||null})}).then(r=>r.json());
     if (d.ok) { if(msg){msg.textContent='✅ Criado!';msg.style.color='#16a34a';} setTimeout(function(){renderCupons();},800); }
     else { if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';} }
