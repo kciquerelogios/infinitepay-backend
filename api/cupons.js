@@ -2619,12 +2619,8 @@ async function enviarFornecedorPed(btn, i) {
 async function renderCupons() {
   loading();
   try {
-    // Reusar _produtos já carregado pelo bundle (sem chamada extra)
-    var [dc, pp] = await Promise.all([
-      fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json()),
-      _produtos.length ? Promise.resolve({produtos:_produtos}) : fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(r=>r.json()).catch(function(){return {produtos:[]};})
-    ]);
-    if(pp.produtos) _produtos = pp.produtos;
+    // Buscar só cupons (rápido) — produtos carregam sob demanda
+    var dc = await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
     var cupons=dc.cupons||[];
     var agora=Date.now();
     var expirados=cupons.filter(function(c){return c.validade&&new Date(c.validade).getTime()<agora;}).length;
@@ -2636,20 +2632,11 @@ async function renderCupons() {
     html+='<div class="field" id="campo-val"><label>Valor</label><input type="number" id="c-val" placeholder="10" min="0" step="0.01"></div></div>';
     html+='<div class="row-2"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
     html+='<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div></div>';
-    // Seletor de produto colapsável com multi-seleção
+    // Seletor de produto colapsável com carregamento sob demanda
     html+='<div class="field"><label>Produto específico (opcional)</label>';
-    html+='<button type="button" id="btn-toggle-prods" onclick="(function(){var g=document.getElementById(\'cprod-grid\');if(g){g.style.display=g.style.display===\'none\'?\'grid\':\'none\';}})();" style="margin-top:6px;padding:6px 14px;border:1.5px solid #e8eaf0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-weight:600;width:100%;text-align:left">▶ Selecionar produtos (clique para expandir)</button>';
-    html+='<div id="cprod-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;max-height:220px;overflow-y:auto;margin-top:6px;padding:2px">';
-    _produtos.forEach(function(p){
-      var nome = p.titulo || p.nome || p.title || '';
-      var preco = parseFloat(p.preco) || 0;
-      var precoFmt = preco > 0 ? fmt(preco) : '';
-      html+='<label style="display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;cursor:pointer;border:1.5px solid #e8eaf0;background:#fff" class="cprod-lbl">';
-      html+='<input type="checkbox" name="c-prod-chk" value="'+nome+'" style="width:14px;height:14px;accent-color:#111;flex-shrink:0">';
-      html+=(p.imagem?'<img src="'+p.imagem+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0">':'');
-      html+='<div style="min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</div><div style="font-size:10px;color:#9ca3af">'+precoFmt+'</div></div></label>';
-    });
-    html+='</div></div>';
+    html+='<button type="button" id="btn-toggle-prods" style="margin-top:6px;padding:6px 14px;border:1.5px solid #e8eaf0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-weight:600;width:100%;text-align:left">▶ Selecionar produtos (clique para expandir)</button>';
+    html+='<div id="cprod-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;max-height:220px;overflow-y:auto;margin-top:6px;padding:2px"><div style="padding:12px;color:#9ca3af;font-size:13px">Carregando...</div></div>';
+    html+='</div>';
     html+='<div style="display:flex;align-items:center;gap:10px;margin-top:12px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
 
     // Toolbar
@@ -2687,6 +2674,34 @@ function _attachCupons(){
   var bl=get('btn-limpar-cupons');if(bl)bl.addEventListener('click',limparCupons);
   var be=get('btn-exp-cupons');if(be)be.addEventListener('click',limparExpirados);
   var tipo=get('c-tipo');if(tipo)tipo.addEventListener('change',function(){var cv=get('campo-val');if(cv)cv.style.display=this.value==='frete_gratis'?'none':'block';});
+  // Toggle produto grid com carregamento lazy
+  var btp=get('btn-toggle-prods');
+  var _prodsCarregados=false;
+  if(btp) btp.addEventListener('click',function(){
+    var g=get('cprod-grid');
+    if(!g) return;
+    var open=g.style.display!=='none'&&g.style.display!=='';
+    if(open){ g.style.display='none'; btp.textContent='▶ Selecionar produtos (clique para expandir)'; return; }
+    g.style.display='grid';
+    btp.textContent='▼ Fechar seletor de produtos';
+    if(_prodsCarregados) return;
+    _prodsCarregados=true;
+    // Carregar produtos (usa cache _produtos se já carregado)
+    var prom=_produtos.length ? Promise.resolve({produtos:_produtos}) : fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(function(r){return r.json();}).catch(function(){return {produtos:[]};});
+    prom.then(function(pp){
+      if(pp.produtos) _produtos=pp.produtos;
+      var html2='';
+      _produtos.forEach(function(p){
+        var nome=p.titulo||p.nome||p.title||'';
+        var preco=parseFloat(p.preco)||0;
+        html2+='<label style="display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;cursor:pointer;border:1.5px solid #e8eaf0;background:#fff" class="cprod-lbl">';
+        html2+='<input type="checkbox" name="c-prod-chk" value="'+nome+'" style="width:14px;height:14px;accent-color:#111;flex-shrink:0">';
+        html2+=(p.imagem?'<img src="'+p.imagem+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0">':'');
+        html2+='<div style="min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</div>'+(preco>0?'<div style="font-size:10px;color:#9ca3af">'+fmt(preco)+'</div>':'')+'</div></label>';
+      });
+      if(g) g.innerHTML=html2||'<div style="padding:12px;color:#9ca3af;font-size:13px">Nenhum produto encontrado</div>';
+    });
+  });
   // Highlight produto checkbox
   ct().addEventListener('change',function(e){
     if(e.target.name==='c-prod-chk'){
