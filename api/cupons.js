@@ -139,38 +139,18 @@ export default async function handler(req, res) {
   // Deletar
   if (req.method === 'POST' && req.body && req.body.action === 'limpar_expirados') {
     if (req.body.secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-    const allR = await fetch(KV_URL + '/lrange/cupons/0/-1', { headers: { Authorization: 'Bearer ' + KV_TOKEN } }).then(r => r.json()).catch(() => ({result:[]}));
-    const todos = (allR.result || []).map(s => { try { return JSON.parse(s); } catch(e) { return null; } }).filter(Boolean);
-    const agora = Date.now();
-    const expirados = todos.filter(c => c.validade && new Date(c.validade).getTime() < agora);
-    let deletados = 0;
-    for (const c of expirados) {
-      await fetch(KV_URL + '/pipeline', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify([['LREM', 'cupons', '0', JSON.stringify(c)]])
-      });
-      deletados++;
-    }
-    return res.status(200).json({ ok: true, deletados });
-  }
-
-  if (req.method === 'POST' && req.body && req.body.action === 'limpar_expirados') {
-    if (req.body.secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-    const allR = await fetch(KV_URL + '/lrange/cupons/0/-1', { headers: { Authorization: 'Bearer ' + KV_TOKEN } }).then(r => r.json()).catch(() => ({result:[]}));
-    const todos = (allR.result || []).map(s => { try { return JSON.parse(s); } catch(e) { return null; } }).filter(Boolean);
-    const agora = Date.now();
-    const expirados = todos.filter(c => c.validade && new Date(c.validade).getTime() < agora);
-    let deletados = 0;
-    for (const c of expirados) {
-      await fetch(KV_URL + '/pipeline', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify([['LREM', 'cupons', '0', JSON.stringify(c)]])
-      });
-      deletados++;
-    }
-    return res.status(200).json({ ok: true, deletados });
+    try {
+      const cupons = await listarCupons();
+      const agora = Date.now();
+      const expirados = cupons.filter(c => c.validade && new Date(c.validade).getTime() < agora);
+      let deletados = 0;
+      for (const c of expirados) {
+        await fetch(`${KV_URL}/del/${c.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+        await fetch(`${KV_URL}/lrem/cupons-lista/0/${c.id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify([c.id]) });
+        deletados++;
+      }
+      return res.status(200).json({ ok: true, deletados });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
   if (req.method === 'POST' && req.body && req.body.action === 'limpar_todos') {
