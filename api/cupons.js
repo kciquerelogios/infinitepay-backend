@@ -136,9 +136,8 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
-  // Deletar
+  // Deletar expirados
   if (req.method === 'POST' && req.body && req.body.action === 'limpar_expirados') {
-    if (req.body.secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
     try {
       const cupons = await listarCupons();
       const agora = Date.now();
