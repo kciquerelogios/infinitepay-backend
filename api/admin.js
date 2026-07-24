@@ -2632,18 +2632,25 @@ async function renderCupons(){
     html+='<div id="cprod-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;max-height:220px;overflow-y:auto;margin-top:6px;padding:2px"><div style="padding:12px;color:#9ca3af;font-size:13px">Carregando...</div></div>';
     html+='</div></div>';
     html+='<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
-    html+='<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button></div>';
+    var agora=Date.now();
+    var nExp=cupons.filter(function(c){return c.validade&&new Date(c.validade).getTime()<agora;}).length;
+    html+='<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-bottom:12px;flex-wrap:wrap">';
+    if(nExp>0)html+='<button class="btn btn-danger btn-sm" id="btn-exp-cupons">🗑 Expirados ('+nExp+')</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-del-sel-c" style="display:none">🗑 Excluir selecionados (<span id="n-sel-c">0</span>)</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button>';
+    html+='</div>';
     if(!cupons.length){html+='<div class="vazio">Nenhum cupom cadastrado</div>';ct().innerHTML=html;_attachCupons();return;}
-    html+='<div class="tbl-wrap"><table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Produto</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+    html+='<div class="tbl-wrap"><table><thead><tr><th><input type="checkbox" id="sel-all-c"></th><th>Código</th><th>Tipo</th><th>Valor</th><th>Produto</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
     cupons.forEach(function(c){
-      html+='<tr>';
-      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong></td>';
+      var exp=c.validade&&new Date(c.validade).getTime()<agora;
+      html+='<tr style="'+(exp?'opacity:.6':'')+'"><td><input type="checkbox" class="cchk" data-cid="'+c.id+'" data-ccod="'+c.codigo+'"></td>';
+      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong>'+(exp?' <span style="font-size:10px;background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:4px">Expirado</span>':'')+'</td>';
       html+='<td>'+c.tipo+'</td>';
       html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.tipo==='percentual_mais_frete'?c.valor+'% + Frete Grátis':c.valor+'%')+'</td>';
       html+='<td style="font-size:12px;color:#6b7280">'+(c.produto&&c.produto!=='todos'?c.produto:'Todos')+'</td>';
       html+='<td style="font-size:12px">'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
       html+='<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
-      html+='<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo?'#16a34a':'#6b7280')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
+      html+='<td><span class="badge" style="background:'+(c.ativo&&!exp?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo&&!exp?'#16a34a':'#6b7280')+'">'+(c.ativo&&!exp?'Ativo':exp?'Expirado':'Inativo')+'</span></td>';
       html+='<td style="display:flex;gap:4px"><button class="btn-del" data-cid="'+c.id+'" data-action="toggle">⟳</button><button class="btn-del" data-cid="'+c.id+'" data-ccod="'+c.codigo+'" data-action="del">🗑</button></td>';
       html+='</tr>';
     });
@@ -2655,6 +2662,12 @@ async function renderCupons(){
 function _attachCupons(){
   var bc=get('btn-criar-cupom');if(bc)bc.addEventListener('click',salvarCupom);
   var bl=get('btn-limpar-cupons');if(bl)bl.addEventListener('click',limparCupons);
+  var be=get('btn-exp-cupons');if(be)be.addEventListener('click',limparExpiradosCupons);
+  // Select all
+  var sa=get('sel-all-c');
+  if(sa)sa.addEventListener('change',function(){document.querySelectorAll('.cchk').forEach(function(c){c.checked=sa.checked;});_atualizarSelCupons();});
+  ct().addEventListener('change',function(e){if(e.target.classList.contains('cchk'))_atualizarSelCupons();});
+  var bds=get('btn-del-sel-c');if(bds)bds.addEventListener('click',_delCuponsSel);
   var tipo=get('c-tipo');if(tipo)tipo.addEventListener('change',function(){var cv=get('campo-val');if(cv)cv.style.display=this.value==='frete_gratis'?'none':'block';});
   // Toggle produto grid — lazy load ao clicar
   var btp=get('btn-toggle-prods');
@@ -2710,6 +2723,28 @@ async function salvarCupom(){
     else{if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
   btn.disabled=false;btn.textContent='💾 Criar Cupom';
+}
+function _atualizarSelCupons(){
+  var sels=document.querySelectorAll('.cchk:checked');
+  var btn=get('btn-del-sel-c');var n=get('n-sel-c');
+  if(btn)btn.style.display=sels.length?'inline-flex':'none';
+  if(n)n.textContent=sels.length;
+}
+async function _delCuponsSel(){
+  var sels=Array.from(document.querySelectorAll('.cchk:checked'));
+  if(!sels.length)return;
+  if(!confirm('Excluir '+sels.length+' cupom(ns) selecionado(s)?'))return;
+  for(var i=0;i<sels.length;i++){
+    await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:sels[i].getAttribute('data-cid')})});
+  }
+  renderCupons();
+}
+async function limparExpiradosCupons(){
+  if(!confirm('Excluir todos os cupons expirados?'))return;
+  var r=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'limpar_expirados',secret:S})});
+  var d=await r.json();
+  if(d.ok){alert('✅ '+d.deletados+' expirados removidos');renderCupons();}
+  else{alert('❌ Erro ao remover expirados');}
 }
 async function limparCupons(){
   if(!confirm('Deletar TODOS os cupons?'))return;
