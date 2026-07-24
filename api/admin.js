@@ -2619,28 +2619,57 @@ async function enviarFornecedorPed(btn, i) {
 async function renderCupons() {
   loading();
   try {
-    var d = await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
-    var cupons=d.cupons||[];
+    // Reusar _produtos já carregado pelo bundle (sem chamada extra)
+    var [dc, pp] = await Promise.all([
+      fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json()),
+      _produtos.length ? Promise.resolve({produtos:_produtos}) : fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(r=>r.json()).catch(function(){return {produtos:[]};})
+    ]);
+    if(pp.produtos) _produtos = pp.produtos;
+    var cupons=dc.cupons||[];
+    var agora=Date.now();
+    var expirados=cupons.filter(function(c){return c.validade&&new Date(c.validade).getTime()<agora;}).length;
+
+    // Form
     var html='<div class="form-card"><div class="form-title">🎟 Criar novo cupom</div>';
     html+='<div class="row-3"><div class="field"><label>Código</label><input id="c-cod" placeholder="KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
     html+='<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option><option value="percentual_mais_frete">% Desconto + Frete Grátis</option></select></div>';
     html+='<div class="field" id="campo-val"><label>Valor</label><input type="number" id="c-val" placeholder="10" min="0" step="0.01"></div></div>';
-    html+='<div class="row-3"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
-    html+='<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div>';
-    html+='<div class="field"><label>Produto (opcional)</label><input id="c-prod" placeholder="Nome do produto"></div></div>';
-    html+='<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
-    html+='<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button></div>';
+    html+='<div class="row-2"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
+    html+='<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div></div>';
+    // Seletor de produto visual (igual bundle)
+    html+='<div class="field"><label>Produto específico (opcional)</label>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;max-height:200px;overflow-y:auto;margin-top:6px;padding:2px">';
+    _produtos.forEach(function(p){
+      html+='<label style="display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;cursor:pointer;border:1.5px solid #e8eaf0;background:#fff" class="cprod-lbl">';
+      html+='<input type="radio" name="c-prod-r" value="'+p.nome+'" style="width:14px;height:14px;accent-color:#111;flex-shrink:0">';
+      html+=(p.imagem?'<img src="'+p.imagem+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0">':'');
+      html+='<div style="min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div><div style="font-size:10px;color:#9ca3af">'+fmt(p.preco/100)+'</div></div></label>';
+    });
+    html+='</div></div>';
+    html+='<div style="display:flex;align-items:center;gap:10px;margin-top:12px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
+
+    // Toolbar
+    html+='<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-bottom:12px;flex-wrap:wrap">';
+    if(expirados>0) html+='<button class="btn btn-danger btn-sm" id="btn-exp-cupons">🗑 Expirados ('+expirados+')</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-del-sel" style="display:none">🗑 Excluir selecionados (<span id="n-sel">0</span>)</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button>';
+    html+='</div>';
+
     if(!cupons.length){html+='<div class="vazio">Nenhum cupom cadastrado</div>';ct().innerHTML=html;_attachCupons();return;}
-    html+='<div class="tbl-wrap"><table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Produto</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+    html+='<div class="tbl-wrap"><table><thead><tr>';
+    html+='<th><input type="checkbox" id="sel-all-c"></th>';
+    html+='<th>Código</th><th>Tipo</th><th>Valor</th><th>Produto</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
     cupons.forEach(function(c){
-      html+='<tr>';
-      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong></td>';
+      var exp=c.validade&&new Date(c.validade).getTime()<agora;
+      html+='<tr style="'+(exp?'opacity:.55':'')+ '">';
+      html+='<td><input type="checkbox" class="cchk" data-cid="'+c.id+'" data-ccod="'+c.codigo+'"></td>';
+      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong>'+(exp?' <span style="font-size:10px;background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:4px">Expirado</span>':'')+'</td>';
       html+='<td>'+c.tipo+'</td>';
       html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.tipo==='percentual_mais_frete'?c.valor+'% + Frete Grátis':c.valor+'%')+'</td>';
-      html+='<td style="font-size:12px;color:#6b7280">'+(c.produto&&c.produto!=='todos'?c.produto:'Todos')+'</td>';
-      html+='<td style="font-size:12px">'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
+      html+='<td style="font-size:12px;color:#6b7280">'+(c.produto&&c.produto!=='todos'?'🔒 '+c.produto:'Todos')+'</td>';
+      html+='<td style="font-size:12px">'+(c.validade?fmtDate(c.validade):'—')+'</td>';
       html+='<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
-      html+='<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo?'#16a34a':'#6b7280')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
+      html+='<td><span class="badge" style="background:'+(c.ativo&&!exp?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo&&!exp?'#16a34a':'#6b7280')+'">'+(c.ativo&&!exp?'Ativo':exp?'Expirado':'Inativo')+'</span></td>';
       html+='<td style="display:flex;gap:4px"><button class="btn-del" data-cid="'+c.id+'" data-action="toggle">⟳</button><button class="btn-del" data-cid="'+c.id+'" data-ccod="'+c.codigo+'" data-action="del">🗑</button></td>';
       html+='</tr>';
     });
@@ -2652,7 +2681,19 @@ async function renderCupons() {
 function _attachCupons(){
   var bc=get('btn-criar-cupom');if(bc)bc.addEventListener('click',salvarCupom);
   var bl=get('btn-limpar-cupons');if(bl)bl.addEventListener('click',limparCupons);
+  var be=get('btn-exp-cupons');if(be)be.addEventListener('click',limparExpirados);
   var tipo=get('c-tipo');if(tipo)tipo.addEventListener('change',function(){var cv=get('campo-val');if(cv)cv.style.display=this.value==='frete_gratis'?'none':'block';});
+  // Highlight produto radio
+  ct().addEventListener('change',function(e){
+    if(e.target.name==='c-prod-r'){
+      document.querySelectorAll('.cprod-lbl').forEach(function(l){var i=l.querySelector('input');l.style.border='1.5px solid '+(i&&i.checked?'#111':'#e8eaf0');l.style.background=i&&i.checked?'#f3f4f6':'#fff';});
+    }
+    if(e.target.classList.contains('cchk')) _atualizarSel();
+  });
+  // Sel all
+  var sa=get('sel-all-c');if(sa)sa.addEventListener('change',function(){document.querySelectorAll('.cchk').forEach(function(c){c.checked=sa.checked;});_atualizarSel();});
+  // Del selecionados
+  var bds=get('btn-del-sel');if(bds)bds.addEventListener('click',_delSelecionados);
   ct().addEventListener('click',function(e){
     var b=e.target.closest('[data-cid]');if(!b)return;
     var act=b.getAttribute('data-action');
@@ -2660,12 +2701,34 @@ function _attachCupons(){
     if(act==='del'){if(!confirm('Deletar cupom '+b.getAttribute('data-ccod')+'?'))return;var tr=b.closest('tr');if(tr)tr.style.opacity='0.4';fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:b.getAttribute('data-cid')})}).then(function(){if(tr)tr.remove();});}
   },{once:true});
 }
+function _atualizarSel(){
+  var sels=document.querySelectorAll('.cchk:checked');
+  var btn=get('btn-del-sel');var n=get('n-sel');
+  if(btn)btn.style.display=sels.length?'inline-flex':'none';
+  if(n)n.textContent=sels.length;
+}
+async function _delSelecionados(){
+  var sels=Array.from(document.querySelectorAll('.cchk:checked'));
+  if(!sels.length)return;
+  if(!confirm('Excluir '+sels.length+' cupom(ns)?'))return;
+  for(var i=0;i<sels.length;i++){
+    await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:sels[i].getAttribute('data-cid')})});
+  }
+  renderCupons();
+}
+async function limparExpirados(){
+  if(!confirm('Excluir todos os cupons expirados?'))return;
+  var r=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'limpar_expirados',secret:S})});
+  var d=await r.json();
+  if(d.ok){alert('✅ '+d.deletados+' expirados removidos');renderCupons();}
+}
 async function salvarCupom(){
   var cod=val('c-cod').trim().toUpperCase(),tipo=val('c-tipo'),v=parseFloat(val('c-val')||0),msg=get('c-msg');
   if(!cod){if(msg)msg.textContent='⚠️ Digite o código';return;}
   var btn=get('btn-criar-cupom');btn.disabled=true;btn.textContent='Salvando...';
   try{
-    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:val('c-prod')||null})}).then(r=>r.json());
+    var pr=document.querySelector('input[name="c-prod-r"]:checked');
+    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:pr?pr.value:null})}).then(r=>r.json());
     if(d.ok){if(msg){msg.textContent='✅ Criado!';msg.style.color='#16a34a';}setTimeout(function(){renderCupons();},800);}
     else{if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
