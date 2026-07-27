@@ -1771,7 +1771,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     else { statusLabel = '💳 Pago'; }
 
     const msgRastreio = rastreios.length > 0
-      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Seu pedido foi enviado!\n\n📦 Rastreie: https://www.melhorrastreio.com.br/rastreio/' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
+      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Boa notícia! Seu pedido já está em preparação para envio! 🚀\n\n📦 Rastreie aqui: https://rastreamento.correios.com.br/app/index.php?objetos=' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
       : '';
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
