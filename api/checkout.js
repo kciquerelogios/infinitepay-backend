@@ -213,7 +213,14 @@ export default async function handler(req, res) {
     body.customer = {
       name: cliente.nome,
       email: cliente.email,
-      phone_number: cliente.telefone,
+      phone_number: (function(tel) {
+        // Remove tudo que não é número
+        var nums = (tel || '').replace(/\D/g, '');
+        // Adicionar DDI 55 se não tiver
+        if (nums.length === 11) nums = '55' + nums;
+        else if (nums.length === 10) nums = '55' + nums;
+        return '+' + nums;
+      })(cliente.telefone),
       document: cliente.cpf
     };
     body.address = {
