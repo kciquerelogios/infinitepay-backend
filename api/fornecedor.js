@@ -3,6 +3,37 @@ export default async function handler(req, res) {
   const senha = req.query.senha || '';
   const action = req.query.action || '';
 
+  // ── UPLOAD MÍDIA (para ofertas — aceita FormData com arquivo) ──────────
+  if (action === 'upload-midia' && req.method === 'POST') {
+    const secret = req.query.secret || '';
+    if (secret !== (process.env.REPROCESSAR_SECRET || 'kcique2026')) return res.status(401).json({ erro: 'Nao autorizado' });
+    const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+    const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET;
+    if (!CLOUD_NAME || !UPLOAD_PRESET) return res.status(500).json({ erro: 'Cloudinary nao configurado' });
+    try {
+      // Detectar se é imagem ou vídeo pelo content-type do arquivo
+      const contentType = req.headers['content-type'] || '';
+      const isVideo = contentType.includes('video') || 
+        (req.body && req.body.tipo && req.body.tipo === 'video');
+      const resourceType = isVideo ? 'video' : 'image';
+      // Receber base64 do cliente
+      const { base64, nome } = req.body || {};
+      if (!base64) return res.status(400).json({ erro: 'base64 obrigatorio' });
+      const formData = new FormData();
+      formData.append('file', base64);
+      formData.append('upload_preset', UPLOAD_PRESET);
+      formData.append('folder', 'kcique-ofertas');
+      formData.append('public_id', 'oferta_' + Date.now());
+      const cloudResp = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
+        { method: 'POST', body: formData }
+      );
+      const cloudData = await cloudResp.json();
+      if (!cloudData.secure_url) return res.status(500).json({ erro: 'Cloudinary: ' + (cloudData.error?.message || JSON.stringify(cloudData)) });
+      return res.status(200).json({ ok: true, url: cloudData.secure_url });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
   // ── UPLOAD FOTO ──────────────────────────────────────────────
   if (action === 'upload-foto' && req.method === 'POST') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
