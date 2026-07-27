@@ -124,25 +124,30 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
     for (const grupo of gruposEnviar) {
       try {
         if (midias.length === 0) {
-          // Só texto
+          // Só texto — com mentionAll se marcado
+          const msgTexto = mention ? caption + ' @all' : caption;
+          const bodyTexto = mention
+            ? { phone: grupo, message: msgTexto, mentionAll: true }
+            : { phone: grupo, message: msgTexto };
           const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
             method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
-            body: JSON.stringify({ phone: grupo, message: caption, mentionEveryOne: mention })
+            body: JSON.stringify(bodyTexto)
           });
           const zapiJson = await zapiResult.json().catch(()=>({}));
           const zapiOk = zapiResult.ok && (zapiJson.zaapId || zapiJson.messageId || zapiJson.id);
-          console.log('Z-API texto | grupo', grupo.substring(0,20), '| ok:', zapiOk);
+          console.log('Z-API texto | grupo', grupo.substring(0,20), '| mentionAll:', mention, '| ok:', zapiOk);
           if (!zapiOk) erros++;
         } else {
-          // Enviar cada mídia em sequência — texto só na primeira
+          // Enviar cada mídia em sequência
           for (let mi = 0; mi < midias.length; mi++) {
             const midia = midias[mi];
             const isVideo = midia.tipo === 'video' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(midia.url);
             const endpoint = isVideo ? 'send-video' : 'send-image';
-            const thisCaption = mi === 0 ? caption : ''; // texto só na primeira
+            // Texto + @all só na primeira mídia via send-text separado antes
+            const thisCaption = mi === 0 ? caption : '';
             const body = isVideo
-              ? { phone: grupo, video: midia.url, caption: thisCaption, mentionEveryOne: mi === 0 ? mention : false }
-              : { phone: grupo, image: midia.url, caption: thisCaption, mentionEveryOne: mi === 0 ? mention : false };
+              ? { phone: grupo, video: midia.url, caption: thisCaption }
+              : { phone: grupo, image: midia.url, caption: thisCaption };
             const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
               method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
               body: JSON.stringify(body)
@@ -151,8 +156,15 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
             const zapiOk = zapiResult.ok && (zapiJson.zaapId || zapiJson.messageId || zapiJson.id);
             console.log('Z-API midia', mi+1, '/', midias.length, '| grupo', grupo.substring(0,20), '| ok:', zapiOk);
             if (!zapiOk && mi === 0) erros++;
-            // Delay curto entre imagens — WhatsApp agrupa automaticamente em álbum
             await new Promise(r => setTimeout(r, 300));
+          }
+          // Se mentionAll marcado, envia @all como texto separado após as mídias
+          if (mention) {
+            await new Promise(r => setTimeout(r, 500));
+            await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
+              body: JSON.stringify({ phone: grupo, message: '@all', mentionAll: true })
+            });
           }
         }
         await new Promise(r => setTimeout(r, 1500));
