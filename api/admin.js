@@ -2388,7 +2388,14 @@ function renderOfertasHtml() {
   var html = '<div class="form-card">';
   html += '<div class="form-title">📅 Agendar nova oferta</div>';
   html += '<div class="field"><label>Texto da oferta</label><textarea id="of-texto" placeholder="Digite o texto..."></textarea></div>';
-  html += '<div class="row-2"><div class="field"><label>URL da Imagem (opcional)</label><input id="of-imagem" placeholder="https://cdn.shopify.com/..."></div>';
+  html += '<div class="row-2"><div class="field"><label>Imagem ou Vídeo (opcional)</label>';
+  html += '<div style="display:flex;gap:8px;align-items:flex-start">';
+  html += '<div style="flex:1">';
+  html += '<input id="of-imagem" placeholder="https://cdn.shopify.com/... ou .mp4" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none">';
+  html += '<label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:7px 12px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#374151">';
+  html += '<input type="file" id="of-arquivo" accept="image/*,video/*" style="display:none">📎 Upar do PC/Celular</label>';
+  html += '<div id="of-upload-preview" style="margin-top:6px;font-size:12px;color:#6b7280"></div>';
+  html += '</div></div></div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
   html += '<div class="field"><label>Grupos</label>';
@@ -2431,6 +2438,43 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
+  // Upload de arquivo para Cloudinary via base64
+  var arq = get('of-arquivo');
+  if (arq) arq.addEventListener('change', async function() {
+    var file = this.files[0]; if (!file) return;
+    var prev = get('of-upload-preview');
+    var imgInput = get('of-imagem');
+    if (prev) { prev.textContent = '⏳ Enviando '+file.name+'...'; prev.style.color = '#9ca3af'; }
+    try {
+      // Converter para base64
+      var base64 = await new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(e) { resolve(e.target.result); };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      var isVideo = file.type.startsWith('video');
+      var r = await fetch(API+'/api/fornecedor?action=upload-midia&secret='+S, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ base64: base64, tipo: isVideo ? 'video' : 'image', nome: file.name })
+      });
+      var d = await r.json();
+      if (d.url) {
+        if (imgInput) imgInput.value = d.url;
+        if (prev) {
+          prev.innerHTML = isVideo
+            ? '✅ Vídeo enviado! <a href="'+d.url+'" target="_blank" style="color:#2563eb">ver</a>'
+            : '✅ Imagem enviada:<br><img src="'+d.url+'" style="max-height:60px;border-radius:6px;margin-top:4px;display:block">';
+          prev.style.color = '#16a34a';
+        }
+      } else {
+        if (prev) { prev.textContent = '❌ '+(d.erro||'falha no upload'); prev.style.color='#ef4444'; }
+      }
+    } catch(e) {
+      if (prev) { prev.textContent = '❌ Erro: '+e.message; prev.style.color='#ef4444'; }
+    }
+  });
 
   // Toggle "Todos" — marca/desmarca todos
   var todosCheck = get('of-grupos-todos');
