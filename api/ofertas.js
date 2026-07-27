@@ -114,26 +114,47 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
     }
 
     let erros = 0;
+    // Montar lista de mídias — suporte a múltiplas
+    const midias = oferta.midias && oferta.midias.length
+      ? oferta.midias
+      : (oferta.imagem ? [{ url: oferta.imagem, tipo: /\.(mp4|mov|avi|webm)(\?|$)/i.test(oferta.imagem) ? 'video' : 'image' }] : []);
+    const caption = oferta.texto + (oferta.link ? '\n\n\uD83D\uDD17 ' + oferta.link : '');
+    const mention = oferta.mentionEveryOne !== false;
+
     for (const grupo of gruposEnviar) {
       try {
-        const isVideo = oferta.imagem && /\.(mp4|mov|avi|webm)(\?|$)/i.test(oferta.imagem);
-        const endpoint = oferta.imagem ? (isVideo ? 'send-video' : 'send-image') : 'send-text';
-        const caption = oferta.texto + (oferta.link ? '\n\n\uD83D\uDD17 ' + oferta.link : '');
-        const mention = oferta.mentionEveryOne !== false;
-        const body = oferta.imagem
-          ? (isVideo
-            ? { phone: grupo, video: oferta.imagem, caption, mentionEveryOne: mention }
-            : { phone: grupo, image: oferta.imagem, caption, mentionEveryOne: mention })
-          : { phone: grupo, message: caption, mentionEveryOne: mention };
-        console.log('Z-API body:', JSON.stringify(body).substring(0, 200));
-        const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN }, body: JSON.stringify(body)
-        });
-        const zapiJson = await zapiResult.json().catch(()=>({}));
-        // Verificar se Z-API retornou erro na resposta
-        const zapiOk = zapiResult.ok && !zapiJson.error && zapiJson.zaapId !== undefined || zapiJson.messageId !== undefined || zapiJson.id !== undefined;
-        console.log('Z-API grupo', grupo.substring(0,20), '| status:', zapiResult.status, '| ok:', zapiOk, '| resp:', JSON.stringify(zapiJson).substring(0,120));
-        if (!zapiOk) erros++;
+        if (midias.length === 0) {
+          // Só texto
+          const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
+            body: JSON.stringify({ phone: grupo, message: caption, mentionEveryOne: mention })
+          });
+          const zapiJson = await zapiResult.json().catch(()=>({}));
+          const zapiOk = zapiResult.ok && (zapiJson.zaapId || zapiJson.messageId || zapiJson.id);
+          console.log('Z-API texto | grupo', grupo.substring(0,20), '| ok:', zapiOk);
+          if (!zapiOk) erros++;
+        } else {
+          // Enviar cada mídia em sequência — texto só na primeira
+          for (let mi = 0; mi < midias.length; mi++) {
+            const midia = midias[mi];
+            const isVideo = midia.tipo === 'video' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(midia.url);
+            const endpoint = isVideo ? 'send-video' : 'send-image';
+            const thisCaption = mi === 0 ? caption : ''; // texto só na primeira
+            const body = isVideo
+              ? { phone: grupo, video: midia.url, caption: thisCaption, mentionEveryOne: mi === 0 ? mention : false }
+              : { phone: grupo, image: midia.url, caption: thisCaption, mentionEveryOne: mi === 0 ? mention : false };
+            const zapiResult = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/${endpoint}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
+              body: JSON.stringify(body)
+            });
+            const zapiJson = await zapiResult.json().catch(()=>({}));
+            const zapiOk = zapiResult.ok && (zapiJson.zaapId || zapiJson.messageId || zapiJson.id);
+            console.log('Z-API midia', mi+1, '/', midias.length, '| grupo', grupo.substring(0,20), '| ok:', zapiOk);
+            if (!zapiOk && mi === 0) erros++;
+            // Delay curto entre imagens — WhatsApp agrupa automaticamente em álbum
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
         await new Promise(r => setTimeout(r, 1500));
       } catch(e) { erros++; console.log('Z-API erro catch:', e.message); }
     }
