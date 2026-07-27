@@ -2388,14 +2388,12 @@ function renderOfertasHtml() {
   var html = '<div class="form-card">';
   html += '<div class="form-title">📅 Agendar nova oferta</div>';
   html += '<div class="field"><label>Texto da oferta</label><textarea id="of-texto" placeholder="Digite o texto..."></textarea></div>';
-  html += '<div class="row-2"><div class="field"><label>Imagem ou Vídeo (opcional)</label>';
-  html += '<div style="display:flex;gap:8px;align-items:flex-start">';
-  html += '<div style="flex:1">';
-  html += '<input id="of-imagem" placeholder="https://cdn.shopify.com/... ou .mp4" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none">';
-  html += '<label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:7px 12px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#374151">';
-  html += '<input type="file" id="of-arquivo" accept="image/*,video/*" style="display:none">📎 Upar do PC/Celular</label>';
-  html += '<div id="of-upload-preview" style="margin-top:6px;font-size:12px;color:#6b7280"></div>';
-  html += '</div></div></div>';
+  html += '<div class="field"><label>Mídias (opcional) — selecione uma ou mais imagens/vídeos</label>';
+  html += '<label style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">';
+  html += '<input type="file" id="of-arquivo" accept="image/*,video/*" multiple style="display:none">📎 Selecionar arquivos (múltiplos)</label>';
+  html += '<div id="of-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>';
+  html += '<input type="hidden" id="of-imagem" value="">';
+  html += '</div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
   html += '<div class="field"><label>Grupos</label>';
@@ -2438,42 +2436,56 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
-  // Upload de arquivo para Cloudinary via base64
+  // Upload de múltiplos arquivos para Cloudinary
+  window._ofMidias = []; // array de URLs já upadas
   var arq = get('of-arquivo');
   if (arq) arq.addEventListener('change', async function() {
-    var file = this.files[0]; if (!file) return;
+    var files = Array.from(this.files); if (!files.length) return;
     var prev = get('of-upload-preview');
     var imgInput = get('of-imagem');
-    if (prev) { prev.textContent = '⏳ Enviando '+file.name+'...'; prev.style.color = '#9ca3af'; }
-    try {
-      // Converter para base64
-      var base64 = await new Promise(function(resolve, reject) {
-        var reader = new FileReader();
-        reader.onload = function(e) { resolve(e.target.result); };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      var isVideo = file.type.startsWith('video');
-      var r = await fetch(API+'/api/fornecedor?action=upload-midia&secret='+S, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ base64: base64, tipo: isVideo ? 'video' : 'image', nome: file.name })
-      });
-      var d = await r.json();
-      if (d.url) {
-        if (imgInput) imgInput.value = d.url;
-        if (prev) {
-          prev.innerHTML = isVideo
-            ? '✅ Vídeo enviado! <a href="'+d.url+'" target="_blank" style="color:#2563eb">ver</a>'
-            : '✅ Imagem enviada:<br><img src="'+d.url+'" style="max-height:60px;border-radius:6px;margin-top:4px;display:block">';
-          prev.style.color = '#16a34a';
+    // Adicionar placeholders para cada arquivo
+    var placeholders = files.map(function(f, i) {
+      var el = document.createElement('div');
+      el.id = 'of-prev-'+i;
+      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;color:#9ca3af';
+      el.innerHTML = '⏳ '+f.name;
+      if (prev) prev.appendChild(el);
+      return el;
+    });
+    // Upload sequencial de cada arquivo
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      var ph = placeholders[i];
+      try {
+        var base64 = await new Promise(function(res, rej) {
+          var reader = new FileReader();
+          reader.onload = function(e) { res(e.target.result); };
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        var isVideo = file.type.startsWith('video');
+        var r = await fetch(API+'/api/fornecedor?action=upload-midia&secret='+S, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ base64: base64, tipo: isVideo ? 'video' : 'image', nome: file.name })
+        });
+        var d = await r.json();
+        if (d.url) {
+          window._ofMidias.push({ url: d.url, tipo: isVideo ? 'video' : 'image' });
+          if (ph) ph.innerHTML = isVideo
+            ? '🎥 <a href="'+d.url+'" target="_blank" style="color:#2563eb">'+file.name+'</a> <button onclick="window._ofMidias.splice('+( window._ofMidias.length-1)+',1);this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>'
+            : '<img src="'+d.url+'" style="height:48px;width:48px;object-fit:cover;border-radius:6px"><span style="color:#374151">'+file.name+'</span><button onclick="window._ofMidias.splice('+(window._ofMidias.length-1)+',1);this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>';
+          // Guardar urls no hidden input (separado por |)
+          if (imgInput) imgInput.value = window._ofMidias.map(function(m){return m.url;}).join('|');
+        } else {
+          if (ph) { ph.textContent = '❌ '+file.name+': '+(d.erro||'erro'); ph.style.color='#ef4444'; }
         }
-      } else {
-        if (prev) { prev.textContent = '❌ '+(d.erro||'falha no upload'); prev.style.color='#ef4444'; }
+      } catch(e) {
+        if (ph) { ph.textContent = '❌ '+file.name+': '+e.message; ph.style.color='#ef4444'; }
       }
-    } catch(e) {
-      if (prev) { prev.textContent = '❌ Erro: '+e.message; prev.style.color='#ef4444'; }
     }
+    // Limpar input para permitir re-seleção
+    arq.value = '';
   });
 
   // Toggle "Todos" — marca/desmarca todos
@@ -2513,9 +2525,11 @@ async function salvarOferta() {
       document.querySelectorAll('.of-grupo-check:checked').forEach(function(c){ gruposSel.push(c.value); });
     }
     var gruposVal = todosChecked ? 'todos' : (gruposSel.length ? gruposSel.join(',') : 'todos');
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:val('of-imagem'),link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked)})});
+    var midia = val('of-imagem') || '';
+    var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias : (midia ? [{url:midia,tipo:'image'}] : []);
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked)})});
     var d = await r.json();
-    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}setTimeout(function(){renderOfertas();},1000);}
+    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
   btn.disabled=false;btn.textContent='📅 Agendar';
