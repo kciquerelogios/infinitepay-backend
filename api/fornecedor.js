@@ -3,6 +3,16 @@ export default async function handler(req, res) {
   const senha = req.query.senha || '';
   const action = req.query.action || '';
 
+  // ── CLOUDINARY CONFIG (retorna credenciais públicas para upload direto) ──
+  if (action === 'cloudinary-config' && req.method === 'GET') {
+    const secret = req.query.secret || '';
+    if (secret !== (process.env.REPROCESSAR_SECRET || 'kcique2026')) return res.status(401).json({ erro: 'Nao autorizado' });
+    return res.status(200).json({
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+      uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || ''
+    });
+  }
+
   // ── UPLOAD MÍDIA (para ofertas — aceita FormData com arquivo) ──────────
   if (action === 'upload-midia' && req.method === 'POST') {
     const secret = req.query.secret || '';
