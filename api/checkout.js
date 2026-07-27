@@ -214,11 +214,11 @@ export default async function handler(req, res) {
       name: cliente.nome,
       email: cliente.email,
       phone_number: (function(tel) {
-        // Remove tudo que não é número
         var nums = (tel || '').replace(/\D/g, '');
-        // Adicionar DDI 55 se não tiver
+        // DDD (2) + 8 dígitos = 10 total → sempre adiciona o 9
+        if (nums.length === 10) nums = nums.slice(0, 2) + '9' + nums.slice(2);
+        // Adicionar DDI 55
         if (nums.length === 11) nums = '55' + nums;
-        else if (nums.length === 10) nums = '55' + nums;
         return '+' + nums;
       })(cliente.telefone),
       document: cliente.cpf
