@@ -2436,55 +2436,61 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
-  // Upload de múltiplos arquivos para Cloudinary
-  window._ofMidias = []; // array de URLs já upadas
+  // Upload de múltiplos arquivos direto pro Cloudinary (sem passar pelo Vercel)
+  window._ofMidias = [];
   var arq = get('of-arquivo');
   if (arq) arq.addEventListener('change', async function() {
     var files = Array.from(this.files); if (!files.length) return;
     var prev = get('of-upload-preview');
     var imgInput = get('of-imagem');
-    // Adicionar placeholders para cada arquivo
+    // Buscar credenciais Cloudinary do backend
+    var creds = null;
+    try {
+      var cr = await fetch(API+'/api/fornecedor?action=cloudinary-config&secret='+S).then(function(r){return r.json();});
+      creds = cr;
+    } catch(e) { console.error('Erro credenciais:', e); }
+    if (!creds || !creds.cloudName || !creds.uploadPreset) {
+      if (prev) { prev.innerHTML = '<div style="color:#ef4444;font-size:12px">❌ Cloudinary não configurado</div>'; }
+      return;
+    }
+    // Placeholders
     var placeholders = files.map(function(f, i) {
       var el = document.createElement('div');
-      el.id = 'of-prev-'+i;
-      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;color:#9ca3af';
-      el.innerHTML = '⏳ '+f.name;
+      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;color:#9ca3af;margin-bottom:4px';
+      el.innerHTML = '⏳ '+f.name+' ('+Math.round(f.size/1024/1024*10)/10+'MB)';
       if (prev) prev.appendChild(el);
       return el;
     });
-    // Upload sequencial de cada arquivo
+    // Upload direto pro Cloudinary via FormData
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
       var ph = placeholders[i];
+      var isVideo = file.type.startsWith('video');
+      var resourceType = isVideo ? 'video' : 'image';
       try {
-        var base64 = await new Promise(function(res, rej) {
-          var reader = new FileReader();
-          reader.onload = function(e) { res(e.target.result); };
-          reader.onerror = rej;
-          reader.readAsDataURL(file);
-        });
-        var isVideo = file.type.startsWith('video');
-        var r = await fetch(API+'/api/fornecedor?action=upload-midia&secret='+S, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ base64: base64, tipo: isVideo ? 'video' : 'image', nome: file.name })
-        });
-        var d = await r.json();
-        if (d.url) {
-          window._ofMidias.push({ url: d.url, tipo: isVideo ? 'video' : 'image' });
+        var fd = new FormData();
+        fd.append('file', file);
+        fd.append('upload_preset', creds.uploadPreset);
+        fd.append('folder', 'kcique-ofertas');
+        var cloudResp = await fetch(
+          'https://api.cloudinary.com/v1_1/'+creds.cloudName+'/'+resourceType+'/upload',
+          { method: 'POST', body: fd }
+        );
+        var d = await cloudResp.json();
+        if (d.secure_url) {
+          var idx2 = window._ofMidias.length;
+          window._ofMidias.push({ url: d.secure_url, tipo: resourceType });
           if (ph) ph.innerHTML = isVideo
-            ? '🎥 <a href="'+d.url+'" target="_blank" style="color:#2563eb">'+file.name+'</a> <button onclick="window._ofMidias.splice('+( window._ofMidias.length-1)+',1);this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>'
-            : '<img src="'+d.url+'" style="height:48px;width:48px;object-fit:cover;border-radius:6px"><span style="color:#374151">'+file.name+'</span><button onclick="window._ofMidias.splice('+(window._ofMidias.length-1)+',1);this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>';
-          // Guardar urls no hidden input (separado por |)
-          if (imgInput) imgInput.value = window._ofMidias.map(function(m){return m.url;}).join('|');
+            ? '🎥 <a href="'+d.secure_url+'" target="_blank" style="color:#2563eb">'+file.name+'</a> <button data-idx="'+idx2+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>'
+            : '<img src="'+d.secure_url+'" style="height:48px;width:48px;object-fit:cover;border-radius:6px;margin-right:4px"><span style="color:#374151">'+file.name+'</span> <button data-idx="'+idx2+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>';
+          if (imgInput) imgInput.value = window._ofMidias.filter(Boolean).map(function(m){return m.url;}).join('|');
         } else {
-          if (ph) { ph.textContent = '❌ '+file.name+': '+(d.erro||'erro'); ph.style.color='#ef4444'; }
+          if (ph) { ph.textContent = '❌ '+file.name+': '+(d.error&&d.error.message||'erro no upload'); ph.style.color='#ef4444'; }
         }
       } catch(e) {
         if (ph) { ph.textContent = '❌ '+file.name+': '+e.message; ph.style.color='#ef4444'; }
       }
     }
-    // Limpar input para permitir re-seleção
     arq.value = '';
   });
 
