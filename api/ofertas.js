@@ -167,6 +167,20 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
             });
           }
         }
+        // Enviar contato se configurado
+        if (oferta.contatoNome && oferta.contatoTel) {
+          await new Promise(r => setTimeout(r, 800));
+          await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-contact`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
+            body: JSON.stringify({
+              phone: grupo,
+              contactName: oferta.contatoNome,
+              contactPhone: oferta.contatoTel
+            })
+          }).catch(e => console.log('Erro send-contact:', e.message));
+        }
+
         await new Promise(r => setTimeout(r, 1500));
       } catch(e) { erros++; console.log('Z-API erro catch:', e.message); }
     }
