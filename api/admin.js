@@ -2408,9 +2408,13 @@ function renderOfertasHtml() {
     html += '<input type="checkbox" class="of-grupo-check" value="'+g+'" style="width:13px;height:13px;accent-color:#25d366"> '+g+'</label>';
   });
   html += '</div></div></div></div>';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
   html += '<input type="checkbox" id="of-mention" checked style="width:16px;height:16px;cursor:pointer;accent-color:#25d366">';
-  html += '<label for="of-mention" style="font-size:13px;font-weight:600;cursor:pointer;color:#374151">Marcar todos (@todos) no grupo</label>';
+  html += '<label for="of-mention" style="font-size:13px;font-weight:600;cursor:pointer;color:#374151">Marcar todos (@all) no grupo</label>';
+  html += '</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">';
+  html += '<input type="checkbox" id="of-teste" style="width:16px;height:16px;cursor:pointer;accent-color:#f59e0b">';
+  html += '<label for="of-teste" style="font-size:13px;font-weight:600;cursor:pointer;color:#92400e">🧪 Enviar só no grupo de teste</label>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-agendar">📅 Agendar</button><span id="of-msg" style="font-size:13px"></span></div>';
   html += '</div>';
@@ -2530,7 +2534,9 @@ async function salvarOferta() {
     var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias : (midia ? [{url:midia,tipo:'image'}] : []);
     var midia = val('of-imagem') || '';
     var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias.filter(Boolean) : (midia ? [{url:midia,tipo:'image'}] : []);
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked)})});
+    var isTeste = !!(get('of-teste') && get('of-teste').checked);
+    var gruposFinais = isTeste ? '120363411835027246-group' : gruposVal;
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposFinais,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),teste:isTeste})});
     var d = await r.json();
     if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
