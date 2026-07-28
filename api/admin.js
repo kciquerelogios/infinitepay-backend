@@ -2416,6 +2416,8 @@ function renderOfertasHtml() {
   html += '<input type="checkbox" id="of-teste" style="width:16px;height:16px;cursor:pointer;accent-color:#f59e0b">';
   html += '<label for="of-teste" style="font-size:13px;font-weight:600;cursor:pointer;color:#92400e">🧪 Enviar só no grupo de teste</label>';
   html += '</div>';
+  html += '<div class="row-2"><div class="field"><label>📱 Contato — Nome <span style="font-size:10px;color:#9ca3af;font-weight:400">(opcional)</span></label><input id="of-contato-nome" placeholder="Ex: Kcique Relógios"></div>';
+  html += '<div class="field"><label>📱 Contato — Telefone <span style="font-size:10px;color:#9ca3af;font-weight:400">(opcional, com DDI: 5545...)</span></label><input id="of-contato-tel" placeholder="5545999999999" type="tel"></div></div>';
   html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-agendar">📅 Agendar</button><span id="of-msg" style="font-size:13px"></span></div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
@@ -2536,7 +2538,9 @@ async function salvarOferta() {
     var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias.filter(Boolean) : (midia ? [{url:midia,tipo:'image'}] : []);
     var isTeste = !!(get('of-teste') && get('of-teste').checked);
     var gruposFinais = isTeste ? '120363411835027246-group' : gruposVal;
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposFinais,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),teste:isTeste})});
+    var contatoNome = (get('of-contato-nome') ? get('of-contato-nome').value.trim() : '');
+    var contatoTel = (get('of-contato-tel') ? get('of-contato-tel').value.replace(/\D/g,'') : '');
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposFinais,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),teste:isTeste,contatoNome:contatoNome||null,contatoTel:contatoTel||null})});
     var d = await r.json();
     if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
