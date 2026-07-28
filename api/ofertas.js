@@ -60,10 +60,10 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
 }
 
 async function salvarOferta(KV_URL, KV_TOKEN, dados) {
-  const { texto, imagem, link, dataHora, grupos, mentionEveryOne } = dados;
+  const { texto, imagem, midias, link, dataHora, grupos, mentionEveryOne, contatoNome, contatoTel } = dados;
   if (!texto || !dataHora) throw new Error('Texto e data obrigatorios');
   const id = `oferta_${Date.now()}`;
-  const oferta = { id, texto, imagem: imagem || '', link: link || '', dataHora, grupos: grupos || 'todos', mentionEveryOne: mentionEveryOne !== false, status: 'agendada', criado_em: new Date().toISOString() };
+  const oferta = { id, texto, imagem: imagem || '', midias: midias || [], link: link || '', dataHora, grupos: grupos || 'todos', mentionEveryOne: mentionEveryOne !== false, contatoNome: contatoNome || null, contatoTel: contatoTel || null, status: 'agendada', criado_em: new Date().toISOString() };
   await fetch(`${KV_URL}/set/${id}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
