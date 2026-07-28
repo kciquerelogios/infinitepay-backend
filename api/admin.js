@@ -2395,6 +2395,8 @@ function renderOfertasHtml() {
   html += '<input type="hidden" id="of-imagem" value="">';
   html += '</div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
+  html += '<div class="row-2"><div class="field"><label>Contato — Nome (opcional)</label><input id="of-contato-nome" placeholder="Ex: Kcique Relógios"></div>';
+  html += '<div class="field"><label>Contato — Telefone (opcional)</label><input id="of-contato-tel" placeholder="Ex: 5545999999999" type="tel"></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
   html += '<div class="field"><label>Grupos</label>';
   html += '<div style="border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden">';
@@ -2533,7 +2535,9 @@ async function salvarOferta() {
     var gruposVal = todosChecked ? 'todos' : (gruposSel.length ? gruposSel.join(',') : 'todos');
     var midia = val('of-imagem') || '';
     var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias : (midia ? [{url:midia,tipo:'image'}] : []);
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked)})});
+    var contatoNome = val('of-contato-nome').trim();
+    var contatoTel = val('of-contato-tel').replace(/\D/g,'');
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),contatoNome:contatoNome||null,contatoTel:contatoTel||null})});
     var d = await r.json();
     if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
