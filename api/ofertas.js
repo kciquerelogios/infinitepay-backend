@@ -60,10 +60,10 @@ async function listarOfertas(KV_URL, KV_TOKEN) {
 }
 
 async function salvarOferta(KV_URL, KV_TOKEN, dados) {
-  const { texto, imagem, midias, link, dataHora, grupos, mentionEveryOne } = dados;
+  const { texto, imagem, midias, link, dataHora, grupos, mentionEveryOne, contatoNome, contatoTel } = dados;
   if (!texto || !dataHora) throw new Error('Texto e data obrigatorios');
   const id = `oferta_${Date.now()}`;
-  const oferta = { id, texto, imagem: imagem || '', midias: midias || [], link: link || '', dataHora, grupos: grupos || 'todos', mentionEveryOne: mentionEveryOne !== false, status: 'agendada', criado_em: new Date().toISOString() };
+  const oferta = { id, texto, imagem: imagem || '', midias: midias || [], link: link || '', dataHora, grupos: grupos || 'todos', mentionEveryOne: mentionEveryOne !== false, contatoNome: contatoNome || null, contatoTel: contatoTel || null, status: 'agendada', criado_em: new Date().toISOString() };
   await fetch(`${KV_URL}/set/${id}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
@@ -165,6 +165,18 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
             });
           }
         }
+        // Enviar contato se configurado
+        if (oferta.contatoNome && oferta.contatoTel) {
+          await new Promise(r => setTimeout(r, 800));
+          const contResp = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-contact`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'client-token': process.env.ZAPI_CLIENT_TOKEN },
+            body: JSON.stringify({ phone: grupo, contactName: oferta.contatoNome, contactPhone: oferta.contatoTel })
+          });
+          const contJson = await contResp.json().catch(()=>({}));
+          console.log('send-contact | grupo', grupo.substring(0,20), '| ok:', contResp.ok, '| resp:', JSON.stringify(contJson).substring(0,100));
+        }
+
         await new Promise(r => setTimeout(r, 1500));
       } catch(e) { erros++; console.log('Z-API erro catch:', e.message); }
     }
