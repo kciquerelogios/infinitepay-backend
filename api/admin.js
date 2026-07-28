@@ -2388,15 +2388,8 @@ function renderOfertasHtml() {
   var html = '<div class="form-card">';
   html += '<div class="form-title">📅 Agendar nova oferta</div>';
   html += '<div class="field"><label>Texto da oferta</label><textarea id="of-texto" placeholder="Digite o texto..."></textarea></div>';
-  html += '<div class="field"><label>Mídias (opcional) — selecione uma ou mais imagens/vídeos</label>';
-  html += '<label style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">';
-  html += '<input type="file" id="of-arquivo" accept="image/*,video/*" multiple style="display:none">📎 Selecionar arquivos (múltiplos)</label>';
-  html += '<div id="of-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>';
-  html += '<input type="hidden" id="of-imagem" value="">';
-  html += '</div>';
+  html += '<div class="row-2"><div class="field"><label>URL de Imagem ou Vídeo (opcional)</label><input id="of-imagem" placeholder="https://cdn.shopify.com/... ou .mp4"></div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
-  html += '<div class="row-2"><div class="field"><label>Contato — Nome (opcional)</label><input id="of-contato-nome" placeholder="Ex: Kcique Relógios"></div>';
-  html += '<div class="field"><label>Contato — Telefone (opcional)</label><input id="of-contato-tel" placeholder="Ex: 5545999999999" type="tel"></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
   html += '<div class="field"><label>Grupos</label>';
   html += '<div style="border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden">';
@@ -2438,63 +2431,7 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
-  // Upload de múltiplos arquivos direto pro Cloudinary (sem passar pelo Vercel)
-  window._ofMidias = [];
-  var arq = get('of-arquivo');
-  if (arq) arq.addEventListener('change', async function() {
-    var files = Array.from(this.files); if (!files.length) return;
-    var prev = get('of-upload-preview');
-    var imgInput = get('of-imagem');
-    // Buscar credenciais Cloudinary do backend
-    var creds = null;
-    try {
-      var cr = await fetch(API+'/api/fornecedor?action=cloudinary-config&secret='+S).then(function(r){return r.json();});
-      creds = cr;
-    } catch(e) { console.error('Erro credenciais:', e); }
-    if (!creds || !creds.cloudName || !creds.uploadPreset) {
-      if (prev) { prev.innerHTML = '<div style="color:#ef4444;font-size:12px">❌ Cloudinary não configurado</div>'; }
-      return;
-    }
-    // Placeholders
-    var placeholders = files.map(function(f, i) {
-      var el = document.createElement('div');
-      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;color:#9ca3af;margin-bottom:4px';
-      el.innerHTML = '⏳ '+f.name+' ('+Math.round(f.size/1024/1024*10)/10+'MB)';
-      if (prev) prev.appendChild(el);
-      return el;
-    });
-    // Upload direto pro Cloudinary via FormData
-    for (var i = 0; i < files.length; i++) {
-      var file = files[i];
-      var ph = placeholders[i];
-      var isVideo = file.type.startsWith('video');
-      var resourceType = isVideo ? 'video' : 'image';
-      try {
-        var fd = new FormData();
-        fd.append('file', file);
-        fd.append('upload_preset', creds.uploadPreset);
-        fd.append('folder', 'kcique-ofertas');
-        var cloudResp = await fetch(
-          'https://api.cloudinary.com/v1_1/'+creds.cloudName+'/'+resourceType+'/upload',
-          { method: 'POST', body: fd }
-        );
-        var d = await cloudResp.json();
-        if (d.secure_url) {
-          var idx2 = window._ofMidias.length;
-          window._ofMidias.push({ url: d.secure_url, tipo: resourceType });
-          if (ph) ph.innerHTML = isVideo
-            ? '🎥 <a href="'+d.secure_url+'" target="_blank" style="color:#2563eb">'+file.name+'</a> <button data-idx="'+idx2+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>'
-            : '<img src="'+d.secure_url+'" style="height:48px;width:48px;object-fit:cover;border-radius:6px;margin-right:4px"><span style="color:#374151">'+file.name+'</span> <button data-idx="'+idx2+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>';
-          if (imgInput) imgInput.value = window._ofMidias.filter(Boolean).map(function(m){return m.url;}).join('|');
-        } else {
-          if (ph) { ph.textContent = '❌ '+file.name+': '+(d.error&&d.error.message||'erro no upload'); ph.style.color='#ef4444'; }
-        }
-      } catch(e) {
-        if (ph) { ph.textContent = '❌ '+file.name+': '+e.message; ph.style.color='#ef4444'; }
-      }
-    }
-    arq.value = '';
-  });
+
 
   // Toggle "Todos" — marca/desmarca todos
   var todosCheck = get('of-grupos-todos');
@@ -2535,11 +2472,9 @@ async function salvarOferta() {
     var gruposVal = todosChecked ? 'todos' : (gruposSel.length ? gruposSel.join(',') : 'todos');
     var midia = val('of-imagem') || '';
     var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias : (midia ? [{url:midia,tipo:'image'}] : []);
-    var contatoNome = val('of-contato-nome').trim();
-    var contatoTel = val('of-contato-tel').replace(/\D/g,'');
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),contatoNome:contatoNome||null,contatoTel:contatoTel||null})});
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:val('of-imagem'),link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposVal,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked)})});
     var d = await r.json();
-    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
+    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
   btn.disabled=false;btn.textContent='📅 Agendar';
