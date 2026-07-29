@@ -3496,7 +3496,7 @@ async function abrirConversa(phone) {
     html += '</div>';
     // Painel direito: etiqueta + identificar
     html += '<div style="display:flex;align-items:center;gap:8px">';
-    html += '<select id="inbox-etiqueta" onchange="trocarEtiqueta(''+phone+'',this.value)" style="padding:5px 8px;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;outline:none;color:#374151">';
+    html += '<select id="inbox-etiqueta" data-phone="'+phone+'" style="padding:5px 8px;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;outline:none;color:#374151">';
     ['','cliente','possivel_cliente','vip','fornecedor','bloqueado'].forEach(function(e2){
       html += '<option value="'+e2+'" '+(contato.etiqueta===e2?'selected':'')+'>'+(!e2?'Sem etiqueta':_etiquetaCor(e2).label)+'</option>';
     });
@@ -3572,11 +3572,11 @@ function _renderMensagem(msg) {
         + '<img src="'+(msg.mediaThumbnail||msg.mediaUrl)+'" style="max-width:200px;border-radius:8px;display:block">'
         + (msg.texto ? '<div style="font-size:12px;margin-top:4px;color:#374151">'+msg.texto+'</div>' : '')
         + '</div>'
-      : '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">📷 Foto — clique para ver</div>';
+      : '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">📷 Foto — clique para ver</div>';
   } else if (msg.tipo === 'video') {
-    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">🎥 Vídeo — clique para ver</div>';
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎥 Vídeo — clique para ver</div>';
   } else if (msg.tipo === 'audio') {
-    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">🎤 Áudio — clique para ouvir</div>';
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎤 Áudio — clique para ouvir</div>';
   } else if (msg.tipo === 'document') {
     conteudo = '<a href="'+msg.mediaUrl+'" target="_blank" style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#2563eb;display:block;text-decoration:none">📄 Documento — clique para baixar</a>';
   } else if (msg.tipo === 'sticker') {
@@ -3677,6 +3677,11 @@ function _attachInbox() {
       midiaDiv.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
       return;
     }
+  });
+  // Select etiqueta change via event delegation
+  ct().addEventListener('change', function(e) {
+    var sel = e.target.closest('#inbox-etiqueta');
+    if (sel) trocarEtiqueta(sel.getAttribute('data-phone'), sel.value);
   });
   // Busca
   var busca = document.getElementById('inbox-busca');
