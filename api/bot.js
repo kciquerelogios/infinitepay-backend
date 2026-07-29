@@ -141,15 +141,19 @@ async function buscarEtiquetaME(q) {
 }
 
 // Extrair CPF do pedido Shopify (salvo na nota ou no customer)
-function extrairCPF(pedido) {
+function extrairDadosPedido(pedido) {
   const nota = pedido.note || '';
-  // Formato salvo pelo webhook: "CPF: 12345678901"
-  const matchNota = nota.match(/CPF:\s*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i);
-  if (matchNota) {
-    const cpf = matchNota[1].replace(/\D/g, '');
-    if (cpf.length === 11) return cpf;
-  }
-  return null;
+  // Extrair CPF — formato: "CPF: 12345678901"
+  let cpf = null;
+  const matchCPF = nota.match(/CPF:\s*([\d]{11})/i);
+  if (matchCPF) cpf = matchCPF[1];
+
+  // Extrair NSU — formato: "NSU: pedido-XXXXX"
+  let nsu = null;
+  const matchNSU = nota.match(/NSU:\s*(pedido-[\d]+)/i);
+  if (matchNSU) nsu = matchNSU[1];
+
+  return { cpf, nsu };
 }
 
 // Status da etiqueta ME para label legível
@@ -374,11 +378,15 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
     ? `${pedido.customer.first_name || ''}`.trim()
     : 'Cliente';
 
-  // Buscar etiqueta no ME pelo CPF do pedido Shopify
-  const cpf = extrairCPF(pedido);
-  const etiqueta = cpf ? await buscarEtiquetaME(cpf) : null;
+  // Extrair CPF e NSU da nota do pedido Shopify
+  const { cpf, nsu } = extrairDadosPedido(pedido);
+  console.log(`BOT dados pedido: cpf="${cpf}" nsu="${nsu}" nota="${(pedido.note||'').substring(0,120)}"`);
 
-  console.log(`BOT ME etiqueta: cpf=${cpf} status=${etiqueta?.status} tracking=${etiqueta?.tracking}`);
+  // Buscar no ME — tenta CPF primeiro, depois NSU como authorization_code
+  let etiqueta = null;
+  if (cpf) etiqueta = await buscarEtiquetaME(cpf);
+  if (!etiqueta && nsu) etiqueta = await buscarEtiquetaME(nsu);
+  console.log(`BOT ME etiqueta:`, JSON.stringify(etiqueta).substring(0, 200));
 
   const meTracking = etiqueta?.tracking || null;
   const meStatus   = etiqueta?.status   || null;
