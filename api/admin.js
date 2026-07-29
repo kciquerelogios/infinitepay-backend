@@ -1835,6 +1835,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
             : '<span style="padding:8px 14px;background:#f0fdf4;color:#16a34a;border-radius:6px;font-size:13px;font-weight:600">✅ Já enviado no Shopify</span>')
         + '</div>'
       + '</div>'
+    + '</div>'
+    + '<button class="inbox-del-btn" data-phone="'+c.phone+'" title="Apagar conversa" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#d1d5db;font-size:16px;display:none">🗑</button>'
     + '</div>';
   }).join('');
 
@@ -3443,7 +3445,8 @@ function _renderContatosLista(contatos, filtro, busca) {
     var hora = c.ultimoContato ? new Date(c.ultimoContato).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     var iniciais = (c.nome||c.phone||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
     return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
-      + '<div style="position:relative;flex-shrink:0">'
+    return '<div style="position:relative">'
+      + '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
         + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
           : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
         + (c.ehCliente ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#25d366;border-radius:50%;border:2px solid #fff" title="Cliente"></div>' : '')
@@ -3459,6 +3462,8 @@ function _renderContatosLista(contatos, filtro, busca) {
         + '</div>'
         + (et ? '<div style="margin-top:3px"><span style="font-size:10px;font-weight:600;color:'+et.cor+';background:'+et.cor+'15;padding:1px 7px;border-radius:20px">'+et.label+'</span></div>' : '')
       + '</div>'
+      + '</div>'
+    + '</div>'
     + '</div>';
   }).join('');
 }
@@ -3657,7 +3662,46 @@ async function limparLids() {
 }
 
 function _attachInbox() {
+  // Mostrar botão delete no hover
+  ct().addEventListener('mouseover', function(e) {
+    var wrapper = e.target.closest('[data-phone]');
+    if (wrapper) {
+      var btn = wrapper.querySelector('.inbox-del-btn');
+      if (btn) btn.style.display = 'block';
+    }
+  });
+  ct().addEventListener('mouseout', function(e) {
+    var wrapper = e.target.closest('[data-phone]');
+    if (wrapper) {
+      var btn = wrapper.querySelector('.inbox-del-btn');
+      if (btn) btn.style.display = 'none';
+    }
+  });
   ct().addEventListener('click', function(e) {
+    // Deletar conversa
+    var delBtn = e.target.closest('.inbox-del-btn');
+    if (delBtn) {
+      e.stopPropagation();
+      var phone = delBtn.getAttribute('data-phone');
+      var nome = (_inboxContatos.find(function(c){return c.phone===phone;})||{}).nome || phone;
+      if (!confirm('Apagar conversa com ' + nome + '?')) return;
+      fetch(API+'/api/inbox?action=deletar-conversa&secret='+S, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({phone})
+      }).then(function(r){return r.json();}).then(function(d){
+        if (d.ok) {
+          _inboxContatos = _inboxContatos.filter(function(c){return c.phone!==phone;});
+          var lista = document.getElementById('inbox-lista');
+          if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, 'Todos', '');
+          if (_inboxContatoAtivo === phone) {
+            _inboxContatoAtivo = null;
+            var area = document.getElementById('inbox-conversa');
+            if (area) area.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px">Selecione uma conversa</div>';
+          }
+        }
+      });
+      return;
+    }
     // Contato
     var item = e.target.closest('.inbox-item');
     if (item) { abrirConversa(item.getAttribute('data-phone')); return; }
