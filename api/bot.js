@@ -119,33 +119,40 @@ async function buscarPedidoPorNome(nome) {
   return (pedidos.orders || [])[0] || null;
 }
 
-async function buscarPedidoME(trackingCode, nomeCliente) {
-  // Buscar nas purchases do ME pelo tracking ou nome do cliente
+// ── Melhor Envio: buscar etiqueta por documento (CPF) ou tracking ─────────
+async function buscarEtiquetaME(q) {
+  // Usa o endpoint oficial de pesquisa do ME — busca por CPF, tracking, ID ou protocolo
   try {
-    const pages = await Promise.all([1,2,3].map(p =>
-      fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
-        headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
-      }).then(r => r.json()).catch(() => ({ data: [] }))
-    ));
-    const allOrders = pages.flatMap(p => (p.data || []).flatMap(pu => pu.orders || []));
-    // Buscar pelo código de rastreio primeiro
-    let found = trackingCode ? allOrders.find(o => o.tracking === trackingCode) : null;
-    // Fallback: buscar pelo nome do cliente
-    if (!found && nomeCliente) {
-      const cn = nomeCliente.toLowerCase().trim();
-      found = allOrders.find(o => {
-        const toName = (o.to && o.to.name || '').toLowerCase().trim();
-        return toName === cn || toName.includes(cn.split(' ')[0]);
-      });
-    }
-    return found || null;
+    const r = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/search?q=${encodeURIComponent(q)}`, {
+      headers: {
+        Authorization: `Bearer ${ME_TOKEN}`,
+        Accept: 'application/json',
+        'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)'
+      }
+    });
+    const data = await r.json();
+    // Retorna array de etiquetas — pega a mais recente
+    const items = Array.isArray(data) ? data : (data.data || []);
+    return items.length ? items[0] : null;
   } catch(e) {
-    console.log('ME purchases erro:', e.message);
+    console.log('ME search erro:', e.message);
     return null;
   }
 }
 
-// Status do ME para label legível
+// Extrair CPF do pedido Shopify (salvo na nota ou no customer)
+function extrairCPF(pedido) {
+  const nota = pedido.note || '';
+  const matchNota = nota.match(/CPF[:\s]*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i);
+  if (matchNota) return matchNota[1].replace(/\D/g, '');
+  // Tentar no campo tax_lines ou customer
+  const doc = pedido.customer?.tax_exemptions?.join('') || '';
+  const matchDoc = doc.match(/\d{11}/);
+  if (matchDoc) return matchDoc[0];
+  return null;
+}
+
+// Status da etiqueta ME para label legível
 function statusMELabel(status) {
   const map = {
     'delivered':   '✅ *Entregue*',
@@ -155,24 +162,9 @@ function statusMELabel(status) {
     'released':    '📦 *Etiqueta gerada — aguardando postagem*',
     'pending':     '⏳ *Aguardando processamento*',
     'paid':        '💳 *Pago — preparando envio*',
+    'suspended':   '⚠️ *Suspenso*',
   };
   return map[status] || '📦 *Em processamento*';
-}
-
-async function buscarTodosPedidosTelefone(tel) {
-  const nums = tel.replace(/\D/g, '').replace(/^55/, '');
-  // Busca cliente pelo telefone
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ customers: [] }));
-  if (!(r.customers || []).length) return [];
-  const cliente = r.customers[0];
-  const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
 }
 
 // ── MENU PRINCIPAL ────────────────────────────────────────────
@@ -363,144 +355,74 @@ async function processarMensagem(phone, texto, midia) {
 
 // ── PROCESSAR OPÇÃO IDENTIFICADA ─────────────────────────────
 async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
-  const tracking = (pedido.fulfillments || [])[0]?.tracking_number || '';
-  const nome = pedido.customer ? `${pedido.customer.first_name || ''}`.trim() : 'Cliente';
-  const nomeCompleto = pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '';
+  const nome = pedido.customer
+    ? `${pedido.customer.first_name || ''}`.trim()
+    : 'Cliente';
+
+  // Buscar etiqueta no ME pelo CPF do pedido Shopify
+  const cpf = extrairCPF(pedido);
+  const etiqueta = cpf ? await buscarEtiquetaME(cpf) : null;
+
+  console.log(`BOT ME etiqueta: cpf=${cpf} status=${etiqueta?.status} tracking=${etiqueta?.tracking}`);
+
+  const meTracking = etiqueta?.tracking || null;
+  const meStatus   = etiqueta?.status   || null;
 
   if (opcao === '1') {
-    const mePedido = await buscarPedidoME(tracking, nomeCompleto);
-    const meTracking = mePedido?.tracking || tracking;
-    if (!mePedido && !tracking) {
+    if (!etiqueta) {
       await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado. Assim que a etiqueta for gerada você receberá o código de rastreio! ⌚`);
     } else {
-      const statusLabel = mePedido ? statusMELabel(mePedido.status) : '📦 *Em processamento*';
-      let msg = `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}`;
-      if (meTracking) msg += `\nCódigo de rastreio: *${meTracking}*\n\n🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
+      const statusLabel = statusMELabel(meStatus);
+      let msg = `📦 Pedido *#${pedido.order_number}*
+
+Status: ${statusLabel}`;
+      if (meTracking) msg += `
+Código de rastreio: *${meTracking}*
+
+🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
       await enviarTexto(phone, msg);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '2') {
-    const mePedido2 = await buscarPedidoME(tracking, nomeCompleto);
-    const meTracking2 = mePedido2?.tracking || tracking;
-    if (!meTracking2) {
+    if (!meTracking) {
       await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Assim que for postado você recebe! 📦`);
     } else {
-      await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:\n\n*${meTracking2}*\n\n📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking2}`);
+      await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:
+
+*${meTracking}*
+
+📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '3') {
-    const mePedido3 = await buscarPedidoME(tracking, nomeCompleto);
-    const meTracking3 = mePedido3?.tracking || tracking;
     const frete = (pedido.shipping_lines || [])[0]?.title || '';
     const prazo = frete.toLowerCase().includes('sedex') ? '2 dias úteis' : 'até 10 dias úteis';
-    if (!mePedido3) {
-      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* está sendo preparado.\n\nModalidade: *${frete || 'PAC'}*\nPrazo estimado após envio: *${prazo}* ⌚`);
+    if (!etiqueta) {
+      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* está sendo preparado.
+
+Modalidade: *${frete || 'PAC'}*
+Prazo estimado após envio: *${prazo}* ⌚`);
     } else {
-      const statusLabel3 = statusMELabel(mePedido3.status);
-      let msg3 = `Olá ${nome}! 😊 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel3}\nModalidade: *${frete || 'PAC'}*\nPrazo estimado: *${prazo}*`;
-      if (meTracking3) msg3 += `\n\n🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking3}`;
-      await enviarTexto(phone, msg3);
+      const statusLabel = statusMELabel(meStatus);
+      let msg = `Olá ${nome}! 😊 Pedido *#${pedido.order_number}*
+
+Status: ${statusLabel}
+Modalidade: *${frete || 'PAC'}*
+Prazo estimado: *${prazo}*`;
+      if (meTracking) msg += `
+
+🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
+      await enviarTexto(phone, msg);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '4' || opcao === '5') {
     const tipo = opcao === '4' ? 'problema' : 'solicitação de troca';
     await kvSet(stateKey, { etapa: 'aguardando_descricao', opcao, pedido, midias: [] }, TTL);
-    await enviarTexto(phone, `Olá ${nome}! 😊 Entendido, vou registrar sua ${tipo} do pedido *#${pedido.order_number}*.\n\nPor favor, *descreva detalhadamente* o ocorrido:`);
+    await enviarTexto(phone, `Olá ${nome}! 😊 Entendido, vou registrar sua ${tipo} do pedido *#${pedido.order_number}*.
+
+Por favor, *descreva detalhadamente* o ocorrido:`);
   }
-}
-
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  // ── Endpoints do dashboard ────────────────────────────────
-  if (req.method === 'GET' && req.query.action) {
-    const secret = req.query.secret || '';
-    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-
-    if (req.query.action === 'listar-tickets') {
-      try {
-        const ids = await kvGet('tickets-lista') || [];
-        const tickets = await Promise.all(ids.map(id => kvGet(id)));
-        return res.status(200).json({ tickets: tickets.filter(Boolean) });
-      } catch(e) { return res.status(500).json({ erro: e.message }); }
-    }
-
-    if (req.query.action === 'stats') {
-      try {
-        const ids = await kvGet('tickets-lista') || [];
-        const tickets = (await Promise.all(ids.map(id => kvGet(id)))).filter(Boolean);
-        return res.status(200).json({
-          total: tickets.length,
-          abertos: tickets.filter(t => t.status === 'aberto').length,
-          em_atendimento: tickets.filter(t => t.status === 'em_atendimento').length,
-          resolvidos: tickets.filter(t => t.status === 'resolvido').length
-        });
-      } catch(e) { return res.status(500).json({ erro: e.message }); }
-    }
-  }
-
-  if (req.method === 'POST' && req.query.action === 'atualizar-ticket') {
-    const secret = req.query.secret || '';
-    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
-    try {
-      const { id, status } = req.body || {};
-      const ticket = await kvGet(id);
-      if (!ticket) return res.status(404).json({ erro: 'Ticket não encontrado' });
-      ticket.status = status;
-      ticket.atualizado_em = new Date().toISOString();
-      await kvSet(id, ticket);
-      return res.status(200).json({ ok: true });
-    } catch(e) { return res.status(500).json({ erro: e.message }); }
-  }
-
-  // ── Webhook Z-API ─────────────────────────────────────────
-  if (req.method === 'POST') {
-    try {
-      const body = req.body || {};
-      console.log('BOT webhook:', JSON.stringify(body).substring(0, 300));
-
-      // Ignorar mensagens enviadas pelo próprio bot
-      if (body.fromMe || body.isGroup) return res.status(200).json({ ok: true });
-
-      const phone = body.phone || body.from || '';
-      if (!phone) return res.status(200).json({ ok: true });
-
-      // Log completo para debug
-      console.log('BOT payload completo:', JSON.stringify(body));
-      console.log('BOT text field:', JSON.stringify(body.text));
-
-      // Extrair texto — Z-API usa body.text.message para texto simples
-      let texto = '';
-      if (body.text) {
-        texto = typeof body.text === 'string' ? body.text : (body.text.message || '');
-      }
-      if (!texto && body.caption) texto = body.caption;
-      if (!texto && body.message) texto = typeof body.message === 'string' ? body.message : '';
-
-      // Extrair mídia se houver
-      let midia = null;
-      if (body.image) midia = { tipo: 'image', url: body.image.imageUrl || body.image.url || body.image || '' };
-      else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || body.video || '' };
-      else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || body.document || '' };
-      else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || body.audio || '' };
-
-      // Aguardar processamento antes de responder ao Z-API
-      try {
-        await processarMensagem(phone, texto, midia);
-      } catch(e) {
-        console.error('BOT erro processamento:', e.message);
-      }
-
-      return res.status(200).json({ ok: true });
-    } catch(e) {
-      console.error('BOT handler erro:', e.message);
-      return res.status(200).json({ ok: true }); // sempre 200 pro Z-API
-    }
-  }
-
-  return res.status(405).end();
 }
