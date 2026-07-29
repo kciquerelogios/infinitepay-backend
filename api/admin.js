@@ -2001,6 +2001,7 @@ tr:hover td{background:#fafafa}
     <button class="nav-item" data-aba="bundle"><span class="nav-icon">🎁</span><span class="nav-label">Bundle</span></button>
     <button class="nav-item" data-aba="recuperacao"><span class="nav-icon">💬</span><span class="nav-label">Recuperação</span></button>
     <button class="nav-item" data-aba="roleta"><span class="nav-icon">🎡</span><span class="nav-label">Roleta</span></button>
+    <button class="nav-item" data-aba="atendimento"><span class="nav-icon">🎧</span><span class="nav-label">Atendimento</span></button>
   </nav>
   <div class="sidebar-foot">Kcique © 2026</div>
 </aside>
@@ -2018,7 +2019,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos'};
+const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -2049,7 +2050,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta};
+  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -3194,6 +3195,114 @@ window.rkSalvar = async function() {
     btn.textContent = '❌ Erro'; btn.disabled = false;
   }
 };
+
+// ===== ATENDIMENTO =====
+async function renderAtendimento() {
+  loading();
+  try {
+    var [ticketsR, statsR] = await Promise.all([
+      fetch(API+'/api/bot?action=listar-tickets&secret='+S).then(r=>r.json()).catch(()=>({tickets:[]})),
+      fetch(API+'/api/bot?action=stats&secret='+S).then(r=>r.json()).catch(()=>({ativos:0,problemas:0,trocas:0}))
+    ]);
+    var tickets = ticketsR.tickets || [];
+    var stats = statsR;
+    var html = '';
+
+    // Stats
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">';
+    html += '<div class="stat-card"><div class="stat-label">🎧 Total Tickets</div><div class="stat-value">'+tickets.length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🔴 Abertos</div><div class="stat-value" style="color:#ef4444">'+tickets.filter(function(t){return t.status==='aberto';}).length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🔄 Em Atendimento</div><div class="stat-value" style="color:#f59e0b">'+tickets.filter(function(t){return t.status==='em_atendimento';}).length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">✅ Resolvidos</div><div class="stat-value" style="color:#16a34a">'+tickets.filter(function(t){return t.status==='resolvido';}).length+'</div></div>';
+    html += '</div>';
+
+    // Filtros
+    html += '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+    html += '<button class="btn btn-ghost btn-sm ativo-filtro" data-f="todos" onclick="filtrarTickets(this,'todos')">Todos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="aberto" onclick="filtrarTickets(this,'aberto')">🔴 Abertos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento" onclick="filtrarTickets(this,'em_atendimento')">🔄 Em Atendimento</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="problema" onclick="filtrarTickets(this,'problema')">⚠️ Problemas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="troca" onclick="filtrarTickets(this,'troca')">🔁 Trocas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido" onclick="filtrarTickets(this,'resolvido')">✅ Resolvidos</button>';
+    html += '</div>';
+
+    if (!tickets.length) {
+      html += '<div class="vazio">Nenhum ticket de atendimento ainda</div>';
+      ct().innerHTML = html;
+      return;
+    }
+
+    // Lista de tickets
+    html += '<div id="tickets-lista">';
+    html += _renderTicketsList(tickets, 'todos');
+    html += '</div>';
+
+    window._todosTickets = tickets;
+    ct().innerHTML = html;
+  } catch(e) { errMsg('Erro: '+e.message); }
+}
+
+function _renderTicketsList(tickets, filtro) {
+  var lista = filtro === 'todos' ? tickets : tickets.filter(function(t) {
+    if (filtro === 'problema') return t.tipo === 'problema';
+    if (filtro === 'troca') return t.tipo === 'troca';
+    return t.status === filtro;
+  });
+  if (!lista.length) return '<div class="vazio">Nenhum ticket nesta categoria</div>';
+
+  var corStatus = {aberto:'#ef4444', em_atendimento:'#f59e0b', resolvido:'#16a34a'};
+  var labelStatus = {aberto:'🔴 Aberto', em_atendimento:'🔄 Em Atendimento', resolvido:'✅ Resolvido'};
+  var corTipo = {problema:'#ef4444', troca:'#2563eb'};
+  var labelTipo = {problema:'⚠️ Problema', troca:'🔁 Troca'};
+
+  var html = '<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Pedido</th><th>Descrição</th><th>Mídias</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead><tbody>';
+  lista.slice().reverse().forEach(function(t) {
+    var midias = t.midias || [];
+    html += '<tr>';
+    html += '<td><div style="font-weight:600;font-size:13px">'+( t.nome||t.telefone)+'</div><div style="font-size:11px;color:#9ca3af">'+t.telefone+'</div></td>';
+    html += '<td><span style="background:'+(corTipo[t.tipo]||'#6b7280')+'20;color:'+(corTipo[t.tipo]||'#6b7280')+';padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">'+(labelTipo[t.tipo]||t.tipo)+'</span></td>';
+    html += '<td style="font-size:12px">'+(t.pedido||'—')+'</td>';
+    html += '<td style="max-width:200px;font-size:12px;color:#374151">'+(t.descricao||'—').substring(0,80)+(t.descricao&&t.descricao.length>80?'...':'')+'</td>';
+    html += '<td>';
+    midias.forEach(function(m) {
+      if (m.tipo==='image') html += '<img src="'+m.url+'" onclick="abrirFoto(''+m.url+'')" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
+      else if (m.tipo==='video') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">🎥 vídeo</a> ';
+      else if (m.tipo==='document') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">📄 doc</a> ';
+    });
+    if (!midias.length) html += '<span style="color:#9ca3af;font-size:12px">—</span>';
+    html += '</td>';
+    html += '<td><span style="background:'+(corStatus[t.status]||'#6b7280')+'20;color:'+(corStatus[t.status]||'#6b7280')+';padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">'+(labelStatus[t.status]||t.status)+'</span></td>';
+    html += '<td style="font-size:11px;color:#9ca3af;white-space:nowrap">'+fmtDate(t.criado_em)+'</td>';
+    html += '<td style="white-space:nowrap">';
+    if (t.status!=='resolvido') {
+      html += '<button onclick="atualizarTicket(''+t.id+'','em_atendimento')" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
+      html += '<button onclick="atualizarTicket(''+t.id+'','resolvido')" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
+    }
+    if (t.telefone) {
+      var wppMsg = encodeURIComponent('Olá '+( t.nome||'').split(' ')[0]+'! Aqui é da Kcique Relógios. Estamos analisando seu atendimento e já entramos em contato em breve! ⌚');
+      html += ' <a href="https://wa.me/55'+t.telefone.replace(/\D/g,'')+"?text="+wppMsg+'" target="_blank" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none">💬</a>';
+    }
+    html += '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function filtrarTickets(btn, filtro) {
+  document.querySelectorAll('[data-f]').forEach(function(b){b.style.background='';b.style.color='';});
+  btn.style.background='#1a1a2e';btn.style.color='#fff';
+  var lista = document.getElementById('tickets-lista');
+  if (lista && window._todosTickets) lista.innerHTML = _renderTicketsList(window._todosTickets, filtro);
+}
+
+async function atualizarTicket(id, status) {
+  await fetch(API+'/api/bot?action=atualizar-ticket&secret='+S, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id, status})
+  });
+  renderAtendimento();
+}
 
 // INICIAR
 renderAba('home');
