@@ -3502,7 +3502,7 @@ async function abrirConversa(phone) {
     });
     html += '</select>';
     if (!contato.ehCliente) {
-      html += '<button onclick="identificarCliente(''+phone+'')" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🔍 Identificar</button>';
+      html += '<button data-action="identificar" data-phone="'+phone+'" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🔍 Identificar</button>';
     }
     if (contato.dadosShopify) {
       var sh = contato.dadosShopify;
@@ -3525,7 +3525,7 @@ async function abrirConversa(phone) {
     // Input resposta
     html += '<div style="padding:10px 14px;border-top:1px solid #e8eaf0;display:flex;gap:8px;align-items:flex-end;background:#fff">';
     html += '<textarea id="inbox-reply" placeholder="Digite uma mensagem..." style="flex:1;padding:9px 12px;border:1px solid #e8eaf0;border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;min-height:40px;max-height:120px;line-height:1.4" rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>';
-    html += '<button onclick="enviarResposta(''+phone+'')" style="width:40px;height:40px;border-radius:50%;background:#25d366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
+    html += '<button data-action="enviar-reply" data-phone="'+phone+'" style="width:40px;height:40px;border-radius:50%;background:#25d366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
     html += '<svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg></button>';
     html += '</div>';
 
@@ -3568,7 +3568,7 @@ function _renderMensagem(msg) {
     conteudo = '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">'+(msg.texto||'')+'</div>';
   } else if (msg.tipo === 'image') {
     conteudo = msg.mediaThumbnail || msg.mediaUrl
-      ? '<div style="cursor:pointer" onclick="abrirFoto(''+msg.mediaUrl+'')">'
+      ? '<div style="cursor:pointer" data-action="abrir-foto" data-url="'+msg.mediaUrl+'">'
         + '<img src="'+(msg.mediaThumbnail||msg.mediaUrl)+'" style="max-width:200px;border-radius:8px;display:block">'
         + (msg.texto ? '<div style="font-size:12px;margin-top:4px;color:#374151">'+msg.texto+'</div>' : '')
         + '</div>'
@@ -3647,22 +3647,36 @@ function carregarMidia(url, el) {
 }
 
 function _attachInbox() {
-  // Clicar em contato
   ct().addEventListener('click', function(e) {
+    // Contato
     var item = e.target.closest('.inbox-item');
-    if (item) abrirConversa(item.getAttribute('data-phone'));
-  });
-  // Filtros
-  ct().addEventListener('click', function(e) {
-    var btn = e.target.closest('.inbox-filtro');
-    if (!btn) return;
-    document.querySelectorAll('.inbox-filtro').forEach(function(b){
-      b.style.background='#fff'; b.style.color='#6b7280'; b.style.borderColor='#e8eaf0';
-    });
-    btn.style.background='#1a1a2e'; btn.style.color='#fff';
-    var lista = document.getElementById('inbox-lista');
-    var busca = (document.getElementById('inbox-busca')||{}).value||'';
-    if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, btn.getAttribute('data-f'), busca);
+    if (item) { abrirConversa(item.getAttribute('data-phone')); return; }
+    // Filtro
+    var filtroBtn = e.target.closest('.inbox-filtro');
+    if (filtroBtn) {
+      document.querySelectorAll('.inbox-filtro').forEach(function(b){b.style.background='#fff';b.style.color='#6b7280';});
+      filtroBtn.style.background='#1a1a2e'; filtroBtn.style.color='#fff';
+      var lista = document.getElementById('inbox-lista');
+      var busca = (document.getElementById('inbox-busca')||{}).value||'';
+      if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, filtroBtn.getAttribute('data-f'), busca);
+      return;
+    }
+    // Identificar cliente
+    var idBtn = e.target.closest('[data-action="identificar"]');
+    if (idBtn) { identificarCliente(idBtn.getAttribute('data-phone')); return; }
+    // Enviar reply
+    var sendBtn = e.target.closest('[data-action="enviar-reply"]');
+    if (sendBtn) { enviarResposta(sendBtn.getAttribute('data-phone')); return; }
+    // Abrir foto
+    var fotoDiv = e.target.closest('[data-action="abrir-foto"]');
+    if (fotoDiv) { abrirFoto(fotoDiv.getAttribute('data-url')); return; }
+    // Carregar mídia lazy
+    var midiaDiv = e.target.closest('[data-action="carregar-midia"]');
+    if (midiaDiv) {
+      var url = midiaDiv.getAttribute('data-url');
+      midiaDiv.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
+      return;
+    }
   });
   // Busca
   var busca = document.getElementById('inbox-busca');
