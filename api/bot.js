@@ -426,3 +426,88 @@ Prazo estimado: *${prazo}*`;
 Por favor, *descreva detalhadamente* o ocorrido:`);
   }
 }
+
+
+
+// ── HANDLER PRINCIPAL ─────────────────────────────────────────
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // ── Endpoints do dashboard ────────────────────────────────
+  if (req.method === 'GET' && req.query.action) {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+
+    if (req.query.action === 'listar-tickets') {
+      try {
+        const ids = await kvGet('tickets-lista') || [];
+        const tickets = await Promise.all(ids.map(id => kvGet(id)));
+        return res.status(200).json({ tickets: tickets.filter(Boolean) });
+      } catch(e) { return res.status(500).json({ erro: e.message }); }
+    }
+
+    if (req.query.action === 'stats') {
+      try {
+        const ids = await kvGet('tickets-lista') || [];
+        const tickets = (await Promise.all(ids.map(id => kvGet(id)))).filter(Boolean);
+        return res.status(200).json({
+          total: tickets.length,
+          abertos: tickets.filter(t => t.status === 'aberto').length,
+          em_atendimento: tickets.filter(t => t.status === 'em_atendimento').length,
+          resolvidos: tickets.filter(t => t.status === 'resolvido').length
+        });
+      } catch(e) { return res.status(500).json({ erro: e.message }); }
+    }
+  }
+
+  if (req.method === 'POST' && req.query.action === 'atualizar-ticket') {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const { id, status } = req.body || {};
+      const ticket = await kvGet(id);
+      if (!ticket) return res.status(404).json({ erro: 'Ticket não encontrado' });
+      ticket.status = status;
+      ticket.atualizado_em = new Date().toISOString();
+      await kvSet(id, ticket);
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
+  // ── Webhook Z-API ─────────────────────────────────────────
+  if (req.method === 'POST') {
+    try {
+      const body = req.body || {};
+      console.log('BOT webhook:', JSON.stringify(body).substring(0, 300));
+
+      if (body.fromMe || body.isGroup) return res.status(200).json({ ok: true });
+
+      const phone = body.phone || body.from || '';
+      if (!phone) return res.status(200).json({ ok: true });
+
+      let texto = '';
+      if (body.text) texto = typeof body.text === 'string' ? body.text : (body.text.message || '');
+      if (!texto && body.caption) texto = body.caption;
+      if (!texto && body.message) texto = typeof body.message === 'string' ? body.message : '';
+
+      let midia = null;
+      if (body.image) midia = { tipo: 'image', url: body.image.imageUrl || body.image.url || '' };
+      else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || '' };
+      else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
+
+      try {
+        await processarMensagem(phone, texto, midia);
+      } catch(e) {
+        console.error('BOT erro processamento:', e.message);
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch(e) {
+      console.error('BOT handler erro:', e.message);
+      return res.status(200).json({ ok: true });
+    }
+  }
+
+  return res.status(405).end();
+}
