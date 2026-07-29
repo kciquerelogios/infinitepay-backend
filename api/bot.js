@@ -143,12 +143,12 @@ async function buscarEtiquetaME(q) {
 // Extrair CPF do pedido Shopify (salvo na nota ou no customer)
 function extrairCPF(pedido) {
   const nota = pedido.note || '';
-  const matchNota = nota.match(/CPF[:\s]*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i);
-  if (matchNota) return matchNota[1].replace(/\D/g, '');
-  // Tentar no campo tax_lines ou customer
-  const doc = pedido.customer?.tax_exemptions?.join('') || '';
-  const matchDoc = doc.match(/\d{11}/);
-  if (matchDoc) return matchDoc[0];
+  // Formato salvo pelo webhook: "CPF: 12345678901"
+  const matchNota = nota.match(/CPF:\s*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i);
+  if (matchNota) {
+    const cpf = matchNota[1].replace(/\D/g, '');
+    if (cpf.length === 11) return cpf;
+  }
   return null;
 }
 
