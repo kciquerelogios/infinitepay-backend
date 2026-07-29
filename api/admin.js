@@ -3217,13 +3217,13 @@ async function renderAtendimento() {
     html += '</div>';
 
     // Filtros
-    html += '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
-    html += '<button class="btn btn-ghost btn-sm ativo-filtro" data-f="todos" onclick="filtrarTickets(this,'todos')">Todos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="aberto" onclick="filtrarTickets(this,'aberto')">🔴 Abertos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento" onclick="filtrarTickets(this,'em_atendimento')">🔄 Em Atendimento</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="problema" onclick="filtrarTickets(this,'problema')">⚠️ Problemas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="troca" onclick="filtrarTickets(this,'troca')">🔁 Trocas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido" onclick="filtrarTickets(this,'resolvido')">✅ Resolvidos</button>';
+    html += '<div id="ticket-filtros" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+    html += '<button class="btn btn-ghost btn-sm" style="background:#1a1a2e;color:#fff" data-f="todos">Todos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="aberto">🔴 Abertos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento">🔄 Em Atendimento</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="problema">⚠️ Problemas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="troca">🔁 Trocas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido">✅ Resolvidos</button>';
     html += '</div>';
 
     if (!tickets.length) {
@@ -3239,7 +3239,40 @@ async function renderAtendimento() {
 
     window._todosTickets = tickets;
     ct().innerHTML = html;
+    _attachAtendimento();
   } catch(e) { errMsg('Erro: '+e.message); }
+}
+
+function _attachAtendimento() {
+  // Filtros via event delegation
+  var filtros = document.getElementById('ticket-filtros');
+  if (filtros) filtros.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-f]');
+    if (!btn) return;
+    filtros.querySelectorAll('[data-f]').forEach(function(b) {
+      b.style.background = ''; b.style.color = '';
+    });
+    btn.style.background = '#1a1a2e'; btn.style.color = '#fff';
+    var lista = document.getElementById('tickets-lista');
+    if (lista && window._todosTickets) lista.innerHTML = _renderTicketsList(window._todosTickets, btn.getAttribute('data-f'));
+    _attachTicketsActions();
+  });
+  _attachTicketsActions();
+}
+
+function _attachTicketsActions() {
+  // Atualizar ticket via data-tid/data-tact
+  ct().querySelectorAll('[data-tid]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      atualizarTicket(this.getAttribute('data-tid'), this.getAttribute('data-tact'));
+    });
+  });
+  // Abrir foto via data-foto
+  ct().querySelectorAll('[data-foto]').forEach(function(img) {
+    img.addEventListener('click', function() {
+      abrirFoto(this.getAttribute('data-foto'));
+    });
+  });
 }
 
 function _renderTicketsList(tickets, filtro) {
@@ -3265,7 +3298,7 @@ function _renderTicketsList(tickets, filtro) {
     html += '<td style="max-width:200px;font-size:12px;color:#374151">'+(t.descricao||'—').substring(0,80)+(t.descricao&&t.descricao.length>80?'...':'')+'</td>';
     html += '<td>';
     midias.forEach(function(m) {
-      if (m.tipo==='image') html += '<img src="'+m.url+'" onclick="abrirFoto(''+m.url+'')" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
+      if (m.tipo==='image') html += '<img src="'+m.url+'" data-foto="'+m.url+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
       else if (m.tipo==='video') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">🎥 vídeo</a> ';
       else if (m.tipo==='document') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">📄 doc</a> ';
     });
@@ -3275,8 +3308,8 @@ function _renderTicketsList(tickets, filtro) {
     html += '<td style="font-size:11px;color:#9ca3af;white-space:nowrap">'+fmtDate(t.criado_em)+'</td>';
     html += '<td style="white-space:nowrap">';
     if (t.status!=='resolvido') {
-      html += '<button onclick="atualizarTicket(''+t.id+'','em_atendimento')" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
-      html += '<button onclick="atualizarTicket(''+t.id+'','resolvido')" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
+      html += '<button data-tid="'+t.id+'" data-tact="em_atendimento" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
+      html += '<button data-tid="'+t.id+'" data-tact="resolvido" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
     }
     if (t.telefone) {
       var wppMsg = encodeURIComponent('Olá '+( t.nome||'').split(' ')[0]+'! Aqui é da Kcique Relógios. Estamos analisando seu atendimento e já entramos em contato em breve! ⌚');
