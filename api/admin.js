@@ -3632,8 +3632,7 @@ async function identificarCliente(phone) {
   }).then(r=>r.json());
   if (r.ok) {
     if (r.shopify.ehCliente) {
-      alert('✅ Cliente identificado: '+r.shopify.nome+'
-'+r.shopify.totalPedidos+' pedidos · R$ '+r.shopify.totalGasto.toFixed(2));
+      alert('✅ Cliente identificado: '+r.shopify.nome+'\n'+r.shopify.totalPedidos+' pedidos · R$ '+r.shopify.totalGasto.toFixed(2));
     } else {
       alert('Não encontrado como cliente no Shopify.');
     }
