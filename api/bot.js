@@ -119,41 +119,60 @@ async function buscarPedidoPorNome(nome) {
   return (pedidos.orders || [])[0] || null;
 }
 
-// ── Melhor Envio: buscar etiqueta por documento (CPF) ou tracking ─────────
-async function buscarEtiquetaME(q) {
-  // Usa o endpoint oficial de pesquisa do ME — busca por CPF, tracking, ID ou protocolo
+// ── Melhor Envio: buscar etiqueta por CPF (document) ─────────────────────
+async function buscarEtiquetaMEporCPF(cpf) {
   try {
-    const r = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/search?q=${encodeURIComponent(q)}`, {
-      headers: {
-        Authorization: `Bearer ${ME_TOKEN}`,
-        Accept: 'application/json',
-        'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)'
-      }
+    const r = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/search?q=${encodeURIComponent(cpf)}`, {
+      headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
     });
+    if (!r.ok) return null;
     const data = await r.json();
-    // Retorna array de etiquetas — pega a mais recente
     const items = Array.isArray(data) ? data : (data.data || []);
     return items.length ? items[0] : null;
-  } catch(e) {
-    console.log('ME search erro:', e.message);
-    return null;
-  }
+  } catch(e) { console.log('ME CPF search erro:', e.message); return null; }
+}
+
+// ── Melhor Envio: buscar etiqueta nas purchases por telefone ───────────────
+async function buscarEtiquetaMEporTelefone(telefone) {
+  try {
+    const nums = telefone.replace(/\D/g, '');
+    // Buscar nas últimas 3 páginas de purchases
+    const pages = await Promise.all([1,2,3].map(p =>
+      fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
+        headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+      }).then(r => r.json()).catch(() => ({ data: [] }))
+    ));
+    const allOrders = pages.flatMap(p => (p.data || []).flatMap(pu => pu.orders || []));
+    // Buscar pelo telefone exato no to.phone
+    const found = allOrders.find(o => {
+      const tel = ((o.to && o.to.phone) || '').replace(/\D/g, '');
+      return tel === nums || tel === nums.replace(/^55/, '') || '55' + tel === nums;
+    });
+    return found || null;
+  } catch(e) { console.log('ME tel search erro:', e.message); return null; }
 }
 
 // Extrair CPF do pedido Shopify (salvo na nota ou no customer)
 function extrairDadosPedido(pedido) {
   const nota = pedido.note || '';
-  // Extrair CPF — formato: "CPF: 12345678901"
+
+  // CPF — formato: "CPF: 12345678901"
   let cpf = null;
-  const matchCPF = nota.match(/CPF:\s*([\d]{11})/i);
+  const matchCPF = nota.match(/CPF:\s*(\d{11})/i);
   if (matchCPF) cpf = matchCPF[1];
 
-  // Extrair NSU — formato: "NSU: pedido-XXXXX"
-  let nsu = null;
-  const matchNSU = nota.match(/NSU:\s*(pedido-[\d]+)/i);
-  if (matchNSU) nsu = matchNSU[1];
+  // Telefone — formato: "Telefone: (67) 99291-3121"
+  let telefone = null;
+  const matchTel = nota.match(/Telefone:\s*([\d\s\(\)\-]+?)(?:\s*\|)/i);
+  if (matchTel) telefone = matchTel[1].replace(/\D/g, '');
 
-  return { cpf, nsu };
+  // Fallback: pegar do shipping_address do pedido
+  if (!telefone) {
+    const tel = pedido.shipping_address?.phone || pedido.phone || '';
+    if (tel) telefone = tel.replace(/\D/g, '');
+  }
+
+  return { cpf, telefone };
 }
 
 // Status da etiqueta ME para label legível
@@ -378,15 +397,15 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
     ? `${pedido.customer.first_name || ''}`.trim()
     : 'Cliente';
 
-  // Extrair CPF e NSU da nota do pedido Shopify
-  const { cpf, nsu } = extrairDadosPedido(pedido);
-  console.log(`BOT dados pedido: cpf="${cpf}" nsu="${nsu}" nota="${(pedido.note||'').substring(0,120)}"`);
+  // Extrair CPF e telefone da nota do pedido Shopify
+  const { cpf, telefone } = extrairDadosPedido(pedido);
+  console.log(`BOT dados: cpf="${cpf}" tel="${telefone}" nota="${(pedido.note||'').substring(0,100)}"`);
 
-  // Buscar no ME — tenta CPF primeiro, depois NSU como authorization_code
+  // Buscar no ME — CPF é o mais confiável, telefone como fallback
   let etiqueta = null;
-  if (cpf) etiqueta = await buscarEtiquetaME(cpf);
-  if (!etiqueta && nsu) etiqueta = await buscarEtiquetaME(nsu);
-  console.log(`BOT ME etiqueta:`, JSON.stringify(etiqueta).substring(0, 200));
+  if (cpf) etiqueta = await buscarEtiquetaMEporCPF(cpf);
+  if (!etiqueta && telefone) etiqueta = await buscarEtiquetaMEporTelefone(telefone);
+  console.log(`BOT ME etiqueta: status=${etiqueta?.status} tracking=${etiqueta?.tracking}`);
 
   const meTracking = etiqueta?.tracking || null;
   const meStatus   = etiqueta?.status   || null;
