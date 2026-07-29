@@ -52,29 +52,48 @@ async function enviarTexto(phone, message) {
 
 // ── Buscar pedido do cliente ─────────────────────────────────
 async function buscarPedidoPorTelefone(tel) {
-  const nums = tel.replace(/\D/g, '');
-  // Tentar variações: com e sem 9, com e sem 55
-  const variantes = [nums, nums.replace(/^55/, ''), '55' + nums.replace(/^55/, '')];
+  // Busca cliente pelo telefone na API do Shopify
+  const nums = tel.replace(/\D/g, '').replace(/^55/, ''); // remove DDI 55
+  const variantes = [nums, '55' + nums];
   for (const v of variantes) {
     const r = await fetch(
-      `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=5&financial_status=paid`,
+      `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
       { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-    ).then(r => r.json()).catch(() => ({ orders: [] }));
-    const pedido = (r.orders || []).find(o => {
-      const p = (o.shipping_address?.phone || o.phone || o.customer?.phone || '').replace(/\D/g, '');
-      return p === v || p === v.replace(/^55/, '') || '55' + p === v;
-    });
-    if (pedido) return pedido;
+    ).then(r => r.json()).catch(() => ({ customers: [] }));
+    if ((r.customers || []).length) {
+      const cliente = r.customers[0];
+      const pedidos = await fetch(
+        `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
+        { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+      ).then(r => r.json()).catch(() => ({ orders: [] }));
+      const pedidosPagos = (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
+      if (pedidosPagos.length) return pedidosPagos[0];
+    }
   }
   return null;
 }
 
 async function buscarPedidoPorEmail(email) {
+  // Busca cliente pelo email no Shopify
   const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=5&financial_status=paid`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(email)}&limit=5`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ customers: [] }));
+  if (!(r.customers || []).length) {
+    // Fallback: buscar diretamente nos pedidos por email
+    const r2 = await fetch(
+      `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`,
+      { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+    ).then(r => r.json()).catch(() => ({ orders: [] }));
+    return (r2.orders || []).find(o => (o.email || '').toLowerCase() === email.toLowerCase()) || null;
+  }
+  const cliente = r.customers[0];
+  const pedidos = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (r.orders || []).find(o => (o.email || '').toLowerCase() === email.toLowerCase()) || null;
+  const pagos = (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
+  return pagos[0] || null;
 }
 
 async function buscarPedidoPorCPF(cpf) {
@@ -111,15 +130,19 @@ async function buscarTrackingME(trackingCode) {
 }
 
 async function buscarTodosPedidosTelefone(tel) {
-  const nums = tel.replace(/\D/g, '');
+  const nums = tel.replace(/\D/g, '').replace(/^55/, '');
+  // Busca cliente pelo telefone
   const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=10&financial_status=paid`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ customers: [] }));
+  if (!(r.customers || []).length) return [];
+  const cliente = r.customers[0];
+  const pedidos = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (r.orders || []).filter(o => {
-    const p = (o.shipping_address?.phone || o.phone || o.customer?.phone || '').replace(/\D/g, '');
-    return p === nums || p === nums.replace(/^55/, '') || '55' + p === nums;
-  });
+  return (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
 }
 
 // ── MENU PRINCIPAL ────────────────────────────────────────────
@@ -304,15 +327,18 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
 
   if (opcao === '1') {
     // Rastrear pedido
+    // Rastrear pedido — status via Melhor Envio
     if (!tracking) {
-      await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* ainda não foi enviado. Assim que sair, você receberá uma notificação! ⌚`);
+      await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado para envio. Em breve você receberá o código de rastreio! ⌚`);
     } else {
       const info = await buscarTrackingME(tracking);
       const trackInfo = info ? info[tracking] : null;
-      const entregue = trackInfo?.delivered_at ? '✅ *Entregue*' : trackInfo?.posted_at ? '🚚 *Em trânsito*' : '📦 *Aguardando postagem*';
-      await enviarTexto(phone, `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${entregue}\nCódigo: *${tracking}*\n\n🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${tracking}`);
+      const statusLabel = trackInfo?.delivered_at ? '✅ *Entregue*'
+        : trackInfo?.posted_at ? '🚚 *Em trânsito pelos Correios*'
+        : trackInfo ? '📦 *Aguardando postagem*'
+        : '📦 *Em trânsito*'; // fallback quando ME não retorna
+      await enviarTexto(phone, `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}\nCódigo de rastreio: *${tracking}*\n\n🔍 Acompanhe aqui: https://rastreamento.correios.com.br/app/index.php?objetos=${tracking}`);
     }
-    await kvDel(stateKey);
 
   } else if (opcao === '2') {
     // Código de rastreio
