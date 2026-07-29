@@ -167,6 +167,21 @@ function statusMELabel(status) {
   return map[status] || '📦 *Em processamento*';
 }
 
+async function buscarTodosPedidosTelefone(tel) {
+  const nums = tel.replace(/\D/g, '').replace(/^55/, '');
+  const r = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ customers: [] }));
+  if (!(r.customers || []).length) return [];
+  const cliente = r.customers[0];
+  const pedidos = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ orders: [] }));
+  return (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
+}
+
 // ── MENU PRINCIPAL ────────────────────────────────────────────
 const MENU = `Olá! 😊 Bem-vindo ao atendimento da *Kcique Relógios* ⌚
 
