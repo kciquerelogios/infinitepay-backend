@@ -414,8 +414,12 @@ export default async function handler(req, res) {
       else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || body.document || '' };
       else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || body.audio || '' };
 
-      // Processar em background (não bloquear o webhook)
-      processarMensagem(phone, texto, midia).catch(e => console.error('BOT erro:', e.message));
+      // Aguardar processamento antes de responder ao Z-API
+      try {
+        await processarMensagem(phone, texto, midia);
+      } catch(e) {
+        console.error('BOT erro processamento:', e.message);
+      }
 
       return res.status(200).json({ ok: true });
     } catch(e) {
