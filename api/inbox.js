@@ -235,13 +235,16 @@ export default async function handler(req, res) {
       const body = req.body || {};
       if (body.isGroup || body.isNewsletter) return res.status(200).json({ ok: true });
 
-      // Normalizar telefone — sempre com DDI 55, sem +, sem espaços
-      const phoneRaw = body.phone || body.from || '';
+      // Normalizar telefone — sempre usar o número do CONTATO (não o nosso)
+      const phoneRaw = body.phone || body.chatId || '';
       if (!phoneRaw) return res.status(200).json({ ok: true });
-      const phone = phoneRaw.replace(/\D/g, '').replace(/^0+/, '');
-      const phoneNorm = phone.startsWith('55') ? phone : '55' + phone;
+      // Limpar número
+      const phoneClean = phoneRaw.replace(/[^0-9]/g, '').replace(/^0+/, '');
+      const phoneNorm = phoneClean.startsWith('55') ? phoneClean : '55' + phoneClean;
+      // Ignorar mensagens onde o contato somos nós mesmos
       if (phoneNorm === MEU_NUMERO) return res.status(200).json({ ok: true });
-      // Usar sempre o número normalizado
+      // Ignorar se parece ser um grupo (tem @g.us ou -group)
+      if (phoneRaw.includes('@g') || phoneRaw.includes('-group')) return res.status(200).json({ ok: true });
       const phoneKey = phoneNorm;
 
       // Extrair texto
@@ -290,7 +293,7 @@ export default async function handler(req, res) {
         }
       }).catch(() => {});
 
-      console.log(`INBOX msg recebida: phone=${phone} tipo=${tipo} texto="${(texto||'').substring(0,50)}"`);
+      console.log(`INBOX payload: phone=${body.phone} chatId=${body.chatId} fromMe=${body.fromMe} tipo=${tipo} phoneKey=${phoneKey}`);
       return res.status(200).json({ ok: true });
     } catch(e) {
       console.error('INBOX erro:', e.message);
