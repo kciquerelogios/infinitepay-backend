@@ -235,16 +235,23 @@ export default async function handler(req, res) {
       const body = req.body || {};
       if (body.isGroup || body.isNewsletter) return res.status(200).json({ ok: true });
 
-      // Normalizar telefone — sempre usar o número do CONTATO (não o nosso)
-      const phoneRaw = body.phone || body.chatId || '';
+      // Normalizar telefone — sempre usar o número do CONTATO
+      const phoneRaw = body.phone || '';
       if (!phoneRaw) return res.status(200).json({ ok: true });
-      // Limpar número
-      const phoneClean = phoneRaw.replace(/[^0-9]/g, '').replace(/^0+/, '');
-      const phoneNorm = phoneClean.startsWith('55') ? phoneClean : '55' + phoneClean;
-      // Ignorar mensagens onde o contato somos nós mesmos
-      if (phoneNorm === MEU_NUMERO) return res.status(200).json({ ok: true });
-      // Ignorar se parece ser um grupo (tem @g.us ou -group)
+
+      // Ignorar grupos
       if (phoneRaw.includes('@g') || phoneRaw.includes('-group')) return res.status(200).json({ ok: true });
+
+      const isLid = phoneRaw.includes('@lid') || phoneRaw.includes('@s.whatsapp');
+      if (body.fromMe && isLid) {
+        // Log completo para entender o payload
+        console.log('INBOX fromMe payload completo:', JSON.stringify(body).substring(0, 500));
+        return res.status(200).json({ ok: true });
+      }
+
+      const phoneClean = phoneRaw.replace(/\D/g, '').replace(/^0+/, '');
+      const phoneNorm = phoneClean.startsWith('55') ? phoneClean : '55' + phoneClean;
+      if (phoneNorm === MEU_NUMERO) return res.status(200).json({ ok: true });
       const phoneKey = phoneNorm;
 
       // Extrair texto
