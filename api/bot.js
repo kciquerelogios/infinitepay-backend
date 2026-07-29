@@ -21,12 +21,19 @@ async function kvGet(key) {
   return v || null;
 }
 async function kvSet(key, value, ex) {
-  const body = ex ? { value: JSON.stringify(value), ex } : { value: JSON.stringify(value) };
-  await fetch(`${KV_URL}/set/${key}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  // Upstash REST: com TTL usa /setex/key/seconds/value, sem TTL usa /set/key com body direto
+  if (ex) {
+    await fetch(`${KV_URL}/setex/${key}/${ex}/${encodeURIComponent(JSON.stringify(value))}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}` }
+    });
+  } else {
+    await fetch(`${KV_URL}/set/${key}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(value)
+    });
+  }
 }
 async function kvDel(key) {
   await fetch(`${KV_URL}/del/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
