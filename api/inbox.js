@@ -213,6 +213,26 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
+  // ── POST: deletar conversa ───────────────────────────────
+  if (req.method === 'POST' && req.query.action === 'deletar-conversa') {
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const { phone } = req.body || {};
+      if (!phone) return res.status(400).json({ erro: 'phone obrigatório' });
+      // Buscar todos os IDs de mensagens
+      const msgIds = await kvLrange(`inbox:msgs:${phone}`, 0, -1);
+      // Deletar cada mensagem
+      for (const id of msgIds) {
+        await fetch(`${KV_URL}/del/${id}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      }
+      // Deletar lista de mensagens e contato
+      await fetch(`${KV_URL}/del/inbox:msgs:${phone}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      await fetch(`${KV_URL}/del/inbox:contato:${phone}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      await fetch(`${KV_URL}/srem/inbox:contatos/${encodeURIComponent(phone)}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
   // ── POST: limpar contatos com LID inválido ───────────────
   if (req.method === 'POST' && req.query.action === 'limpar-lids') {
     if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
