@@ -99,6 +99,7 @@ async function salvarMensagem(phone, msg) {
     phone,
     nome: contatoAtual.nome || msg.nomeRemetente || phone,
     foto: contatoAtual.foto || msg.foto || null,
+    chatLid: msg.chatLid || contatoAtual.chatLid || null,
     ultimaMensagem: msg.texto || (msg.tipo !== 'text' ? `[${msg.tipo}]` : ''),
     ultimoContato: msg.timestamp,
     naoLidas: (contatoAtual.naoLidas || 0) + (msg.fromMe ? 0 : 1),
@@ -244,8 +245,35 @@ export default async function handler(req, res) {
 
       const isLid = phoneRaw.includes('@lid') || phoneRaw.includes('@s.whatsapp');
       if (body.fromMe && isLid) {
-        // Log completo para entender o payload
-        console.log('INBOX fromMe payload completo:', JSON.stringify(body).substring(0, 500));
+        // Mensagem enviada por nós via celular — Z-API só manda LID do destinatário
+        // Tentar encontrar o contato pelo chatLid salvo anteriormente
+        const chatLid = body.chatLid || phoneRaw;
+        const phones = await kvSmembers('inbox:contatos');
+        let phoneEncontrado = null;
+        for (const p of phones) {
+          const c = await kvGet(`inbox:contato:${p}`);
+          if (c && c.chatLid === chatLid) { phoneEncontrado = p; break; }
+        }
+        if (!phoneEncontrado) {
+          // Salvar mapeamento LID → nome para uso futuro
+          console.log('INBOX fromMe LID sem contato mapeado:', chatLid, body.chatName);
+          return res.status(200).json({ ok: true });
+        }
+        // Salvar mensagem no contato encontrado
+        const msgFromMe = {
+          id: body.messageId || `msg_${Date.now()}`,
+          phone: phoneEncontrado,
+          texto: body.text ? (typeof body.text === 'string' ? body.text : body.text.message || '') : (body.caption || null),
+          tipo: 'text',
+          fromMe: true,
+          timestamp: body.momment || Date.now(),
+          nomeRemetente: body.senderName || 'Você',
+          status: 'sent'
+        };
+        const ts2 = msgFromMe.timestamp;
+        const msgId2 = `inbox:msg:${ts2}_${msgFromMe.id}`;
+        await kvSet(msgId2, msgFromMe);
+        await kvRpush(`inbox:msgs:${phoneEncontrado}`, msgId2);
         return res.status(200).json({ ok: true });
       }
 
@@ -280,6 +308,7 @@ export default async function handler(req, res) {
         timestamp: body.momment || Date.now(),
         nomeRemetente: body.senderName || body.chatName || phone,
         foto: body.senderPhoto || body.photo || null,
+        chatLid: body.chatLid || null,
         status: 'received'
       };
 
