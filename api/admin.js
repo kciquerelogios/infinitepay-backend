@@ -3358,6 +3358,10 @@ async function renderInbox() {
     // ── MÉTRICAS ──
     var msgsOntem = stats.msgsOntem || 0;
     var varMsgs = msgsOntem > 0 ? ((stats.msgsHoje - msgsOntem) / msgsOntem * 100).toFixed(0) : null;
+    // Botão limpar LIDs
+    html += '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">';
+    html += '<button onclick="limparLids()" style="padding:7px 14px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">🗑 Limpar contatos inválidos (LID)</button>';
+    html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
     html += '<div class="stat-card" style="border-left:3px solid #25d366"><div class="stat-label">💬 Mensagens Hoje</div><div class="stat-value">'+stats.msgsHoje+'</div>'+(varMsgs!==null?'<div class="stat-sub" style="color:'+(varMsgs>=0?'#16a34a':'#ef4444')+'">'+(varMsgs>=0?'▲':'▼')+' '+Math.abs(varMsgs)+'% vs ontem</div>':'')+'</div>';
     html += '<div class="stat-card"><div class="stat-label">👥 Total de Contatos</div><div class="stat-value">'+stats.totalContatos+'</div></div>';
@@ -3643,6 +3647,13 @@ async function identificarCliente(phone) {
 function carregarMidia(url, el) {
   if (!url) return;
   el.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
+}
+
+async function limparLids() {
+  if (!confirm('Remover todos os contatos com número inválido (LID)?')) return;
+  var r = await fetch(API+'/api/inbox?action=limpar-lids&secret='+S, {method:'POST'}).then(r=>r.json());
+  if (r.ok) { alert('✅ ' + r.removidos + ' contatos inválidos removidos'); renderInbox(); }
+  else { alert('❌ Erro: ' + (r.erro||'falha')); }
 }
 
 function _attachInbox() {
