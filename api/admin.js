@@ -1836,7 +1836,6 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         + '</div>'
       + '</div>'
     + '</div>'
-    + '<button class="inbox-del-btn" data-phone="'+c.phone+'" title="Apagar conversa" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#d1d5db;font-size:16px;display:none">🗑</button>'
     + '</div>';
   }).join('');
 
