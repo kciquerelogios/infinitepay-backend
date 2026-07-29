@@ -393,14 +393,23 @@ export default async function handler(req, res) {
       const phone = body.phone || body.from || '';
       if (!phone) return res.status(200).json({ ok: true });
 
-      // Extrair texto
-      const texto = body.text?.message || body.text || body.caption || '';
+      // Log completo para debug
+      console.log('BOT payload completo:', JSON.stringify(body));
+
+      // Extrair texto — Z-API usa body.text.message para texto simples
+      let texto = '';
+      if (body.text) {
+        texto = typeof body.text === 'string' ? body.text : (body.text.message || '');
+      }
+      if (!texto && body.caption) texto = body.caption;
+      if (!texto && body.message) texto = typeof body.message === 'string' ? body.message : '';
 
       // Extrair mídia se houver
       let midia = null;
-      if (body.image) midia = { tipo: 'image', url: body.image.imageUrl || body.image.url || '' };
-      else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || '' };
-      else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
+      if (body.image) midia = { tipo: 'image', url: body.image.imageUrl || body.image.url || body.image || '' };
+      else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || body.video || '' };
+      else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || body.document || '' };
+      else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || body.audio || '' };
 
       // Processar em background (não bloquear o webhook)
       processarMensagem(phone, texto, midia).catch(e => console.error('BOT erro:', e.message));
