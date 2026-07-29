@@ -98,11 +98,20 @@ async function buscarPedidoPorEmail(email) {
 
 async function buscarPedidoPorCPF(cpf) {
   const nums = cpf.replace(/\D/g, '');
+  if (nums.length < 11) return null;
+
+  // Buscar nos pedidos pela nota (CPF: XXXXXXXXXXX)
   const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (r.orders || []).find(o => (o.note || '').replace(/\D/g, '').includes(nums)) || null;
+
+  // Match exato do CPF na nota — formato "CPF: 12345678901"
+  return (r.orders || []).find(o => {
+    const nota = o.note || '';
+    const match = nota.match(/CPF:\s*(\d{11})/i);
+    return match && match[1] === nums;
+  }) || null;
 }
 
 async function buscarPedidoPorNome(nome) {
@@ -325,18 +334,45 @@ async function processarMensagem(phone, texto, midia) {
   }
 
   // ── AGUARDANDO CPF ────────────────────────────────────────
+  // ── AGUARDANDO CPF ────────────────────────────────────────
   if (estado.etapa === 'aguardando_cpf') {
-    const pedido = txt.replace(/\D/g,'').length >= 11 ? await buscarPedidoPorCPF(txt) : null;
-    if (pedido) {
-      await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-      await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
+    const cpfNums = txt.replace(/\D/g,'');
+    if (cpfNums.length < 11) {
+      await enviarTexto(phone, 'CPF inválido. Por favor, informe os *11 dígitos* do CPF:');
+      return;
+    }
+    // Buscar no ME diretamente pelo CPF
+    const etiquetaME = await buscarEtiquetaMEporCPF(cpfNums);
+    if (etiquetaME) {
+      // Achou no ME — buscar pedido no Shopify pelo telefone ou email do ME
+      const telME = (etiquetaME.to && etiquetaME.to.phone || '').replace(/\D/g,'');
+      let pedido = telME ? ((await buscarTodosPedidosTelefone(telME))[0] || null) : null;
+      if (!pedido && etiquetaME.to && etiquetaME.to.email) pedido = await buscarPedidoPorEmail(etiquetaME.to.email);
+      if (pedido) {
+        await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
+        await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
+      } else {
+        // Tem etiqueta no ME mas sem pedido Shopify — responder com dados do ME
+        const statusLabel = statusMELabel(etiquetaME.status);
+        const meTracking = etiquetaME.tracking || null;
+        let msg = `📦 Status do seu pedido:\n\nStatus: ${statusLabel}`;
+        if (meTracking) msg += `\nCódigo: *${meTracking}*\n\n🔍 https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
+        await enviarTexto(phone, msg);
+        await kvDel(stateKey);
+      }
     } else {
-      await kvSet(stateKey, { ...estado, etapa: 'aguardando_nome' }, TTL);
-      await enviarTexto(phone, 'Não encontrei com esse CPF. Por favor, informe o *nome completo* usado no cadastro:');
+      // Não achou no ME — fallback Shopify
+      const pedido = await buscarPedidoPorCPF(cpfNums);
+      if (pedido) {
+        await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
+        await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
+      } else {
+        await kvSet(stateKey, { ...estado, etapa: 'aguardando_nome' }, TTL);
+        await enviarTexto(phone, 'Não encontrei com esse CPF. Por favor, informe o *nome completo* usado no cadastro:');
+      }
     }
     return;
   }
-
   // ── AGUARDANDO NOME ───────────────────────────────────────
   if (estado.etapa === 'aguardando_nome') {
     const pedido = txt.split(' ').length >= 2 ? await buscarPedidoPorNome(txt) : null;
@@ -399,7 +435,8 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
 
   // Extrair CPF e telefone da nota do pedido Shopify
   const { cpf, telefone } = extrairDadosPedido(pedido);
-  console.log(`BOT dados: cpf="${cpf}" tel="${telefone}" nota="${(pedido.note||'').substring(0,100)}"`);
+  console.log(`BOT dados: cpf="${cpf}" tel="${telefone}"`);
+  console.log(`BOT nota completa: "${pedido.note||''}"`);
 
   // Buscar no ME — CPF é o mais confiável, telefone como fallback
   let etiqueta = null;
