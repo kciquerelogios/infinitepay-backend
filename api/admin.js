@@ -3445,7 +3445,6 @@ function _renderContatosLista(contatos, filtro, busca) {
     var hora = c.ultimoContato ? new Date(c.ultimoContato).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     var iniciais = (c.nome||c.phone||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
     return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
-    return '<div style="position:relative">'
       + '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
         + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
           : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
@@ -3462,10 +3461,9 @@ function _renderContatosLista(contatos, filtro, busca) {
         + '</div>'
         + (et ? '<div style="margin-top:3px"><span style="font-size:10px;font-weight:600;color:'+et.cor+';background:'+et.cor+'15;padding:1px 7px;border-radius:20px">'+et.label+'</span></div>' : '')
       + '</div>'
-      + '</div>'
     + '</div>'
+    + '<button class="inbox-del-btn" data-phone="'+c.phone+'" title="Apagar conversa" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#d1d5db;font-size:16px;opacity:0;transition:opacity 0.15s">🗑</button>'
     + '</div>';
-  }).join('');
 }
 
 async function abrirConversa(phone) {
@@ -3664,17 +3662,17 @@ async function limparLids() {
 function _attachInbox() {
   // Mostrar botão delete no hover
   ct().addEventListener('mouseover', function(e) {
-    var wrapper = e.target.closest('[data-phone]');
+    var wrapper = e.target.closest('[style*="position:relative"]');
     if (wrapper) {
       var btn = wrapper.querySelector('.inbox-del-btn');
-      if (btn) btn.style.display = 'block';
+      if (btn) btn.style.opacity = '1';
     }
   });
   ct().addEventListener('mouseout', function(e) {
-    var wrapper = e.target.closest('[data-phone]');
+    var wrapper = e.target.closest('[style*="position:relative"]');
     if (wrapper) {
       var btn = wrapper.querySelector('.inbox-del-btn');
-      if (btn) btn.style.display = 'none';
+      if (btn) btn.style.opacity = '0';
     }
   });
   ct().addEventListener('click', function(e) {
