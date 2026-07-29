@@ -2002,6 +2002,7 @@ tr:hover td{background:#fafafa}
     <button class="nav-item" data-aba="recuperacao"><span class="nav-icon">💬</span><span class="nav-label">Recuperação</span></button>
     <button class="nav-item" data-aba="roleta"><span class="nav-icon">🎡</span><span class="nav-label">Roleta</span></button>
     <button class="nav-item" data-aba="atendimento"><span class="nav-icon">🎧</span><span class="nav-label">Atendimento</span></button>
+    <button class="nav-item" data-aba="inbox"><span class="nav-icon">📱</span><span class="nav-label">Inbox</span></button>
   </nav>
   <div class="sidebar-foot">Kcique © 2026</div>
 </aside>
@@ -2019,7 +2020,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento'};
+const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -2050,7 +2051,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento};
+  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -3335,6 +3336,341 @@ async function atualizarTicket(id, status) {
     body: JSON.stringify({id, status})
   });
   renderAtendimento();
+}
+
+// ===== INBOX =====
+var _inboxContatos = [];
+var _inboxContatoAtivo = null;
+var _inboxMsgs = [];
+
+async function renderInbox() {
+  loading();
+  try {
+    var [statsR, contatosR] = await Promise.all([
+      fetch(API+'/api/inbox?action=stats&secret='+S).then(r=>r.json()).catch(()=>({dias:[],msgsHoje:0,totalContatos:0})),
+      fetch(API+'/api/inbox?action=contatos&secret='+S).then(r=>r.json()).catch(()=>({contatos:[]}))
+    ]);
+    _inboxContatos = contatosR.contatos || [];
+    var stats = statsR;
+
+    var html = '';
+
+    // ── MÉTRICAS ──
+    var msgsOntem = stats.msgsOntem || 0;
+    var varMsgs = msgsOntem > 0 ? ((stats.msgsHoje - msgsOntem) / msgsOntem * 100).toFixed(0) : null;
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
+    html += '<div class="stat-card" style="border-left:3px solid #25d366"><div class="stat-label">💬 Mensagens Hoje</div><div class="stat-value">'+stats.msgsHoje+'</div>'+(varMsgs!==null?'<div class="stat-sub" style="color:'+(varMsgs>=0?'#16a34a':'#ef4444')+'">'+(varMsgs>=0?'▲':'▼')+' '+Math.abs(varMsgs)+'% vs ontem</div>':'')+'</div>';
+    html += '<div class="stat-card"><div class="stat-label">👥 Total de Contatos</div><div class="stat-value">'+stats.totalContatos+'</div></div>';
+    var clientes = _inboxContatos.filter(function(c){return c.ehCliente;}).length;
+    html += '<div class="stat-card" style="border-left:3px solid #2563eb"><div class="stat-label">🛍 Clientes Identificados</div><div class="stat-value">'+clientes+'</div><div class="stat-sub">'+Math.round(clientes/Math.max(1,stats.totalContatos)*100)+'% dos contatos</div></div>';
+    var naoLidas = _inboxContatos.reduce(function(s,c){return s+(c.naoLidas||0);},0);
+    html += '<div class="stat-card" style="border-left:3px solid #f59e0b"><div class="stat-label">🔔 Não Lidas</div><div class="stat-value" style="color:'+(naoLidas>0?'#f59e0b':'#111')+'">'+naoLidas+'</div></div>';
+    html += '</div>';
+
+    // ── GRÁFICO ──
+    if (stats.dias && stats.dias.length) {
+      var maxVal = Math.max.apply(null, stats.dias.map(function(d){return d.total;})) || 1;
+      html += '<div class="stat-card" style="margin-bottom:20px;padding:20px">';
+      html += '<div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em">Mensagens recebidas — últimos 30 dias</div>';
+      html += '<div style="display:flex;align-items:flex-end;gap:3px;height:80px">';
+      stats.dias.forEach(function(d) {
+        var h = Math.max(4, Math.round((d.total/maxVal)*80));
+        var isHoje = d.data === new Date().toISOString().split('T')[0];
+        var dd = d.data.split('-');
+        var label = dd[2]+'/'+dd[1];
+        html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px" title="'+label+': '+d.total+' msgs">';
+        html += '<div style="width:100%;height:'+h+'px;background:'+(isHoje?'#25d366':'#bbf7d0')+';border-radius:3px 3px 0 0;min-height:4px"></div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;margin-top:4px"><span>'+stats.dias[0]?.data.split('-').slice(1).join('/')+'</span><span>hoje</span></div>';
+      html += '</div>';
+    }
+
+    // ── LAYOUT CONVERSAS ──
+    html += '<div style="display:grid;grid-template-columns:320px 1fr;gap:0;background:#fff;border-radius:12px;border:1px solid #e8eaf0;overflow:hidden;height:600px">';
+
+    // Lista de contatos
+    html += '<div style="border-right:1px solid #e8eaf0;display:flex;flex-direction:column;height:600px">';
+    html += '<div style="padding:12px;border-bottom:1px solid #f3f4f6">';
+    html += '<input id="inbox-busca" placeholder="🔍 Buscar conversa..." style="width:100%;padding:8px 12px;border:1px solid #e8eaf0;border-radius:8px;font-size:13px;outline:none;font-family:inherit">';
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">';
+    ['Todos','cliente','possivel_cliente','vip','fornecedor','sem_etiqueta'].forEach(function(f,i){
+      html += '<button class="inbox-filtro'+(i===0?' ativo':'')+'" data-f="'+f+'" style="padding:3px 10px;border-radius:20px;border:1px solid #e8eaf0;background:'+(i===0?'#1a1a2e':'#fff')+';color:'+(i===0?'#fff':'#6b7280')+';font-size:11px;cursor:pointer;font-weight:600">'+
+        (f==='Todos'?'Todos':f==='cliente'?'🛍 Cliente':f==='possivel_cliente'?'👤 Possível':f==='vip'?'⭐ VIP':f==='fornecedor'?'📦 Fornecedor':'Sem etiqueta')+'</button>';
+    });
+    html += '</div>';
+    html += '<div id="inbox-lista" style="flex:1;overflow-y:auto">';
+    html += _renderContatosLista(_inboxContatos, 'Todos', '');
+    html += '</div></div>';
+
+    // Área da conversa
+    html += '<div id="inbox-conversa" style="display:flex;flex-direction:column;height:600px">';
+    html += '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px">Selecione uma conversa</div>';
+    html += '</div>';
+    html += '</div>';
+
+    ct().innerHTML = html;
+    _attachInbox();
+  } catch(e) { errMsg('Erro: '+e.message); }
+}
+
+function _etiquetaCor(etiqueta) {
+  var cores = {cliente:'#16a34a',possivel_cliente:'#2563eb',vip:'#f59e0b',fornecedor:'#7c3aed',bloqueado:'#ef4444'};
+  var labels = {cliente:'Cliente',possivel_cliente:'Possível cliente',vip:'VIP',fornecedor:'Fornecedor',bloqueado:'Bloqueado'};
+  return { cor: cores[etiqueta]||'#9ca3af', label: labels[etiqueta]||etiqueta };
+}
+
+function _renderContatosLista(contatos, filtro, busca) {
+  var lista = contatos.filter(function(c) {
+    if (filtro === 'sem_etiqueta') return !c.etiqueta;
+    if (filtro !== 'Todos') return c.etiqueta === filtro;
+    return true;
+  }).filter(function(c) {
+    if (!busca) return true;
+    var q = busca.toLowerCase();
+    return (c.nome||c.phone||'').toLowerCase().includes(q) || (c.phone||'').includes(q);
+  });
+  if (!lista.length) return '<div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px">Nenhuma conversa</div>';
+  return lista.map(function(c) {
+    var isAtivo = _inboxContatoAtivo === c.phone;
+    var et = c.etiqueta ? _etiquetaCor(c.etiqueta) : null;
+    var hora = c.ultimoContato ? new Date(c.ultimoContato).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+    var iniciais = (c.nome||c.phone||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
+    return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
+      + '<div style="position:relative;flex-shrink:0">'
+        + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
+          : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
+        + (c.ehCliente ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#25d366;border-radius:50%;border:2px solid #fff" title="Cliente"></div>' : '')
+      + '</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '<div style="font-size:13px;font-weight:600;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.nome||c.phone)+'</div>'
+          + '<div style="font-size:10px;color:#9ca3af;flex-shrink:0;margin-left:6px">'+hora+'</div>'
+        + '</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">'
+          + '<div style="font-size:12px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+(c.ultimaMensagem||'').substring(0,35)+'</div>'
+          + (c.naoLidas ? '<div style="background:#25d366;color:#fff;border-radius:50%;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-left:4px">'+c.naoLidas+'</div>' : '')
+        + '</div>'
+        + (et ? '<div style="margin-top:3px"><span style="font-size:10px;font-weight:600;color:'+et.cor+';background:'+et.cor+'15;padding:1px 7px;border-radius:20px">'+et.label+'</span></div>' : '')
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+async function abrirConversa(phone) {
+  _inboxContatoAtivo = phone;
+  // Atualizar seleção visual
+  document.querySelectorAll('.inbox-item').forEach(function(el){
+    var isAtivo = el.getAttribute('data-phone') === phone;
+    el.style.background = isAtivo ? '#f0fdf4' : '#fff';
+    el.style.borderLeft = '3px solid ' + (isAtivo ? '#25d366' : 'transparent');
+  });
+  var area = document.getElementById('inbox-conversa');
+  if (!area) return;
+  area.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="spin"></div></div>';
+
+  // Marcar como lido
+  fetch(API+'/api/inbox?action=marcar-lido&secret='+S, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+
+  try {
+    var [msgsR, contatoData] = await Promise.all([
+      fetch(API+'/api/inbox?action=mensagens&secret='+S+'&phone='+encodeURIComponent(phone)).then(r=>r.json()),
+      kvGetContato(phone)
+    ]);
+    _inboxMsgs = msgsR.mensagens || [];
+    var contato = contatoData || _inboxContatos.find(function(c){return c.phone===phone;}) || {phone};
+
+    var et = contato.etiqueta ? _etiquetaCor(contato.etiqueta) : null;
+    var iniciais = (contato.nome||phone).split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
+
+    var html = '';
+    // Header da conversa
+    html += '<div style="padding:12px 16px;border-bottom:1px solid #e8eaf0;display:flex;align-items:center;gap:10px;background:#fafafa">';
+    html += (contato.foto?'<img src="'+contato.foto+'" style="width:38px;height:38px;border-radius:50%;object-fit:cover">'
+      :'<div style="width:38px;height:38px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#6b7280">'+iniciais+'</div>');
+    html += '<div style="flex:1">';
+    html += '<div style="font-size:14px;font-weight:600">'+(contato.nome||phone)+'</div>';
+    html += '<div style="font-size:11px;color:#9ca3af">'+phone+(contato.ehCliente?' · <span style="color:#25d366;font-weight:600">✓ Cliente</span>':'')+'</div>';
+    html += '</div>';
+    // Painel direito: etiqueta + identificar
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<select id="inbox-etiqueta" onchange="trocarEtiqueta(''+phone+'',this.value)" style="padding:5px 8px;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;outline:none;color:#374151">';
+    ['','cliente','possivel_cliente','vip','fornecedor','bloqueado'].forEach(function(e2){
+      html += '<option value="'+e2+'" '+(contato.etiqueta===e2?'selected':'')+'>'+(!e2?'Sem etiqueta':_etiquetaCor(e2).label)+'</option>';
+    });
+    html += '</select>';
+    if (!contato.ehCliente) {
+      html += '<button onclick="identificarCliente(''+phone+'')" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🔍 Identificar</button>';
+    }
+    if (contato.dadosShopify) {
+      var sh = contato.dadosShopify;
+      html += '<div style="font-size:11px;color:#374151;background:#f9fafb;padding:5px 10px;border-radius:8px;border:1px solid #e8eaf0">'+sh.totalPedidos+' pedidos · R$ '+sh.totalGasto.toFixed(2).replace('.',',')+' gastos</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // Mensagens
+    html += '<div id="inbox-msgs-area" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px;background:#f0f2f5">';
+    if (!_inboxMsgs.length) {
+      html += '<div style="text-align:center;color:#9ca3af;font-size:13px;margin-top:40px">Nenhuma mensagem salva</div>';
+    } else {
+      _inboxMsgs.forEach(function(msg) {
+        html += _renderMensagem(msg);
+      });
+    }
+    html += '</div>';
+
+    // Input resposta
+    html += '<div style="padding:10px 14px;border-top:1px solid #e8eaf0;display:flex;gap:8px;align-items:flex-end;background:#fff">';
+    html += '<textarea id="inbox-reply" placeholder="Digite uma mensagem..." style="flex:1;padding:9px 12px;border:1px solid #e8eaf0;border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;min-height:40px;max-height:120px;line-height:1.4" rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>';
+    html += '<button onclick="enviarResposta(''+phone+'')" style="width:40px;height:40px;border-radius:50%;background:#25d366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
+    html += '<svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg></button>';
+    html += '</div>';
+
+    area.innerHTML = html;
+    // Scroll para o final
+    var msgsDiv = document.getElementById('inbox-msgs-area');
+    if (msgsDiv) msgsDiv.scrollTop = msgsDiv.scrollHeight;
+
+    // Enter para enviar (Shift+Enter = nova linha)
+    var reply = document.getElementById('inbox-reply');
+    if (reply) reply.addEventListener('keydown', function(e){
+      if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); enviarResposta(phone); }
+    });
+
+    // Atualizar badge de não lidas na lista
+    var item = document.querySelector('.inbox-item[data-phone="'+phone+'"]');
+    if (item) {
+      var badge = item.querySelector('[style*="border-radius:50%"]');
+      if (badge) badge.remove();
+    }
+  } catch(e) { area.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">Erro: '+e.message+'</div>'; }
+}
+
+async function kvGetContato(phone) {
+  try {
+    var r = await fetch(API+'/api/inbox?action=contatos&secret='+S).then(r=>r.json());
+    return (r.contatos||[]).find(function(c){return c.phone===phone;}) || null;
+  } catch(e) { return null; }
+}
+
+function _renderMensagem(msg) {
+  var isMe = msg.fromMe;
+  var hora = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+  var bg = isMe ? '#dcf8c6' : '#fff';
+  var align = isMe ? 'flex-end' : 'flex-start';
+  var radius = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+
+  var conteudo = '';
+  if (msg.tipo === 'text') {
+    conteudo = '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">'+(msg.texto||'')+'</div>';
+  } else if (msg.tipo === 'image') {
+    conteudo = msg.mediaThumbnail || msg.mediaUrl
+      ? '<div style="cursor:pointer" onclick="abrirFoto(''+msg.mediaUrl+'')">'
+        + '<img src="'+(msg.mediaThumbnail||msg.mediaUrl)+'" style="max-width:200px;border-radius:8px;display:block">'
+        + (msg.texto ? '<div style="font-size:12px;margin-top:4px;color:#374151">'+msg.texto+'</div>' : '')
+        + '</div>'
+      : '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">📷 Foto — clique para ver</div>';
+  } else if (msg.tipo === 'video') {
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">🎥 Vídeo — clique para ver</div>';
+  } else if (msg.tipo === 'audio') {
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(''+msg.mediaUrl+'',this)">🎤 Áudio — clique para ouvir</div>';
+  } else if (msg.tipo === 'document') {
+    conteudo = '<a href="'+msg.mediaUrl+'" target="_blank" style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#2563eb;display:block;text-decoration:none">📄 Documento — clique para baixar</a>';
+  } else if (msg.tipo === 'sticker') {
+    conteudo = msg.mediaUrl ? '<img src="'+msg.mediaUrl+'" style="width:80px">' : '🎭 Sticker';
+  }
+
+  return '<div style="display:flex;justify-content:'+align+';margin-bottom:2px">'
+    + '<div style="max-width:70%;background:'+bg+';border-radius:'+radius+';padding:8px 10px;box-shadow:0 1px 2px rgba(0,0,0,.08)">'
+    + conteudo
+    + '<div style="font-size:10px;color:#9ca3af;text-align:right;margin-top:3px">'+hora+'</div>'
+    + '</div></div>';
+}
+
+async function enviarResposta(phone) {
+  var input = document.getElementById('inbox-reply');
+  if (!input || !input.value.trim()) return;
+  var texto = input.value.trim();
+  input.value = '';
+  input.style.height = '40px';
+
+  // Adicionar mensagem na tela imediatamente
+  var area = document.getElementById('inbox-msgs-area');
+  if (area) {
+    var tmpMsg = { fromMe:true, tipo:'text', texto, timestamp:Date.now() };
+    area.insertAdjacentHTML('beforeend', _renderMensagem(tmpMsg));
+    area.scrollTop = area.scrollHeight;
+  }
+
+  try {
+    await fetch(API+'/api/inbox?action=enviar&secret='+S, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({phone, texto})
+    });
+  } catch(e) { console.error('Erro envio:', e.message); }
+}
+
+async function trocarEtiqueta(phone, etiqueta) {
+  await fetch(API+'/api/inbox?action=etiqueta&secret='+S, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({phone, etiqueta})
+  });
+  // Atualizar local
+  var c = _inboxContatos.find(function(x){return x.phone===phone;});
+  if (c) c.etiqueta = etiqueta;
+}
+
+async function identificarCliente(phone) {
+  var btn = document.querySelector('[onclick*="identificarCliente"]');
+  if (btn) { btn.textContent='Identificando...'; btn.disabled=true; }
+  var r = await fetch(API+'/api/inbox?action=identificar&secret='+S, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({phone})
+  }).then(r=>r.json());
+  if (r.ok) {
+    if (r.shopify.ehCliente) {
+      alert('✅ Cliente identificado: '+r.shopify.nome+'
+'+r.shopify.totalPedidos+' pedidos · R$ '+r.shopify.totalGasto.toFixed(2));
+    } else {
+      alert('Não encontrado como cliente no Shopify.');
+    }
+    abrirConversa(phone);
+  }
+}
+
+function carregarMidia(url, el) {
+  if (!url) return;
+  el.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
+}
+
+function _attachInbox() {
+  // Clicar em contato
+  ct().addEventListener('click', function(e) {
+    var item = e.target.closest('.inbox-item');
+    if (item) abrirConversa(item.getAttribute('data-phone'));
+  });
+  // Filtros
+  ct().addEventListener('click', function(e) {
+    var btn = e.target.closest('.inbox-filtro');
+    if (!btn) return;
+    document.querySelectorAll('.inbox-filtro').forEach(function(b){
+      b.style.background='#fff'; b.style.color='#6b7280'; b.style.borderColor='#e8eaf0';
+    });
+    btn.style.background='#1a1a2e'; btn.style.color='#fff';
+    var lista = document.getElementById('inbox-lista');
+    var busca = (document.getElementById('inbox-busca')||{}).value||'';
+    if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, btn.getAttribute('data-f'), busca);
+  });
+  // Busca
+  var busca = document.getElementById('inbox-busca');
+  if (busca) busca.addEventListener('input', function() {
+    var filtroAtivo = (document.querySelector('.inbox-filtro[style*="#1a1a2e"]')||{}).getAttribute('data-f')||'Todos';
+    var lista = document.getElementById('inbox-lista');
+    if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, filtroAtivo, this.value);
+  });
 }
 
 // INICIAR
