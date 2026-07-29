@@ -395,6 +395,7 @@ export default async function handler(req, res) {
 
       // Log completo para debug
       console.log('BOT payload completo:', JSON.stringify(body));
+      console.log('BOT text field:', JSON.stringify(body.text));
 
       // Extrair texto — Z-API usa body.text.message para texto simples
       let texto = '';
