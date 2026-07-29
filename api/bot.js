@@ -34,6 +34,7 @@ async function kvDel(key) {
 
 // ── Enviar mensagem Z-API ────────────────────────────────────
 async function enviarTexto(phone, message) {
+  console.log(`BOT enviarTexto: phone=${phone} msg=${message.substring(0,50)} url=${BOT_BASE}/send-text`);
   const r = await fetch(`${BOT_BASE}/send-text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
@@ -140,6 +141,7 @@ async function criarTicket(dados) {
 // ── PROCESSAR MENSAGEM ────────────────────────────────────────
 async function processarMensagem(phone, texto, midia) {
   const stateKey = `bot:estado:${phone}`;
+  console.log(`BOT processando: phone=${phone} texto="${texto}" instance=${ZAPI_BOT_INSTANCE}`);
   const estado = await kvGet(stateKey) || { etapa: 'menu' };
   const TTL = TIMEOUT_MIN * 60;
   const txt = (texto || '').trim();
