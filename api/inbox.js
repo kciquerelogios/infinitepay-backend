@@ -79,23 +79,21 @@ async function buscarClienteShopify(phone) {
 
 // ── Salvar mensagem ────────────────────────────────────────────
 async function salvarMensagem(phone, msg) {
-  const msgId = `inbox:msg:${msg.id || Date.now()}`;
+  // ID com timestamp para garantir ordem cronológica
+  const ts = msg.timestamp || Date.now();
+  const msgId = `inbox:msg:${ts}_${msg.id || Math.random().toString(36).slice(2,8)}`;
   const dataBR = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-  // Salvar mensagem
-  await kvSet(msgId, msg);
-
-  // Adicionar à lista de msgs do contato
-  await kvRpush(`inbox:msgs:${phone}`, msgId);
-
-  // Adicionar contato ao set global
-  await kvSadd('inbox:contatos', phone);
-
-  // Incrementar contador do dia
-  await kvIncr(`inbox:stats:${dataBR}`);
-
-  // Atualizar dados do contato (última mensagem)
+  // Salvar em paralelo o que for possível
   const contatoAtual = await kvGet(`inbox:contato:${phone}`) || {};
+
+  await Promise.all([
+    kvSet(msgId, msg),
+    kvRpush(`inbox:msgs:${phone}`, msgId),
+    kvSadd('inbox:contatos', phone),
+    kvIncr(`inbox:stats:${dataBR}`),
+  ]);
+
   await kvSet(`inbox:contato:${phone}`, {
     ...contatoAtual,
     phone,
@@ -209,7 +207,7 @@ export default async function handler(req, res) {
         timestamp: Date.now(),
         nomeRemetente: 'Kcique'
       };
-      await salvarMensagem(phone, msg);
+      await salvarMensagem(phoneKey, msg);
       return res.status(200).json({ ok: true });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
@@ -237,8 +235,14 @@ export default async function handler(req, res) {
       const body = req.body || {};
       if (body.isGroup || body.isNewsletter) return res.status(200).json({ ok: true });
 
-      const phone = body.phone || body.from || '';
-      if (!phone || phone === MEU_NUMERO) return res.status(200).json({ ok: true });
+      // Normalizar telefone — sempre com DDI 55, sem +, sem espaços
+      const phoneRaw = body.phone || body.from || '';
+      if (!phoneRaw) return res.status(200).json({ ok: true });
+      const phone = phoneRaw.replace(/\D/g, '').replace(/^0+/, '');
+      const phoneNorm = phone.startsWith('55') ? phone : '55' + phone;
+      if (phoneNorm === MEU_NUMERO) return res.status(200).json({ ok: true });
+      // Usar sempre o número normalizado
+      const phoneKey = phoneNorm;
 
       // Extrair texto
       let texto = '';
@@ -257,7 +261,7 @@ export default async function handler(req, res) {
 
       const msg = {
         id: body.messageId || `msg_${Date.now()}`,
-        phone,
+        phone: phoneKey,
         texto: texto || null,
         tipo,
         mediaUrl,
@@ -269,10 +273,10 @@ export default async function handler(req, res) {
         status: 'received'
       };
 
-      await salvarMensagem(phone, msg);
+      await salvarMensagem(phoneKey, msg);
 
       // Identificar cliente automaticamente (async, sem bloquear)
-      buscarClienteShopify(phone).then(async shopify => {
+      buscarClienteShopify(phoneKey).then(async shopify => {
         if (shopify.ehCliente) {
           const contato = await kvGet(`inbox:contato:${phone}`) || {};
           if (!contato.ehCliente) {
