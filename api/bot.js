@@ -354,43 +354,36 @@ async function processarMensagem(phone, texto, midia) {
 async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
   const tracking = (pedido.fulfillments || [])[0]?.tracking_number || '';
   const nome = pedido.customer ? `${pedido.customer.first_name || ''}`.trim() : 'Cliente';
+  const nomeCompleto = pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '';
 
   if (opcao === '1') {
-  if (opcao === '1') {
-    // Rastrear pedido — busca no ME por tracking ou nome
-    const nomeCompleto = pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '';
     const mePedido = await buscarPedidoME(tracking, nomeCompleto);
     const meTracking = mePedido?.tracking || tracking;
     if (!mePedido && !tracking) {
       await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado. Assim que a etiqueta for gerada você receberá o código de rastreio! ⌚`);
     } else {
       const statusLabel = mePedido ? statusMELabel(mePedido.status) : '📦 *Em processamento*';
-      const trackingExibir = meTracking || '—';
-      let msg = `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}\nCódigo de rastreio: *${trackingExibir}*`;
-      if (meTracking) msg += `\n\n🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
+      let msg = `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}`;
+      if (meTracking) msg += `\nCódigo de rastreio: *${meTracking}*\n\n🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
       await enviarTexto(phone, msg);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '2') {
-    // Código de rastreio — busca no ME
-    const mePedido2 = await buscarPedidoME(tracking, pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '');
+    const mePedido2 = await buscarPedidoME(tracking, nomeCompleto);
     const meTracking2 = mePedido2?.tracking || tracking;
     if (!meTracking2) {
-      await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Aguarde, assim que for postado você recebe! 📦`);
+      await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Assim que for postado você recebe! 📦`);
     } else {
       await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:\n\n*${meTracking2}*\n\n📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking2}`);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '3') {
-    // Prazo de entrega — busca no ME
-    const mePedido3 = await buscarPedidoME(tracking, pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '');
+    const mePedido3 = await buscarPedidoME(tracking, nomeCompleto);
     const meTracking3 = mePedido3?.tracking || tracking;
     const frete = (pedido.shipping_lines || [])[0]?.title || '';
-    const pacMatch = frete.toLowerCase().includes('pac');
-    const sedexMatch = frete.toLowerCase().includes('sedex');
-    const prazo = sedexMatch ? '2 dias úteis' : pacMatch ? 'até 10 dias úteis' : 'consulte os Correios';
+    const prazo = frete.toLowerCase().includes('sedex') ? '2 dias úteis' : 'até 10 dias úteis';
     if (!mePedido3) {
       await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* está sendo preparado.\n\nModalidade: *${frete || 'PAC'}*\nPrazo estimado após envio: *${prazo}* ⌚`);
     } else {
@@ -402,14 +395,12 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
     await kvDel(stateKey);
 
   } else if (opcao === '4' || opcao === '5') {
-    // Problema ou troca — pedir descrição
     const tipo = opcao === '4' ? 'problema' : 'solicitação de troca';
     await kvSet(stateKey, { etapa: 'aguardando_descricao', opcao, pedido, midias: [] }, TTL);
     await enviarTexto(phone, `Olá ${nome}! 😊 Entendido, vou registrar sua ${tipo} do pedido *#${pedido.order_number}*.\n\nPor favor, *descreva detalhadamente* o ocorrido:`);
   }
 }
 
-// ── HANDLER PRINCIPAL ─────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
