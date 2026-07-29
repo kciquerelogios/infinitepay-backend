@@ -3444,26 +3444,23 @@ function _renderContatosLista(contatos, filtro, busca) {
     var et = c.etiqueta ? _etiquetaCor(c.etiqueta) : null;
     var hora = c.ultimoContato ? new Date(c.ultimoContato).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     var iniciais = (c.nome||c.phone||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
-    return '<div style="position:relative;border-bottom:1px solid #f9f9f9">'
-      + '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
-        + '<div style="position:relative;flex-shrink:0">'
-          + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
-            : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
-          + (c.ehCliente ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#25d366;border-radius:50%;border:2px solid #fff" title="Cliente"></div>' : '')
-        + '</div>'
-        + '<div style="flex:1;min-width:0">'
-          + '<div style="display:flex;justify-content:space-between;align-items:center">'
-            + '<div style="font-size:13px;font-weight:600;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.nome||c.phone)+'</div>'
-            + '<div style="font-size:10px;color:#9ca3af;flex-shrink:0;margin-left:6px">'+hora+'</div>'
-          + '</div>'
-          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">'
-            + '<div style="font-size:12px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+(c.ultimaMensagem||'').substring(0,35)+'</div>'
-            + (c.naoLidas ? '<div style="background:#25d366;color:#fff;border-radius:50%;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-left:4px">'+c.naoLidas+'</div>' : '')
-          + '</div>'
-          + (et ? '<div style="margin-top:3px"><span style="font-size:10px;font-weight:600;color:'+et.cor+';background:'+et.cor+'15;padding:1px 7px;border-radius:20px">'+et.label+'</span></div>' : '')
-        + '</div>'
+    return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">' 
+      + '<div style="position:relative;flex-shrink:0">'
+        + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
+          : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
+        + (c.ehCliente ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#25d366;border-radius:50%;border:2px solid #fff" title="Cliente"></div>' : '')
       + '</div>'
-      + '<button class="inbox-del-btn" data-phone="'+c.phone+'" title="Apagar conversa" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#d1d5db;font-size:16px;opacity:0;transition:opacity 0.15s">🗑</button>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '<div style="font-size:13px;font-weight:600;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.nome||c.phone)+'</div>'
+          + '<div style="font-size:10px;color:#9ca3af;flex-shrink:0;margin-left:6px">'+hora+'</div>'
+        + '</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">'
+          + '<div style="font-size:12px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+(c.ultimaMensagem||'').substring(0,35)+'</div>'
+          + (c.naoLidas ? '<div style="background:#25d366;color:#fff;border-radius:50%;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-left:4px">'+c.naoLidas+'</div>' : '')
+        + '</div>'
+        + (et ? '<div style="margin-top:3px"><span style="font-size:10px;font-weight:600;color:'+et.cor+';background:'+et.cor+'15;padding:1px 7px;border-radius:20px">'+et.label+'</span></div>' : '')
+      + '</div>'
     + '</div>';
 }
 
