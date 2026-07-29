@@ -119,14 +119,44 @@ async function buscarPedidoPorNome(nome) {
   return (pedidos.orders || [])[0] || null;
 }
 
-async function buscarTrackingME(trackingCode) {
-  if (!trackingCode) return null;
-  const r = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/tracking', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-    body: JSON.stringify({ orders: [trackingCode] })
-  });
-  return r.json().catch(() => null);
+async function buscarPedidoME(trackingCode, nomeCliente) {
+  // Buscar nas purchases do ME pelo tracking ou nome do cliente
+  try {
+    const pages = await Promise.all([1,2,3].map(p =>
+      fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
+        headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
+      }).then(r => r.json()).catch(() => ({ data: [] }))
+    ));
+    const allOrders = pages.flatMap(p => (p.data || []).flatMap(pu => pu.orders || []));
+    // Buscar pelo código de rastreio primeiro
+    let found = trackingCode ? allOrders.find(o => o.tracking === trackingCode) : null;
+    // Fallback: buscar pelo nome do cliente
+    if (!found && nomeCliente) {
+      const cn = nomeCliente.toLowerCase().trim();
+      found = allOrders.find(o => {
+        const toName = (o.to && o.to.name || '').toLowerCase().trim();
+        return toName === cn || toName.includes(cn.split(' ')[0]);
+      });
+    }
+    return found || null;
+  } catch(e) {
+    console.log('ME purchases erro:', e.message);
+    return null;
+  }
+}
+
+// Status do ME para label legível
+function statusMELabel(status) {
+  const map = {
+    'delivered':   '✅ *Entregue*',
+    'undelivered': '⚠️ *Não entregue — em devolução*',
+    'canceled':    '❌ *Cancelado*',
+    'posted':      '🚚 *Em trânsito pelos Correios*',
+    'released':    '📦 *Etiqueta gerada — aguardando postagem*',
+    'pending':     '⏳ *Aguardando processamento*',
+    'paid':        '💳 *Pago — preparando envio*',
+  };
+  return map[status] || '📦 *Em processamento*';
 }
 
 async function buscarTodosPedidosTelefone(tel) {
@@ -326,39 +356,48 @@ async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
   const nome = pedido.customer ? `${pedido.customer.first_name || ''}`.trim() : 'Cliente';
 
   if (opcao === '1') {
-    // Rastrear pedido
-    // Rastrear pedido — status via Melhor Envio
-    if (!tracking) {
-      await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado para envio. Em breve você receberá o código de rastreio! ⌚`);
+  if (opcao === '1') {
+    // Rastrear pedido — busca no ME por tracking ou nome
+    const nomeCompleto = pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '';
+    const mePedido = await buscarPedidoME(tracking, nomeCompleto);
+    const meTracking = mePedido?.tracking || tracking;
+    if (!mePedido && !tracking) {
+      await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado. Assim que a etiqueta for gerada você receberá o código de rastreio! ⌚`);
     } else {
-      const info = await buscarTrackingME(tracking);
-      const trackInfo = info ? info[tracking] : null;
-      const statusLabel = trackInfo?.delivered_at ? '✅ *Entregue*'
-        : trackInfo?.posted_at ? '🚚 *Em trânsito pelos Correios*'
-        : trackInfo ? '📦 *Aguardando postagem*'
-        : '📦 *Em trânsito*'; // fallback quando ME não retorna
-      await enviarTexto(phone, `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}\nCódigo de rastreio: *${tracking}*\n\n🔍 Acompanhe aqui: https://rastreamento.correios.com.br/app/index.php?objetos=${tracking}`);
+      const statusLabel = mePedido ? statusMELabel(mePedido.status) : '📦 *Em processamento*';
+      const trackingExibir = meTracking || '—';
+      let msg = `📦 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel}\nCódigo de rastreio: *${trackingExibir}*`;
+      if (meTracking) msg += `\n\n🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
+      await enviarTexto(phone, msg);
     }
+    await kvDel(stateKey);
 
   } else if (opcao === '2') {
-    // Código de rastreio
-    if (!tracking) {
-      await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Aguarde o envio! 📦`);
+    // Código de rastreio — busca no ME
+    const mePedido2 = await buscarPedidoME(tracking, pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '');
+    const meTracking2 = mePedido2?.tracking || tracking;
+    if (!meTracking2) {
+      await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Aguarde, assim que for postado você recebe! 📦`);
     } else {
-      await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:\n\n*${tracking}*\n\n📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${tracking}`);
+      await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:\n\n*${meTracking2}*\n\n📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking2}`);
     }
     await kvDel(stateKey);
 
   } else if (opcao === '3') {
-    // Prazo de entrega
+    // Prazo de entrega — busca no ME
+    const mePedido3 = await buscarPedidoME(tracking, pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : '');
+    const meTracking3 = mePedido3?.tracking || tracking;
     const frete = (pedido.shipping_lines || [])[0]?.title || '';
     const pacMatch = frete.toLowerCase().includes('pac');
     const sedexMatch = frete.toLowerCase().includes('sedex');
     const prazo = sedexMatch ? '2 dias úteis' : pacMatch ? 'até 10 dias úteis' : 'consulte os Correios';
-    if (!tracking) {
-      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* ainda não foi enviado.\n\nModalidade: *${frete || 'PAC'}*\nPrazo estimado após envio: *${prazo}* ⌚`);
+    if (!mePedido3) {
+      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* está sendo preparado.\n\nModalidade: *${frete || 'PAC'}*\nPrazo estimado após envio: *${prazo}* ⌚`);
     } else {
-      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* já foi enviado!\n\nModalidade: *${frete || 'PAC'}*\nPrazo estimado: *${prazo}*\n\n🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${tracking}`);
+      const statusLabel3 = statusMELabel(mePedido3.status);
+      let msg3 = `Olá ${nome}! 😊 Pedido *#${pedido.order_number}*\n\nStatus: ${statusLabel3}\nModalidade: *${frete || 'PAC'}*\nPrazo estimado: *${prazo}*`;
+      if (meTracking3) msg3 += `\n\n🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking3}`;
+      await enviarTexto(phone, msg3);
     }
     await kvDel(stateKey);
 
