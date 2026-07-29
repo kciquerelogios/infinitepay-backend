@@ -213,6 +213,26 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
+  // ── POST: limpar contatos com LID inválido ───────────────
+  if (req.method === 'POST' && req.query.action === 'limpar-lids') {
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const phones = await kvSmembers('inbox:contatos');
+      let removidos = 0;
+      for (const p of phones) {
+        // LID: contém @lid, @s.whatsapp, ou número com mais de 13 dígitos
+        const isLid = p.includes('@') || p.replace(/\D/g,'').length > 13;
+        if (isLid) {
+          await fetch(`${KV_URL}/del/inbox:contato:${p}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          await fetch(`${KV_URL}/del/inbox:msgs:${p}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          await fetch(`${KV_URL}/srem/inbox:contatos/${encodeURIComponent(p)}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          removidos++;
+        }
+      }
+      return res.status(200).json({ ok: true, removidos });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
   // ── POST: identificar cliente no Shopify ──────────────────
   if (req.method === 'POST' && req.query.action === 'identificar') {
     if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
