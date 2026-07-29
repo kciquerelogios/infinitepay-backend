@@ -184,7 +184,11 @@ Digite o número da opção desejada:
 *2* — 🔢 Obter código de rastreio
 *3* — 📅 Prazo de entrega
 *4* — ⚠️ Problema com a compra
-*5* — 🔁 Solicitar troca`;
+*5* — 🔁 Solicitar troca
+
+_Digite *0* a qualquer momento para voltar ao menu._`;
+
+const VOLTAR_MSG = '_Operação cancelada. Voltando ao menu..._\n\n' + MENU.replace('Olá! 😊 Bem-vindo ao atendimento da *Kcique Relógios* ⌚\n\n', '');
 
 // ── SALVAR TICKET ─────────────────────────────────────────────
 async function criarTicket(dados) {
@@ -208,6 +212,13 @@ async function processarMensagem(phone, texto, midia) {
   const txLow = txt.toLowerCase();
 
   console.log(`BOT [${phone}] etapa:${estado.etapa} msg:${txt.substring(0,50)}`);
+
+  // ── DIGITO 0 = voltar ao menu em qualquer etapa ───────────
+  if (txt === '0' && estado.etapa !== 'menu') {
+    await kvSet(stateKey, { etapa: 'aguardando_opcao' }, TTL);
+    await enviarTexto(phone, VOLTAR_MSG);
+    return;
+  }
 
   // ── QUALQUER mensagem na etapa menu → mostrar menu ────────
   if (estado.etapa === 'menu') {
