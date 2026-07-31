@@ -10,6 +10,7 @@ const SHOPIFY_TOKEN     = process.env.SHOPIFY_TOKEN;
 const ME_TOKEN          = process.env.MELHORENVIO_TOKEN;
 const SECRET            = process.env.REPROCESSAR_SECRET || 'kcique2026';
 const BOT_BASE          = `https://api.z-api.io/instances/${ZAPI_BOT_INSTANCE}/token/${ZAPI_BOT_TOKEN}`;
+const ANTHROPIC_KEY     = process.env.ANTHROPIC_API_KEY;
 
 // ── Redis ────────────────────────────────────────────────────
 async function kvGet(key) {
@@ -193,7 +194,11 @@ async function criarTicket(dados) {
 async function chamarClaude(mensagens, systemPrompt) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01'
+    },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 1000,
@@ -202,6 +207,7 @@ async function chamarClaude(mensagens, systemPrompt) {
     })
   });
   const d = await r.json();
+  if (d.error) { console.error('Claude API erro:', JSON.stringify(d.error)); return ''; }
   return d.content?.[0]?.text || '';
 }
 
