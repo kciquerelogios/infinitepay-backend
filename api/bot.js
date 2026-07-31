@@ -381,8 +381,8 @@ Telefone de cadastro: ${phone}
 PEDIDOS DO CLIENTE:
 ${pedidosTexto}`
   : `CLIENTE NÃO IDENTIFICADO pelo telefone ${phone}.
-Pedidos: ${pedidosTexto}
-Se precisar identificar o cliente, peça o email ou CPF educadamente.`
+Voce DEVE pedir o email do cliente para buscá-lo no sistema. Nao diga que nao consegue buscar por email — voce consegue sim, basta o cliente informar. Peca o email agora de forma simpatica.
+Quando o cliente informar o email, voce vai encontrar os pedidos automaticamente.`
 }
 
 ${catalogo ? `CATÁLOGO DE PRODUTOS DISPONÍVEIS:
@@ -396,7 +396,7 @@ ${resumo}
 2. Para prazo de entrega: o prazo depende do CEP do cliente e da modalidade (PAC ou SEDEX). Se não tiver a previsão exata do ME, informe que PAC leva em média 5-15 dias úteis e SEDEX 1-3 dias úteis após postagem
 3. Para problemas ou trocas: ouça o cliente, colete as informações necessárias e avise que vai abrir um ticket para um especialista analisar e entrar em contato. Política de troca/devolução: 7 dias corridos a partir do recebimento, sem necessidade de embalagem original
 4. Quando abrir ticket: responda com a palavra exata "ABRIR_TICKET" em uma linha separada no final da sua resposta, seguida de "|" e o tipo: "problema" ou "troca"
-5. Quando precisar do email do cliente para identificá-lo: peça de forma natural
+5. Quando nao identificar o cliente pelo telefone: SEMPRE peca o email. Nunca diga que nao consegue buscar por email — o sistema busca sim. Quando o cliente informar o email, o sistema identifica automaticamente
 6. Nunca invente informações de rastreio ou pedido
 7. Não temos loja física — somente loja online
 8. Formate as mensagens para WhatsApp usando *negrito* quando necessário
