@@ -71,24 +71,27 @@ async function buscarClienteShopify(phone) {
 }
 
 async function buscarPedidoPorEmail(email) {
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(email)}&limit=1`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ customers: [] }));
-  if (!(r.customers || []).length) {
-    const r2 = await fetch(
-      `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`,
+  const emailLow = email.toLowerCase().trim();
+  console.log(`BOT buscarPedidoPorEmail: ${emailLow}`);
+
+  // Buscar direto nos orders — funciona para guest checkout e clientes cadastrados
+  const pages = await Promise.all([1,2,3,4,5].map(p =>
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&page=${p}`,
       { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-    ).then(r => r.json()).catch(() => ({ orders: [] }));
-    const pedido = (r2.orders || []).find(o => (o.email || '').toLowerCase() === email.toLowerCase());
-    return pedido ? { cliente: null, pedidos: [pedido] } : null;
-  }
-  const c = r.customers[0];
-  const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${c.id}/orders.json?status=any&limit=5`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return { cliente: c, pedidos: pedidos.orders || [] };
+    ).then(r => r.json()).catch(() => ({ orders: [] }))
+  ));
+  const allOrders = pages.flatMap(p => p.orders || []);
+  console.log(`BOT buscarPedidoPorEmail: total orders carregados=${allOrders.length}`);
+
+  const encontrados = allOrders.filter(o => (o.email || '').toLowerCase() === emailLow);
+  console.log(`BOT buscarPedidoPorEmail: pedidos com esse email=${encontrados.length}`);
+
+  if (!encontrados.length) return null;
+
+  // Pegar cliente se existir
+  const primeiroOrder = encontrados[0];
+  const cliente = primeiroOrder.customer || null;
+  return { cliente, pedidos: encontrados.slice(0, 5) };
 }
 
 // -- Melhor Envio --
