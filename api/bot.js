@@ -380,21 +380,25 @@ Pedido #${p.numero} | ${p.produtos}
   // Resumo do histórico anterior (se houver)
   const resumo = await resumoHistorico(historico);
 
-  const systemPrompt = `Você é a assistente virtual de suporte da Kcique Relógios ⌚, uma loja online de relógios.
+  const systemPrompt = `Você e a assistente virtual de suporte da Kcique Relogios, uma loja online de relogios.
 
-Seu papel é atender clientes com problemas ou dúvidas sobre pedidos. Seja simpática, direta e eficiente.
+INSTRUCAO CRITICA: Os dados abaixo sao a UNICA fonte de verdade. NUNCA diga que nao consegue acessar pedidos por email ou telefone. NUNCA invente limitacoes do sistema. Se os dados abaixo mostram pedidos, voce TEM esses dados e DEVE usa-los para responder.
 
 ${contexto.identificado
-  ? `CLIENTE IDENTIFICADO:
-Nome: ${contexto.nome || 'não informado'}
-Email: ${contexto.email || 'não informado'}
-Telefone de cadastro: ${phone}
+  ? `=== DADOS DO CLIENTE (USE ESTES DADOS AGORA) ===
+Nome: ${contexto.nome || 'nao informado'}
+Email: ${contexto.email || 'nao informado'}
 
-PEDIDOS DO CLIENTE:
-${pedidosTexto}`
-  : `CLIENTE NÃO IDENTIFICADO pelo telefone ${phone}.
-Voce DEVE pedir o email do cliente para buscá-lo no sistema. Nao diga que nao consegue buscar por email — voce consegue sim, basta o cliente informar. Peca o email agora de forma simpatica.
-Quando o cliente informar o email, voce vai encontrar os pedidos automaticamente.`
+=== PEDIDOS ENCONTRADOS ===
+${pedidosTexto}
+=== FIM DOS DADOS ===
+
+Voce JA TEM os dados acima. Responda diretamente com as informacoes de rastreio sem pedir confirmacao.`
+  : `=== CLIENTE NAO IDENTIFICADO ===
+Telefone: ${phone}
+Nao foram encontrados pedidos vinculados a este telefone.
+
+ACAO OBRIGATORIA: Peca o email do cliente. Quando ele informar, o sistema vai buscar automaticamente e voce tera os dados na proxima mensagem. Nao abra ticket antes de tentar pelo email.`
 }
 
 ${catalogo ? `CATÁLOGO DE PRODUTOS DISPONÍVEIS:
@@ -458,6 +462,17 @@ ${resumo}
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // -- Limpar historico de um contato --
+  if (req.method === 'POST' && req.query.action === 'limpar-historico') {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Nao autorizado' });
+    const { phone } = req.body || {};
+    if (!phone) return res.status(400).json({ erro: 'phone obrigatorio' });
+    await kvDel(`bot:hist:${phone}`);
+    await kvDel(`bot:ctx:${phone}`);
+    return res.status(200).json({ ok: true });
+  }
 
   // -- Dashboard endpoints --
   if (req.method === 'GET' && req.query.action) {
