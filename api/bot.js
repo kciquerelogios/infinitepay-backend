@@ -49,18 +49,25 @@ async function enviarTexto(phone, message) {
 
 // -- Shopify --
 async function buscarClienteShopify(phone) {
-  const nums = phone.replace(/\D/g, '').replace(/^55/, '');
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=1`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ customers: [] }));
-  if (!(r.customers || []).length) return null;
-  const c = r.customers[0];
+  const nums = phone.replace(/\D/g, '').replace(/^55/, ''); // sem DDI
+  // Tentar com +55 e sem prefixo
+  const variantes = ['+55' + nums, nums, '55' + nums];
+  let cliente = null;
+  for (const v of variantes) {
+    const r = await fetch(
+      `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent(v)}&limit=1`,
+      { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+    ).then(r => r.json()).catch(() => ({ customers: [] }));
+    if ((r.customers || []).length) { cliente = r.customers[0]; break; }
+  }
+  console.log(`BOT buscarClienteShopify phone=${phone} nums=${nums} encontrou=${!!cliente}`);
+  if (!cliente) return null;
   const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${c.id}/orders.json?status=any&limit=5`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=5`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return { cliente: c, pedidos: pedidos.orders || [] };
+  console.log(`BOT pedidos encontrados: ${(pedidos.orders||[]).length}`);
+  return { cliente, pedidos: pedidos.orders || [] };
 }
 
 async function buscarPedidoPorEmail(email) {
@@ -100,17 +107,21 @@ async function buscarEtiquetaMEporCPF(cpf) {
 async function buscarEtiquetaMEporTelefone(telefone) {
   try {
     const nums = telefone.replace(/\D/g, '');
+    const numsSem55 = nums.replace(/^55/, '');
     const pages = await Promise.all([1, 2, 3].map(p =>
       fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
         headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
       }).then(r => r.json()).catch(() => ({ data: [] }))
     ));
     const allOrders = pages.flatMap(p => (p.data || []).flatMap(pu => pu.orders || []));
-    return allOrders.find(o => {
+    console.log(`BOT ME purchases total orders: ${allOrders.length} buscando tel=${nums}`);
+    const found = allOrders.find(o => {
       const tel = ((o.to && o.to.phone) || '').replace(/\D/g, '');
-      return tel === nums || tel === nums.replace(/^55/, '') || '55' + tel === nums;
-    }) || null;
-  } catch(e) { return null; }
+      return tel === nums || tel === numsSem55 || '55' + tel === nums || tel === '55' + numsSem55;
+    });
+    console.log(`BOT ME por telefone: ${found ? 'ENCONTROU tracking=' + found.tracking : 'NAO ENCONTROU'}`);
+    return found || null;
+  } catch(e) { console.log('BOT ME tel erro:', e.message); return null; }
 }
 
 function statusMELabel(status) {
@@ -138,6 +149,7 @@ function extrairDadosPedido(pedido) {
     const tel = pedido.shipping_address?.phone || pedido.phone || '';
     if (tel) telefone = tel.replace(/\D/g, '');
   }
+  console.log(`BOT extrairDadosPedido #${pedido.order_number}: cpf=${cpf} tel=${telefone} nota="${nota.substring(0,80)}"`);
   return { cpf, telefone };
 }
 
@@ -270,10 +282,14 @@ async function processarMensagem(phone, texto, midia) {
   const historico = historicoRaw || [];
   let contexto    = contextoSalvo;
 
-  // Montar/atualizar contexto do cliente (primeira msg, a cada 10 msgs, ou se não identificado)
-  if (!contexto || historico.length % 10 === 0 || !contexto.identificado) {
-    contexto = await montarContextoCliente(phone);
-    await kvSet(ctxKey, contexto, TTL);
+  // Atualizar contexto: sempre se nao identificado, ou a cada 10 msgs
+  if (!contexto || !contexto.identificado || historico.length % 10 === 0) {
+    const novoCtx = await montarContextoCliente(phone);
+    contexto = novoCtx;
+    // So cacheia se identificou — senao tenta de novo na proxima msg
+    if (contexto.identificado) {
+      await kvSet(ctxKey, contexto, TTL);
+    }
   }
 
   // Se ainda não identificado, verificar se a mensagem atual parece um email ou CPF
