@@ -10,125 +10,80 @@ const SHOPIFY_TOKEN     = process.env.SHOPIFY_TOKEN;
 const ME_TOKEN          = process.env.MELHORENVIO_TOKEN;
 const SECRET            = process.env.REPROCESSAR_SECRET || 'kcique2026';
 const BOT_BASE          = `https://api.z-api.io/instances/${ZAPI_BOT_INSTANCE}/token/${ZAPI_BOT_TOKEN}`;
-const TIMEOUT_MIN       = 30; // minutos sem resposta para resetar estado
 
-// ── Helpers Redis ────────────────────────────────────────────
+// ── Redis ────────────────────────────────────────────────────
 async function kvGet(key) {
-  const r = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-  const d = await r.json();
-  let v = d.result;
-  while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
-  return v || null;
+  try {
+    const r = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const d = await r.json();
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    return v || null;
+  } catch(e) { return null; }
 }
 async function kvSet(key, value, ex) {
-  // Upstash REST: com TTL usa /setex/key/seconds/value, sem TTL usa /set/key com body direto
-  if (ex) {
-    await fetch(`${KV_URL}/setex/${key}/${ex}/${encodeURIComponent(JSON.stringify(value))}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}` }
-    });
-  } else {
-    await fetch(`${KV_URL}/set/${key}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(value)
-    });
-  }
+  const url = ex
+    ? `${KV_URL}/setex/${key}/${ex}/${encodeURIComponent(JSON.stringify(value))}`
+    : `${KV_URL}/set/${key}`;
+  const opts = ex
+    ? { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } }
+    : { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(value) };
+  await fetch(url, opts);
 }
 async function kvDel(key) {
   await fetch(`${KV_URL}/del/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
 }
 
-// ── Enviar mensagem Z-API ────────────────────────────────────
+// ── Z-API ────────────────────────────────────────────────────
 async function enviarTexto(phone, message) {
-  console.log(`BOT enviarTexto: phone=${phone} msg=${message.substring(0,50)} url=${BOT_BASE}/send-text`);
   const r = await fetch(`${BOT_BASE}/send-text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'client-token': ZAPI_CLIENT_TOKEN },
     body: JSON.stringify({ phone, message })
   });
-  return r.json().catch(() => ({}));
+  const d = await r.json().catch(() => ({}));
+  console.log(`BOT enviou para ${phone}:`, JSON.stringify(d).substring(0, 80));
+  return d;
 }
 
-// ── Buscar pedido do cliente ─────────────────────────────────
-async function buscarPedidoPorTelefone(tel) {
-  // Busca cliente pelo telefone na API do Shopify
-  const nums = tel.replace(/\D/g, '').replace(/^55/, ''); // remove DDI 55
-  const variantes = [nums, '55' + nums];
-  for (const v of variantes) {
-    const r = await fetch(
-      `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
-      { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-    ).then(r => r.json()).catch(() => ({ customers: [] }));
-    if ((r.customers || []).length) {
-      const cliente = r.customers[0];
-      const pedidos = await fetch(
-        `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
-        { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-      ).then(r => r.json()).catch(() => ({ orders: [] }));
-      const pedidosPagos = (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
-      if (pedidosPagos.length) return pedidosPagos[0];
-    }
-  }
-  return null;
+// ── Shopify ──────────────────────────────────────────────────
+async function buscarClienteShopify(phone) {
+  const nums = phone.replace(/\D/g, '').replace(/^55/, '');
+  const r = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=1`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ customers: [] }));
+  if (!(r.customers || []).length) return null;
+  const c = r.customers[0];
+  const pedidos = await fetch(
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${c.id}/orders.json?status=any&limit=5`,
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+  ).then(r => r.json()).catch(() => ({ orders: [] }));
+  return { cliente: c, pedidos: pedidos.orders || [] };
 }
 
 async function buscarPedidoPorEmail(email) {
-  // Busca cliente pelo email no Shopify
   const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(email)}&limit=5`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(email)}&limit=1`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ customers: [] }));
   if (!(r.customers || []).length) {
-    // Fallback: buscar diretamente nos pedidos por email
     const r2 = await fetch(
       `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`,
       { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
     ).then(r => r.json()).catch(() => ({ orders: [] }));
-    return (r2.orders || []).find(o => (o.email || '').toLowerCase() === email.toLowerCase()) || null;
+    const pedido = (r2.orders || []).find(o => (o.email || '').toLowerCase() === email.toLowerCase());
+    return pedido ? { cliente: null, pedidos: [pedido] } : null;
   }
-  const cliente = r.customers[0];
+  const c = r.customers[0];
   const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
+    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${c.id}/orders.json?status=any&limit=5`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
   ).then(r => r.json()).catch(() => ({ orders: [] }));
-  const pagos = (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
-  return pagos[0] || null;
+  return { cliente: c, pedidos: pedidos.orders || [] };
 }
 
-async function buscarPedidoPorCPF(cpf) {
-  const nums = cpf.replace(/\D/g, '');
-  if (nums.length < 11) return null;
-
-  // Buscar nos pedidos pela nota (CPF: XXXXXXXXXXX)
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ orders: [] }));
-
-  // Match exato do CPF na nota — formato "CPF: 12345678901"
-  return (r.orders || []).find(o => {
-    const nota = o.note || '';
-    const match = nota.match(/CPF:\s*(\d{11})/i);
-    return match && match[1] === nums;
-  }) || null;
-}
-
-async function buscarPedidoPorNome(nome) {
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=${encodeURIComponent(nome)}&limit=5`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ customers: [] }));
-  if (!(r.customers || []).length) return null;
-  const cliente = r.customers[0];
-  const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=5&financial_status=paid`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (pedidos.orders || [])[0] || null;
-}
-
-// ── Melhor Envio: buscar etiqueta por CPF (document) ─────────────────────
+// ── Melhor Envio ─────────────────────────────────────────────
 async function buscarEtiquetaMEporCPF(cpf) {
   try {
     const r = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/search?q=${encodeURIComponent(cpf)}`, {
@@ -138,382 +93,340 @@ async function buscarEtiquetaMEporCPF(cpf) {
     const data = await r.json();
     const items = Array.isArray(data) ? data : (data.data || []);
     return items.length ? items[0] : null;
-  } catch(e) { console.log('ME CPF search erro:', e.message); return null; }
+  } catch(e) { return null; }
 }
 
-// ── Melhor Envio: buscar etiqueta nas purchases por telefone ───────────────
 async function buscarEtiquetaMEporTelefone(telefone) {
   try {
     const nums = telefone.replace(/\D/g, '');
-    // Buscar nas últimas 3 páginas de purchases
-    const pages = await Promise.all([1,2,3].map(p =>
+    const pages = await Promise.all([1, 2, 3].map(p =>
       fetch(`https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=${p}`, {
         headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' }
       }).then(r => r.json()).catch(() => ({ data: [] }))
     ));
     const allOrders = pages.flatMap(p => (p.data || []).flatMap(pu => pu.orders || []));
-    // Buscar pelo telefone exato no to.phone
-    const found = allOrders.find(o => {
+    return allOrders.find(o => {
       const tel = ((o.to && o.to.phone) || '').replace(/\D/g, '');
       return tel === nums || tel === nums.replace(/^55/, '') || '55' + tel === nums;
-    });
-    return found || null;
-  } catch(e) { console.log('ME tel search erro:', e.message); return null; }
+    }) || null;
+  } catch(e) { return null; }
 }
 
-// Extrair CPF do pedido Shopify (salvo na nota ou no customer)
+function statusMELabel(status) {
+  const map = {
+    'delivered':   '✅ Entregue',
+    'undelivered': '⚠️ Não entregue — em devolução',
+    'canceled':    '❌ Cancelado',
+    'posted':      '🚚 Em trânsito pelos Correios',
+    'released':    '📦 Etiqueta gerada — aguardando postagem',
+    'pending':     '⏳ Aguardando processamento',
+    'paid':        '💳 Pago — preparando envio',
+  };
+  return map[status] || '📦 Em processamento';
+}
+
 function extrairDadosPedido(pedido) {
   const nota = pedido.note || '';
-
-  // CPF — formato: "CPF: 12345678901"
   let cpf = null;
   const matchCPF = nota.match(/CPF:\s*(\d{11})/i);
   if (matchCPF) cpf = matchCPF[1];
-
-  // Telefone — formato: "Telefone: (67) 99291-3121"
   let telefone = null;
   const matchTel = nota.match(/Telefone:\s*([\d\s\(\)\-]+?)(?:\s*\|)/i);
   if (matchTel) telefone = matchTel[1].replace(/\D/g, '');
-
-  // Fallback: pegar do shipping_address do pedido
   if (!telefone) {
     const tel = pedido.shipping_address?.phone || pedido.phone || '';
     if (tel) telefone = tel.replace(/\D/g, '');
   }
-
   return { cpf, telefone };
 }
 
-// Status da etiqueta ME para label legível
-function statusMELabel(status) {
-  const map = {
-    'delivered':   '✅ *Entregue*',
-    'undelivered': '⚠️ *Não entregue — em devolução*',
-    'canceled':    '❌ *Cancelado*',
-    'posted':      '🚚 *Em trânsito pelos Correios*',
-    'released':    '📦 *Etiqueta gerada — aguardando postagem*',
-    'pending':     '⏳ *Aguardando processamento*',
-    'paid':        '💳 *Pago — preparando envio*',
-    'suspended':   '⚠️ *Suspenso*',
-  };
-  return map[status] || '📦 *Em processamento*';
+// ── Catálogo de produtos ─────────────────────────────────────
+async function buscarCatalogo() {
+  // Cache no Redis por 1 hora
+  const cached = await kvGet('bot:catalogo');
+  if (cached) return cached;
+
+  try {
+    let allProducts = [];
+    let pageInfo = null;
+    let pages = 0;
+    while (pages < 5) {
+      const url = pageInfo
+        ? `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,variants,status&page_info=${pageInfo}`
+        : `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,variants,status`;
+      const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+      const d = await r.json().catch(() => ({ products: [] }));
+      allProducts = allProducts.concat((d.products || []).filter(p => p.status === 'active'));
+      const link = r.headers.get('link') || '';
+      const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+      pageInfo = m ? m[1] : null;
+      pages++;
+      if (!pageInfo) break;
+    }
+    // Montar resumo compacto para o system prompt
+    const catalogo = allProducts.map(p => {
+      const variantes = (p.variants || []).map(v => v.title).filter(v => v !== 'Default Title');
+      const preco = p.variants?.[0]?.price;
+      return `- ${p.title}${preco ? ` (R$ ${parseFloat(preco).toFixed(2).replace('.', ',')})` : ''}${variantes.length ? ': ' + variantes.slice(0, 5).join(', ') : ''}`;
+    }).join('
+');
+    await kvSet('bot:catalogo', catalogo, 3600); // cache 1h
+    return catalogo;
+  } catch(e) {
+    console.log('Erro catalogo:', e.message);
+    return null;
+  }
 }
 
-async function buscarTodosPedidosTelefone(tel) {
-  const nums = tel.replace(/\D/g, '').replace(/^55/, '');
-  const r = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=phone:${encodeURIComponent('+55' + nums)}&limit=5`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ customers: [] }));
-  if (!(r.customers || []).length) return [];
-  const cliente = r.customers[0];
-  const pedidos = await fetch(
-    `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/${cliente.id}/orders.json?status=any&limit=10`,
-    { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-  ).then(r => r.json()).catch(() => ({ orders: [] }));
-  return (pedidos.orders || []).filter(o => o.financial_status === 'paid' || o.financial_status === 'partially_refunded');
-}
-
-// ── MENU PRINCIPAL ────────────────────────────────────────────
-const MENU = `Olá! 😊 Bem-vindo ao atendimento da *Kcique Relógios* ⌚
-
-Digite o número da opção desejada:
-
-*1* — 📦 Rastrear meu pedido
-*2* — 🔢 Obter código de rastreio
-*3* — 📅 Prazo de entrega
-*4* — ⚠️ Problema com a compra
-*5* — 🔁 Solicitar troca
-
-_Digite *0* a qualquer momento para voltar ao menu._`;
-
-const VOLTAR_MSG = '_Operação cancelada. Voltando ao menu..._\n\n' + MENU.replace('Olá! 😊 Bem-vindo ao atendimento da *Kcique Relógios* ⌚\n\n', '');
-
-// ── SALVAR TICKET ─────────────────────────────────────────────
+// ── Ticket ───────────────────────────────────────────────────
 async function criarTicket(dados) {
   const id = `ticket_${Date.now()}`;
   const ticket = { id, ...dados, status: 'aberto', criado_em: new Date().toISOString() };
   await kvSet(id, ticket);
-  // Adicionar à lista
   const lista = await kvGet('tickets-lista') || [];
   lista.push(id);
   await kvSet('tickets-lista', lista);
   return ticket;
 }
 
-// ── PROCESSAR MENSAGEM ────────────────────────────────────────
+// ── Claude AI ────────────────────────────────────────────────
+async function chamarClaude(mensagens, systemPrompt) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: mensagens
+    })
+  });
+  const d = await r.json();
+  return d.content?.[0]?.text || '';
+}
+
+// ── Montar contexto do cliente ───────────────────────────────
+async function resumoHistorico(historico) {
+  if (historico.length < 10) return null;
+  // Resumo simples dos assuntos já tratados
+  const msgs = historico.filter(m => m.role === 'user').map(m => m.content).slice(0, -1);
+  if (!msgs.length) return null;
+  return `Interações anteriores deste cliente: ${msgs.slice(-10).join(' | ').substring(0, 500)}`;
+}
+
+async function montarContextoCliente(phone) {
+  // Buscar cliente no Shopify pelo telefone
+  const shopify = await buscarClienteShopify(phone);
+  let contexto = { identificado: false, pedidos: [] };
+
+  if (shopify) {
+    contexto.identificado = true;
+    contexto.nome = shopify.cliente ? `${shopify.cliente.first_name || ''} ${shopify.cliente.last_name || ''}`.trim() : '';
+    contexto.email = shopify.cliente?.email || '';
+
+    // Buscar status ME para cada pedido
+    for (const pedido of shopify.pedidos.slice(0, 3)) {
+      const { cpf, telefone } = extrairDadosPedido(pedido);
+      let etiquetaME = null;
+      if (cpf) etiquetaME = await buscarEtiquetaMEporCPF(cpf);
+      if (!etiquetaME && telefone) etiquetaME = await buscarEtiquetaMEporTelefone(telefone);
+
+      contexto.pedidos.push({
+        numero: pedido.order_number,
+        valor: pedido.total_price,
+        status_pagamento: pedido.financial_status,
+        produtos: (pedido.line_items || []).map(i => `${i.title}${i.variant_title && i.variant_title !== 'Default Title' ? ' - ' + i.variant_title : ''}`).join(', '),
+        frete: (pedido.shipping_lines || [])[0]?.title || 'PAC',
+        endereco_cep: pedido.shipping_address?.zip || '',
+        me_status: etiquetaME ? statusMELabel(etiquetaME.status) : null,
+        me_tracking: etiquetaME?.tracking || null,
+        me_status_raw: etiquetaME?.status || null,
+        criado_em: pedido.created_at
+      });
+    }
+  }
+
+  return contexto;
+}
+
+// ── Processar mensagem com IA ────────────────────────────────
 async function processarMensagem(phone, texto, midia) {
-  const stateKey = `bot:estado:${phone}`;
-  console.log(`BOT processando: phone=${phone} texto="${texto}" instance=${ZAPI_BOT_INSTANCE}`);
-  const estado = await kvGet(stateKey) || { etapa: 'menu' };
-  const TTL = TIMEOUT_MIN * 60;
-  const txt = (texto || '').trim();
-  const txLow = txt.toLowerCase();
+  const histKey = `bot:hist:${phone}`;
+  const ctxKey  = `bot:ctx:${phone}`;
+  const TTL = 60 * 60; // 1 hora para contexto (pedidos mudam)
+  // Histórico é permanente — sem TTL
 
-  console.log(`BOT [${phone}] etapa:${estado.etapa} msg:${txt.substring(0,50)}`);
+  // Carregar histórico, contexto e catálogo em paralelo
+  const [historicoRaw, contextoSalvo, catalogo] = await Promise.all([
+    kvGet(histKey),
+    kvGet(ctxKey),
+    buscarCatalogo()
+  ]);
+  const historico = historicoRaw || [];
+  let contexto    = contextoSalvo;
 
-  // ── DIGITO 0 = voltar ao menu em qualquer etapa ───────────
-  if (txt === '0' && estado.etapa !== 'menu') {
-    await kvSet(stateKey, { etapa: 'aguardando_opcao' }, TTL);
-    await enviarTexto(phone, VOLTAR_MSG);
-    return;
+  // Montar/atualizar contexto do cliente (primeira msg, a cada 10 msgs, ou se não identificado)
+  if (!contexto || historico.length % 10 === 0 || !contexto.identificado) {
+    contexto = await montarContextoCliente(phone);
+    await kvSet(ctxKey, contexto, TTL);
   }
 
-  // ── QUALQUER mensagem na etapa menu → mostrar menu ────────
-  if (estado.etapa === 'menu') {
-    await kvSet(stateKey, { etapa: 'aguardando_opcao' }, TTL);
-    await enviarTexto(phone, MENU);
-    return;
-  }
+  // Se ainda não identificado, verificar se a mensagem atual parece um email ou CPF
+  if (!contexto.identificado && texto) {
+    const emailMatch = texto.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    const cpfMatch   = texto.replace(/\D/g, '').length === 11 ? texto.replace(/\D/g, '') : null;
 
-  // ── AGUARDANDO OPÇÃO ──────────────────────────────────────
-  if (estado.etapa === 'aguardando_opcao') {
-    const opcao = txt.replace(/[^1-5]/g, '');
-    if (!['1','2','3','4','5'].includes(opcao)) {
-      await enviarTexto(phone, 'Por favor, digite apenas o número da opção (1, 2, 3, 4 ou 5).');
-      return;
-    }
-    const novoEstado = { etapa: 'identificando', opcao, tentativas: 0 };
-    await kvSet(stateKey, novoEstado, TTL);
-
-    // Tentar identificar pelo telefone automaticamente
-    const pedidos = await buscarTodosPedidosTelefone(phone);
-    if (pedidos.length === 1) {
-      await kvSet(stateKey, { ...novoEstado, etapa: 'identificado', pedido: pedidos[0] }, TTL);
-      await processarOpcao(phone, opcao, pedidos[0], stateKey, TTL);
-    } else if (pedidos.length > 1) {
-      // Múltiplos pedidos — perguntar qual
-      let msg = 'Encontrei mais de um pedido no seu número. Qual você deseja tratar?\n\n';
-      pedidos.forEach((p, i) => {
-        const produto = (p.line_items || [])[0]?.title || 'Produto';
-        msg += `*${i+1}* — Pedido #${p.order_number} · ${produto}\n`;
-      });
-      await kvSet(stateKey, { ...novoEstado, etapa: 'escolhendo_pedido', pedidos: pedidos.map(p => p.id) }, TTL);
-      await enviarTexto(phone, msg);
-    } else {
-      // Não encontrou pelo telefone — pedir email
-      await kvSet(stateKey, { ...novoEstado, etapa: 'aguardando_email' }, TTL);
-      await enviarTexto(phone, 'Não encontrei pedidos com seu número. Por favor, informe o *e-mail* usado na compra:');
-    }
-    return;
-  }
-
-  // ── ESCOLHENDO PEDIDO (múltiplos) ────────────────────────
-  if (estado.etapa === 'escolhendo_pedido') {
-    const idx = parseInt(txt) - 1;
-    const ids = estado.pedidos || [];
-    if (isNaN(idx) || idx < 0 || idx >= ids.length) {
-      await enviarTexto(phone, `Por favor, digite um número entre 1 e ${ids.length}.`);
-      return;
-    }
-    // Buscar pedido pelo ID
-    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${ids[idx]}.json`, {
-      headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN }
-    }).then(r => r.json()).catch(() => ({}));
-    const pedido = r.order || null;
-    if (!pedido) {
-      await enviarTexto(phone, 'Não consegui encontrar esse pedido. Tente novamente.');
-      return;
-    }
-    await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-    await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
-    return;
-  }
-
-  // ── AGUARDANDO EMAIL ──────────────────────────────────────
-  if (estado.etapa === 'aguardando_email') {
-    const pedido = txt.includes('@') ? await buscarPedidoPorEmail(txt) : null;
-    if (pedido) {
-      await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-      await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
-    } else {
-      await kvSet(stateKey, { ...estado, etapa: 'aguardando_cpf' }, TTL);
-      await enviarTexto(phone, 'Não encontrei com esse e-mail. Por favor, informe seu *CPF* (somente números):');
-    }
-    return;
-  }
-
-  // ── AGUARDANDO CPF ────────────────────────────────────────
-  // ── AGUARDANDO CPF ────────────────────────────────────────
-  if (estado.etapa === 'aguardando_cpf') {
-    const cpfNums = txt.replace(/\D/g,'');
-    if (cpfNums.length < 11) {
-      await enviarTexto(phone, 'CPF inválido. Por favor, informe os *11 dígitos* do CPF:');
-      return;
-    }
-    // Buscar no ME diretamente pelo CPF
-    const etiquetaME = await buscarEtiquetaMEporCPF(cpfNums);
-    if (etiquetaME) {
-      // Achou no ME — buscar pedido no Shopify pelo telefone ou email do ME
-      const telME = (etiquetaME.to && etiquetaME.to.phone || '').replace(/\D/g,'');
-      let pedido = telME ? ((await buscarTodosPedidosTelefone(telME))[0] || null) : null;
-      if (!pedido && etiquetaME.to && etiquetaME.to.email) pedido = await buscarPedidoPorEmail(etiquetaME.to.email);
-      if (pedido) {
-        await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-        await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
-      } else {
-        // Tem etiqueta no ME mas sem pedido Shopify — responder com dados do ME
-        const statusLabel = statusMELabel(etiquetaME.status);
-        const meTracking = etiquetaME.tracking || null;
-        let msg = `📦 Status do seu pedido:\n\nStatus: ${statusLabel}`;
-        if (meTracking) msg += `\nCódigo: *${meTracking}*\n\n🔍 https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
-        await enviarTexto(phone, msg);
-        await kvDel(stateKey);
+    if (emailMatch) {
+      const shopify = await buscarPedidoPorEmail(emailMatch[0]);
+      if (shopify) {
+        contexto.identificado = true;
+        contexto.nome  = shopify.cliente ? `${shopify.cliente.first_name || ''} ${shopify.cliente.last_name || ''}`.trim() : '';
+        contexto.email = emailMatch[0];
+        // Buscar status ME para cada pedido
+        contexto.pedidos = [];
+        for (const pedido of (shopify.pedidos || []).slice(0, 3)) {
+          const { cpf, telefone } = extrairDadosPedido(pedido);
+          let etiquetaME = null;
+          if (cpf) etiquetaME = await buscarEtiquetaMEporCPF(cpf);
+          if (!etiquetaME && telefone) etiquetaME = await buscarEtiquetaMEporTelefone(telefone);
+          contexto.pedidos.push({
+            numero: pedido.order_number,
+            valor: pedido.total_price,
+            status_pagamento: pedido.financial_status,
+            produtos: (pedido.line_items || []).map(i => `${i.title}${i.variant_title && i.variant_title !== 'Default Title' ? ' - ' + i.variant_title : ''}`).join(', '),
+            frete: (pedido.shipping_lines || [])[0]?.title || 'PAC',
+            endereco_cep: pedido.shipping_address?.zip || '',
+            me_status: etiquetaME ? statusMELabel(etiquetaME.status) : null,
+            me_tracking: etiquetaME?.tracking || null,
+            me_status_raw: etiquetaME?.status || null,
+            criado_em: pedido.created_at
+          });
+        }
+        await kvSet(ctxKey, contexto, TTL);
+        console.log(`BOT identificou ${phone} via email: ${emailMatch[0]}`);
       }
-    } else {
-      // Não achou no ME — fallback Shopify
-      const pedido = await buscarPedidoPorCPF(cpfNums);
-      if (pedido) {
-        await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-        await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
-      } else {
-        await kvSet(stateKey, { ...estado, etapa: 'aguardando_nome' }, TTL);
-        await enviarTexto(phone, 'Não encontrei com esse CPF. Por favor, informe o *nome completo* usado no cadastro:');
+    } else if (cpfMatch) {
+      const etiquetaME = await buscarEtiquetaMEporCPF(cpfMatch);
+      if (etiquetaME) {
+        contexto.identificado = true;
+        contexto.me_direto = etiquetaME;
+        contexto.pedidos = [{
+          numero: '—',
+          produtos: etiquetaME.to?.name || '—',
+          me_status: statusMELabel(etiquetaME.status),
+          me_tracking: etiquetaME.tracking || null,
+          me_status_raw: etiquetaME.status,
+          frete: '—',
+          endereco_cep: ''
+        }];
+        await kvSet(ctxKey, contexto, TTL);
+        console.log(`BOT identificou ${phone} via CPF no ME`);
       }
     }
-    return;
-  }
-  // ── AGUARDANDO NOME ───────────────────────────────────────
-  if (estado.etapa === 'aguardando_nome') {
-    const pedido = txt.split(' ').length >= 2 ? await buscarPedidoPorNome(txt) : null;
-    if (pedido) {
-      await kvSet(stateKey, { ...estado, etapa: 'identificado', pedido }, TTL);
-      await processarOpcao(phone, estado.opcao, pedido, stateKey, TTL);
-    } else {
-      await kvSet(stateKey, { etapa: 'aguardando_opcao' }, TTL);
-      await enviarTexto(phone, 'Não consegui encontrar seu pedido. Por favor, entre em contato pelo nosso atendimento humano.\n\nDigite qualquer mensagem para ver o menu novamente.');
-    }
-    return;
   }
 
-  // ── AGUARDANDO DESCRIÇÃO (opção 4 ou 5) ──────────────────
-  if (estado.etapa === 'aguardando_descricao') {
-    const novoEstado = { ...estado, etapa: 'aguardando_midia', descricao: txt };
-    await kvSet(stateKey, novoEstado, TTL);
-    await enviarTexto(phone, 'Entendido! 📝 Agora, se tiver *fotos ou vídeos* do problema, pode enviar. Quando terminar, escreva *"pronto"*:');
-    return;
-  }
+  // Adicionar mensagem do usuário ao histórico
+  const msgUsuario = texto || (midia ? `[${midia.tipo}]` : '[mensagem]');
+  historico.push({ role: 'user', content: msgUsuario });
 
-  // ── AGUARDANDO MÍDIA (opção 4 ou 5) ──────────────────────
-  if (estado.etapa === 'aguardando_midia') {
-    // Se recebeu mídia, adicionar à lista
-    if (midia) {
-      const midias = estado.midias || [];
-      midias.push(midia);
-      await kvSet(stateKey, { ...estado, midias }, TTL);
-      await enviarTexto(phone, 'Mídia recebida! ✅ Envie mais ou escreva *"pronto"* para finalizar.');
-      return;
-    }
-    // Se escreveu "pronto" ou qualquer texto sem mídia — finalizar ticket
-    if (txLow === 'pronto' || txLow === 'finalizar' || txLow === 'ok' || !midia) {
-      const pedido = estado.pedido || {};
-      const ticket = await criarTicket({
-        tipo: estado.opcao === '4' ? 'problema' : 'troca',
-        telefone: phone,
-        nome: pedido.customer ? `${pedido.customer.first_name || ''} ${pedido.customer.last_name || ''}`.trim() : phone,
-        pedido: pedido.order_number ? `#${pedido.order_number}` : '—',
-        descricao: estado.descricao || '',
-        midias: estado.midias || []
-      });
-      await kvDel(stateKey);
-      const tipo = estado.opcao === '4' ? 'problema' : 'solicitação de troca';
-      await enviarTexto(phone, `✅ Seu ${tipo} foi registrado com sucesso!\n\nNúmero do ticket: *${ticket.id}*\n\nNossa equipe analisará e entrará em contato em breve. ⌚`);
-    }
-    return;
-  }
+  // Montar system prompt
+  const pedidosTexto = contexto.pedidos.length
+    ? contexto.pedidos.map(p => `
+Pedido #${p.numero} | ${p.produtos}
+- Valor: R$ ${parseFloat(p.valor || 0).toFixed(2).replace('.', ',')}
+- Frete: ${p.frete}
+- CEP destino: ${p.endereco_cep || 'não informado'}
+- Pagamento: ${p.status_pagamento}
+- Status envio ME: ${p.me_status || 'não encontrado no ME'}
+- Código de rastreio: ${p.me_tracking || 'não disponível'}
+- Link rastreio: ${p.me_tracking ? `https://rastreamento.correios.com.br/app/index.php?objetos=${p.me_tracking}` : 'não disponível'}
+- Data do pedido: ${p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : ''}
+    `.trim()).join('\n\n')
+    : 'Nenhum pedido encontrado pelo telefone deste número.';
 
-  // ── FALLBACK ──────────────────────────────────────────────
-  await kvSet(stateKey, { etapa: 'aguardando_opcao' }, TTL);
-  await enviarTexto(phone, MENU);
+  // Resumo do histórico anterior (se houver)
+  const resumo = await resumoHistorico(historico);
+
+  const systemPrompt = `Você é a assistente virtual de suporte da Kcique Relógios ⌚, uma loja online de relógios.
+
+Seu papel é atender clientes com problemas ou dúvidas sobre pedidos. Seja simpática, direta e eficiente.
+
+${contexto.identificado
+  ? `CLIENTE IDENTIFICADO:
+Nome: ${contexto.nome || 'não informado'}
+Email: ${contexto.email || 'não informado'}
+Telefone de cadastro: ${phone}
+
+PEDIDOS DO CLIENTE:
+${pedidosTexto}`
+  : `CLIENTE NÃO IDENTIFICADO pelo telefone ${phone}.
+Pedidos: ${pedidosTexto}
+Se precisar identificar o cliente, peça o email ou CPF educadamente.`
 }
 
-// ── PROCESSAR OPÇÃO IDENTIFICADA ─────────────────────────────
-async function processarOpcao(phone, opcao, pedido, stateKey, TTL) {
-  const nome = pedido.customer
-    ? `${pedido.customer.first_name || ''}`.trim()
-    : 'Cliente';
+${catalogo ? `CATÁLOGO DE PRODUTOS DISPONÍVEIS:
+${catalogo}
 
-  // Extrair CPF e telefone da nota do pedido Shopify
-  const { cpf, telefone } = extrairDadosPedido(pedido);
-  console.log(`BOT dados: cpf="${cpf}" tel="${telefone}"`);
-  console.log(`BOT nota completa: "${pedido.note||''}"`);
+` : ''}${resumo ? `HISTÓRICO DE ATENDIMENTOS ANTERIORES COM ESTE CLIENTE:
+${resumo}
 
-  // Buscar no ME — CPF é o mais confiável, telefone como fallback
-  let etiqueta = null;
-  if (cpf) etiqueta = await buscarEtiquetaMEporCPF(cpf);
-  if (!etiqueta && telefone) etiqueta = await buscarEtiquetaMEporTelefone(telefone);
-  console.log(`BOT ME etiqueta: status=${etiqueta?.status} tracking=${etiqueta?.tracking}`);
+` : ''}REGRAS IMPORTANTES:
+1. Para rastreio: sempre forneça o código e o link dos Correios quando disponível
+2. Para prazo de entrega: o prazo depende do CEP do cliente e da modalidade (PAC ou SEDEX). Se não tiver a previsão exata do ME, informe que PAC leva em média 5-15 dias úteis e SEDEX 1-3 dias úteis após postagem
+3. Para problemas ou trocas: ouça o cliente, colete as informações necessárias e avise que vai abrir um ticket para um especialista analisar e entrar em contato. Política de troca/devolução: 7 dias corridos a partir do recebimento, sem necessidade de embalagem original
+4. Quando abrir ticket: responda com a palavra exata "ABRIR_TICKET" em uma linha separada no final da sua resposta, seguida de "|" e o tipo: "problema" ou "troca"
+5. Quando precisar do email do cliente para identificá-lo: peça de forma natural
+6. Nunca invente informações de rastreio ou pedido
+7. Não temos loja física — somente loja online
+8. Formate as mensagens para WhatsApp usando *negrito* quando necessário
+9. Seja concisa — evite mensagens muito longas`;
 
-  const meTracking = etiqueta?.tracking || null;
-  const meStatus   = etiqueta?.status   || null;
+  // Chamar Claude
+  const resposta = await chamarClaude(historico.slice(-30), systemPrompt); // últimas 30 msgs
 
-  if (opcao === '1') {
-    if (!etiqueta) {
-      await enviarTexto(phone, `Olá ${nome}! 😊 Seu pedido *#${pedido.order_number}* está sendo preparado. Assim que a etiqueta for gerada você receberá o código de rastreio! ⌚`);
-    } else {
-      const statusLabel = statusMELabel(meStatus);
-      let msg = `📦 Pedido *#${pedido.order_number}*
+  // Verificar se Claude quer abrir ticket
+  let respostaFinal = resposta;
+  let abrirTicket = null;
 
-Status: ${statusLabel}`;
-      if (meTracking) msg += `
-Código de rastreio: *${meTracking}*
-
-🔍 Acompanhe: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
-      await enviarTexto(phone, msg);
-    }
-    await kvDel(stateKey);
-
-  } else if (opcao === '2') {
-    if (!meTracking) {
-      await enviarTexto(phone, `Olá ${nome}! O pedido *#${pedido.order_number}* ainda não possui código de rastreio. Assim que for postado você recebe! 📦`);
-    } else {
-      await enviarTexto(phone, `Olá ${nome}! O código de rastreio do seu pedido *#${pedido.order_number}* é:
-
-*${meTracking}*
-
-📮 Consulte nos Correios: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`);
-    }
-    await kvDel(stateKey);
-
-  } else if (opcao === '3') {
-    const frete = (pedido.shipping_lines || [])[0]?.title || '';
-    const prazo = frete.toLowerCase().includes('sedex') ? '2 dias úteis' : 'até 10 dias úteis';
-    if (!etiqueta) {
-      await enviarTexto(phone, `Olá ${nome}! Seu pedido *#${pedido.order_number}* está sendo preparado.
-
-Modalidade: *${frete || 'PAC'}*
-Prazo estimado após envio: *${prazo}* ⌚`);
-    } else {
-      const statusLabel = statusMELabel(meStatus);
-      let msg = `Olá ${nome}! 😊 Pedido *#${pedido.order_number}*
-
-Status: ${statusLabel}
-Modalidade: *${frete || 'PAC'}*
-Prazo estimado: *${prazo}*`;
-      if (meTracking) msg += `
-
-🔍 Rastreie: https://rastreamento.correios.com.br/app/index.php?objetos=${meTracking}`;
-      await enviarTexto(phone, msg);
-    }
-    await kvDel(stateKey);
-
-  } else if (opcao === '4' || opcao === '5') {
-    const tipo = opcao === '4' ? 'problema' : 'solicitação de troca';
-    await kvSet(stateKey, { etapa: 'aguardando_descricao', opcao, pedido, midias: [] }, TTL);
-    await enviarTexto(phone, `Olá ${nome}! 😊 Entendido, vou registrar sua ${tipo} do pedido *#${pedido.order_number}*.
-
-Por favor, *descreva detalhadamente* o ocorrido:`);
+  if (resposta.includes('ABRIR_TICKET')) {
+    const linhas = resposta.split('\n');
+    const linhaTicket = linhas.find(l => l.includes('ABRIR_TICKET'));
+    const tipo = linhaTicket?.split('|')[1]?.trim() || 'problema';
+    abrirTicket = tipo;
+    // Remover a linha do ticket da resposta
+    respostaFinal = linhas.filter(l => !l.includes('ABRIR_TICKET')).join('\n').trim();
   }
+
+  // Adicionar resposta ao histórico
+  historico.push({ role: 'assistant', content: respostaFinal });
+
+  // Salvar histórico permanente (sem TTL) — últimas 100 msgs por cliente
+  await kvSet(histKey, historico.slice(-100));
+
+  // Abrir ticket se necessário
+  if (abrirTicket) {
+    const ultimoPedido = contexto.pedidos[0];
+    await criarTicket({
+      tipo: abrirTicket,
+      telefone: phone,
+      nome: contexto.nome || phone,
+      pedido: ultimoPedido ? `#${ultimoPedido.numero}` : '—',
+      descricao: historico.filter(m => m.role === 'user').map(m => m.content).slice(-5).join(' | '),
+      midias: midia ? [midia] : []
+    });
+    console.log(`BOT ticket aberto: ${abrirTicket} para ${phone}`);
+  }
+
+  // Enviar resposta
+  await enviarTexto(phone, respostaFinal);
 }
 
-
-
-// ── HANDLER PRINCIPAL ─────────────────────────────────────────
+// ── HANDLER ──────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ── Endpoints do dashboard ────────────────────────────────
+  // ── Dashboard endpoints ───────────────────────────────────
   if (req.method === 'GET' && req.query.action) {
     const secret = req.query.secret || '';
     if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
@@ -558,27 +471,32 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const body = req.body || {};
-      console.log('BOT webhook:', JSON.stringify(body).substring(0, 300));
+      console.log('BOT webhook:', JSON.stringify(body).substring(0, 200));
 
       if (body.fromMe || body.isGroup) return res.status(200).json({ ok: true });
 
       const phone = body.phone || body.from || '';
       if (!phone) return res.status(200).json({ ok: true });
 
+      // Extrair texto
       let texto = '';
       if (body.text) texto = typeof body.text === 'string' ? body.text : (body.text.message || '');
       if (!texto && body.caption) texto = body.caption;
-      if (!texto && body.message) texto = typeof body.message === 'string' ? body.message : '';
 
+      // Extrair mídia
       let midia = null;
       if (body.image) midia = { tipo: 'image', url: body.image.imageUrl || body.image.url || '' };
       else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || '' };
       else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
+      else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || '' };
 
+      // Processar com IA
       try {
         await processarMensagem(phone, texto, midia);
       } catch(e) {
-        console.error('BOT erro processamento:', e.message);
+        console.error('BOT erro IA:', e.message);
+        // Fallback em caso de erro da API
+        await enviarTexto(phone, 'Olá! 😊 Estamos com uma instabilidade momentânea. Por favor, tente novamente em alguns instantes. — Kcique Relógios ⌚');
       }
 
       return res.status(200).json({ ok: true });
