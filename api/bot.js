@@ -325,6 +325,14 @@ async function processarMensagem(phone, texto, midia) {
         }
         await kvSet(ctxKey, contexto, TTL);
         console.log(`BOT identificou ${phone} via email: ${emailMatch[0]}`);
+        // Injetar no historico que o cliente foi identificado com os dados encontrados
+        const pedResumido = contexto.pedidos.map(p =>
+          `Pedido #${p.numero}: ${p.me_status || 'sem status ME'} | Rastreio: ${p.me_tracking || 'indisponivel'}`
+        ).join(' | ');
+        historico.push({
+          role: 'user',
+          content: `[SISTEMA: Cliente identificado via email ${emailMatch[0]}. Pedidos encontrados: ${pedResumido || 'nenhum'}. Responda com os dados reais agora.]`
+        });
       }
     } else if (cpfMatch) {
       const etiquetaME = await buscarEtiquetaMEporCPF(cpfMatch);
@@ -342,6 +350,10 @@ async function processarMensagem(phone, texto, midia) {
         }];
         await kvSet(ctxKey, contexto, TTL);
         console.log(`BOT identificou ${phone} via CPF no ME`);
+        historico.push({
+          role: 'user',
+          content: `[SISTEMA: Cliente identificado via CPF. Status: ${statusMELabel(etiquetaME.status)} | Rastreio: ${etiquetaME.tracking || 'indisponivel'}. Responda com os dados reais agora.]`
+        });
       }
     }
   }
