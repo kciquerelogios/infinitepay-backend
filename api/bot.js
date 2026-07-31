@@ -169,8 +169,7 @@ async function buscarCatalogo() {
       const variantes = (p.variants || []).map(v => v.title).filter(v => v !== 'Default Title');
       const preco = p.variants?.[0]?.price;
       return `- ${p.title}${preco ? ` (R$ ${parseFloat(preco).toFixed(2).replace('.', ',')})` : ''}${variantes.length ? ': ' + variantes.slice(0, 5).join(', ') : ''}`;
-    }).join('
-');
+    }).join('\n');
     await kvSet('bot:catalogo', catalogo, 3600); // cache 1h
     return catalogo;
   } catch(e) {
