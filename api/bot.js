@@ -12,7 +12,7 @@ const SECRET            = process.env.REPROCESSAR_SECRET || 'kcique2026';
 const BOT_BASE          = `https://api.z-api.io/instances/${ZAPI_BOT_INSTANCE}/token/${ZAPI_BOT_TOKEN}`;
 const ANTHROPIC_KEY     = process.env.ANTHROPIC_API_KEY;
 
-// ── Redis ────────────────────────────────────────────────────
+// -- Redis --
 async function kvGet(key) {
   try {
     const r = await fetch(`${KV_URL}/get/${key}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
@@ -35,7 +35,7 @@ async function kvDel(key) {
   await fetch(`${KV_URL}/del/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
 }
 
-// ── Z-API ────────────────────────────────────────────────────
+// -- Z-API --
 async function enviarTexto(phone, message) {
   const r = await fetch(`${BOT_BASE}/send-text`, {
     method: 'POST',
@@ -47,7 +47,7 @@ async function enviarTexto(phone, message) {
   return d;
 }
 
-// ── Shopify ──────────────────────────────────────────────────
+// -- Shopify --
 async function buscarClienteShopify(phone) {
   const nums = phone.replace(/\D/g, '').replace(/^55/, '');
   const r = await fetch(
@@ -84,7 +84,7 @@ async function buscarPedidoPorEmail(email) {
   return { cliente: c, pedidos: pedidos.orders || [] };
 }
 
-// ── Melhor Envio ─────────────────────────────────────────────
+// -- Melhor Envio --
 async function buscarEtiquetaMEporCPF(cpf) {
   try {
     const r = await fetch(`https://melhorenvio.com.br/api/v2/me/orders/search?q=${encodeURIComponent(cpf)}`, {
@@ -141,7 +141,7 @@ function extrairDadosPedido(pedido) {
   return { cpf, telefone };
 }
 
-// ── Catálogo de produtos ─────────────────────────────────────
+// -- Catálogo de produtos --
 async function buscarCatalogo() {
   // Cache no Redis por 1 hora
   const cached = await kvGet('bot:catalogo');
@@ -179,7 +179,7 @@ async function buscarCatalogo() {
   }
 }
 
-// ── Ticket ───────────────────────────────────────────────────
+// -- Ticket --
 async function criarTicket(dados) {
   const id = `ticket_${Date.now()}`;
   const ticket = { id, ...dados, status: 'aberto', criado_em: new Date().toISOString() };
@@ -190,7 +190,7 @@ async function criarTicket(dados) {
   return ticket;
 }
 
-// ── Claude AI ────────────────────────────────────────────────
+// -- Claude AI --
 async function chamarClaude(mensagens, systemPrompt) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -211,7 +211,7 @@ async function chamarClaude(mensagens, systemPrompt) {
   return d.content?.[0]?.text || '';
 }
 
-// ── Montar contexto do cliente ───────────────────────────────
+// -- Montar contexto do cliente --
 async function resumoHistorico(historico) {
   if (historico.length < 10) return null;
   // Resumo simples dos assuntos já tratados
@@ -255,7 +255,7 @@ async function montarContextoCliente(phone) {
   return contexto;
 }
 
-// ── Processar mensagem com IA ────────────────────────────────
+// -- Processar mensagem com IA --
 async function processarMensagem(phone, texto, midia) {
   const histKey = `bot:hist:${phone}`;
   const ctxKey  = `bot:ctx:${phone}`;
@@ -427,12 +427,12 @@ ${resumo}
   await enviarTexto(phone, respostaFinal);
 }
 
-// ── HANDLER ──────────────────────────────────────────────────
+// -- HANDLER --
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ── Dashboard endpoints ───────────────────────────────────
+  // -- Dashboard endpoints --
   if (req.method === 'GET' && req.query.action) {
     const secret = req.query.secret || '';
     if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
@@ -473,7 +473,7 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
-  // ── Webhook Z-API ─────────────────────────────────────────
+  // -- Webhook Z-API --
   if (req.method === 'POST') {
     try {
       const body = req.body || {};
