@@ -875,7 +875,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   // ===== CRIAR PEDIDO MANUAL (venda fechada no WhatsApp) =====
   if (req.query.action === 'criar-pedido-manual' && req.method === 'POST') {
     try {
-      const { cliente, itens, frete, pagamento, peso, observacao } = req.body || {};
+      const { cliente, itens, frete, pagamento, peso, valorTotal, observacao } = req.body || {};
       if (!cliente || !cliente.nome || !cliente.telefone || !cliente.cep || !cliente.rua || !cliente.numero || !cliente.cidade || !cliente.estado) {
         return res.status(400).json({ ok: false, erro: 'Preencha os dados do cliente e o endereço completo' });
       }
@@ -886,20 +886,32 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         return res.status(400).json({ ok: false, erro: 'Selecione a forma de envio' });
       }
 
+      const freteValor = parseFloat(frete.preco || 0);
+      const subtotalCatalogo = itens.reduce((s, i) => s + parseFloat(i.preco) * (i.quantidade || 1), 0);
+      const totalCatalogo = subtotalCatalogo + freteValor;
+
+      // Valor final: usa o informado manualmente (pode ter desconto combinado no WhatsApp) ou o calculado pelo catálogo
+      const totalFinal = (typeof valorTotal === 'number' && valorTotal > 0) ? valorTotal : totalCatalogo;
+      const ajuste = totalCatalogo - totalFinal; // > 0 = desconto dado; < 0 = cobrado a mais
+      const subtotalFinal = Math.max(0.01, totalFinal - freteValor);
+
       const lineItems = itens.map(i => {
+        const qtd = i.quantidade || 1;
+        let precoUnit = parseFloat(i.preco);
+        if (ajuste !== 0 && subtotalCatalogo > 0) {
+          const proporcao = (precoUnit * qtd) / subtotalCatalogo;
+          const descontoItem = ajuste * proporcao;
+          precoUnit = Math.max(0.01, precoUnit - (descontoItem / qtd));
+        }
         const li = {
           title: i.nome + (i.variante && i.variante !== 'Default Title' ? ' - Cor: ' + i.variante : ''),
-          quantity: i.quantidade || 1,
-          price: parseFloat(i.preco).toFixed(2),
+          quantity: qtd,
+          price: precoUnit.toFixed(2),
           requires_shipping: true
         };
         if (i.variantId) li.variant_id = parseInt(i.variantId);
         return li;
       });
-
-      const subtotal = itens.reduce((s, i) => s + parseFloat(i.preco) * (i.quantidade || 1), 0);
-      const freteValor = parseFloat(frete.preco || 0);
-      const total = subtotal + freteValor;
 
       const partesNome = (cliente.nome || '').trim().split(/\s+/);
       const primeiroNome = partesNome[0] || 'Cliente';
@@ -912,8 +924,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           financial_status: 'paid',
           fulfillment_status: null,
           currency: 'BRL',
-          note: `Pedido manual (WhatsApp) | Método: ${metodoLabel} | Telefone: ${cliente.telefone} | Origem: whatsapp-manual${observacao ? ' | Obs: ' + observacao : ''}`,
+          note: `Pedido manual (WhatsApp) | Método: ${metodoLabel} | Telefone: ${cliente.telefone} | Origem: whatsapp-manual${ajuste > 0 ? ' | Desconto combinado: R$' + ajuste.toFixed(2) + ' (catálogo R$' + totalCatalogo.toFixed(2) + ')' : ''}${observacao ? ' | Obs: ' + observacao : ''}`,
           tags: 'WhatsApp,Manual',
+          discount_codes: ajuste > 0 ? [{ code: 'WHATSAPP', amount: ajuste.toFixed(2), type: 'fixed_amount' }] : [],
           shipping_address: {
             first_name: primeiroNome,
             last_name: sobrenome,
@@ -926,7 +939,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
             phone: cliente.telefone || ''
           },
           shipping_lines: [{ title: frete.nome, price: freteValor.toFixed(2), code: frete.id === 1 ? 'PAC' : 'SEDEX' }],
-          transactions: [{ kind: 'sale', status: 'success', amount: total.toFixed(2), gateway: 'Manual - WhatsApp' }]
+          transactions: [{ kind: 'sale', status: 'success', amount: totalFinal.toFixed(2), gateway: 'Manual - WhatsApp' }]
         }
       };
       orderData.order.billing_address = orderData.order.shipping_address;
@@ -977,12 +990,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
               address: cliente.rua, complement: cliente.complemento || '', number: cliente.numero,
               district: cliente.bairro || '', city: cliente.cidade, country_id: 'BR', postal_code: cepLimpo, note: ''
             },
-            products: [{ name: lineItems[0].title, quantity: 1, unitary_value: Math.max(1, subtotal).toFixed(2), weight: pesoKg }],
+            products: [{ name: lineItems[0].title, quantity: 1, unitary_value: subtotalFinal.toFixed(2), weight: pesoKg }],
             volumes: [{ height: 10, width: 12, length: 18, weight: pesoKg }],
             tag: shopifyData.order.id.toString(),
             platform: 'Shopify',
             invoice: { key: null },
-            options: { insurance_value: subtotal.toFixed(2), receipt: false, own_hand: false, collect: false, reverse: false, non_commercial: false }
+            options: { insurance_value: subtotalFinal.toFixed(2), receipt: false, own_hand: false, collect: false, reverse: false, non_commercial: false }
           };
           const meResp = await fetch('https://melhorenvio.com.br/api/v2/me/cart', {
             method: 'POST',
@@ -2836,7 +2849,7 @@ async function enviarFornecedorPed(btn, i) {
 }
 
 // ===== CRIAR PEDIDO MANUAL (venda fechada no WhatsApp) =====
-var _pmItens = [], _pmFrete = null, _pmFreteOpcoes = [];
+var _pmItens = [], _pmFrete = null, _pmFreteOpcoes = [], _pmTotalTocado = false;
 function renderPedidoManual(){
   loading();
   var html = '';
@@ -2844,7 +2857,7 @@ function renderPedidoManual(){
   html += '<div class="row-2"><div class="field"><label>Nome completo</label><input id="pm-nome" placeholder="Nome do cliente"></div>';
   html += '<div class="field"><label>Telefone (WhatsApp)</label><input id="pm-tel" placeholder="(11) 91234-5678"></div></div>';
   html += '<div class="row-2"><div class="field"><label>Email (opcional)</label><input id="pm-email" type="email" placeholder="cliente@email.com"></div>';
-  html += '<div class="field"><label>CPF (opcional)</label><input id="pm-cpf" placeholder="000.000.000-00"></div></div>';
+  html += '<div class="field"><label>CPF (obrigatório p/ etiqueta)</label><input id="pm-cpf" placeholder="000.000.000-00"></div></div>';
   html += '</div>';
 
   html += '<div class="form-card"><div class="form-title">📍 Endereço de Entrega</div>';
@@ -2874,13 +2887,14 @@ function renderPedidoManual(){
   html += '<div class="form-card"><div class="form-title">💳 Pagamento e Envio</div>';
   html += '<div class="row-3"><div class="field"><label>Forma de pagamento</label><select id="pm-pagamento"><option value="pix">PIX</option><option value="credit_card">Cartão de Crédito</option><option value="debit_card">Cartão de Débito</option><option value="outro">Outro</option></select></div>';
   html += '<div class="field"><label>Peso do pacote (kg)</label><input id="pm-peso" type="number" step="0.1" value="0.5"></div>';
-  html += '<div class="field"><label>Total do pedido</label><div id="pm-total" style="padding:9px 0;font-size:18px;font-weight:700;color:#16a34a">R$ 0,00</div></div></div>';
+  html += '<div class="field"><label>Valor total do pedido (R$)</label><input id="pm-total" type="number" step="0.01" min="0" placeholder="0,00"></div></div>';
+  html += '<div style="font-size:11px;color:#9ca3af;margin:-4px 0 12px">Preenchido automático pela soma dos produtos + frete — edite se combinou outro valor/desconto no WhatsApp. Subtotal calculado: <span id="pm-subtotal-auto">R$ 0,00</span></div>';
   html += '<div class="field"><label>Observação (opcional)</label><textarea id="pm-obs" placeholder="Ex: combinado no WhatsApp, entregar após 18h..."></textarea></div>';
   html += '<div style="display:flex;align-items:center;gap:12px"><button class="btn btn-primary" id="pm-criar">✅ Criar Pedido e Gerar Etiqueta</button><span id="pm-msg" style="font-size:13px"></span></div>';
   html += '</div>';
 
   ct().innerHTML = html;
-  _pmItens = []; _pmFrete = null; _pmFreteOpcoes = [];
+  _pmItens = []; _pmFrete = null; _pmFreteOpcoes = []; _pmTotalTocado = false;
   _attachPedidoManual();
   _renderPmCarrinho();
 }
@@ -2981,6 +2995,12 @@ function _attachPedidoManual(){
 
   var bc = get('pm-criar');
   if (bc) bc.addEventListener('click', _criarPedidoManual);
+
+  var pt = get('pm-total');
+  if (pt) pt.addEventListener('input', function(){
+    _pmTotalTocado = pt.value.trim() !== '';
+    if (!_pmTotalTocado) _atualizarPmTotal();
+  });
 }
 function _renderPmCarrinho(){
   var c = get('pm-carrinho'); if (!c) return;
@@ -3014,27 +3034,34 @@ function _renderPmCarrinho(){
 function _atualizarPmTotal(){
   var subtotal = _pmItens.reduce(function(s,i){return s+i.preco*i.quantidade;}, 0);
   var frete = _pmFrete ? _pmFrete.preco : 0;
-  var t = get('pm-total'); if (t) t.textContent = fmt(subtotal+frete);
+  var sa = get('pm-subtotal-auto'); if (sa) sa.textContent = fmt(subtotal+frete);
+  var t = get('pm-total');
+  if (t && !_pmTotalTocado) t.value = (subtotal+frete).toFixed(2);
 }
 async function _criarPedidoManual(){
   var msg = get('pm-msg');
   var nome = val('pm-nome').trim(), tel = val('pm-tel').trim();
+  var cpf = val('pm-cpf').replace(/\\D/g,'');
   var cep = val('pm-cep').replace(/\\D/g,''), rua = val('pm-rua').trim(), numero = val('pm-numero').trim();
   var bairro = val('pm-bairro').trim(), cidade = val('pm-cidade').trim(), estado = val('pm-estado').trim();
   if (!nome || !tel) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha nome e telefone do cliente'; } return; }
-  if (cep.length !== 8 || !rua || !numero || !cidade || !estado) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha o endereço completo'; } return; }
+  if (cpf.length !== 11) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Informe um CPF válido (11 dígitos) — o Melhor Envio exige o documento do destinatário pra gerar a etiqueta'; } return; }
+  if (cep.length !== 8 || !rua || !numero || !bairro || !cidade || !estado) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha o endereço completo (inclusive bairro)'; } return; }
   if (!_pmItens.length) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Adicione ao menos um produto'; } return; }
   if (!_pmFrete) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Calcule e selecione o frete'; } return; }
 
   var btn = get('pm-criar'); btn.disabled = true; btn.textContent = 'Criando pedido...';
   if (msg) { msg.style.color = '#6b7280'; msg.textContent = ''; }
 
+  var valorTotalInput = parseFloat(val('pm-total').replace(',','.'));
+
   var payload = {
-    cliente: { nome: nome, telefone: tel, email: val('pm-email').trim(), cpf: val('pm-cpf').trim(), cep: cep, rua: rua, numero: numero, complemento: val('pm-compl').trim(), bairro: bairro, cidade: cidade, estado: estado },
+    cliente: { nome: nome, telefone: tel, email: val('pm-email').trim(), cpf: cpf, cep: cep, rua: rua, numero: numero, complemento: val('pm-compl').trim(), bairro: bairro, cidade: cidade, estado: estado },
     itens: _pmItens,
     frete: _pmFrete,
     pagamento: val('pm-pagamento'),
     peso: val('pm-peso'),
+    valorTotal: isNaN(valorTotalInput) ? null : valorTotalInput,
     observacao: val('pm-obs').trim()
   };
 
@@ -3042,10 +3069,15 @@ async function _criarPedidoManual(){
     var d = await fetch(API+'/api/admin?secret='+S+'&action=criar-pedido-manual', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(function(r){return r.json();});
     if (d.ok) {
       var meOk = d.melhorEnvio && d.melhorEnvio.ok;
+      var meDetalhe = '';
+      if (!meOk && d.melhorEnvio) {
+        try { meDetalhe = JSON.stringify(d.melhorEnvio.detalhe); } catch(e) { meDetalhe = String(d.melhorEnvio.detalhe); }
+      }
       ct().innerHTML = '<div class="vazio" style="background:#f0fdf4;border-color:#bbf7d0">'
         + '<div style="font-size:40px;margin-bottom:10px">✅</div>'
         + '<div style="font-size:18px;font-weight:700;color:#16a34a">Pedido #'+d.pedido.numero+' criado!</div>'
         + '<div style="font-size:13px;color:#6b7280;margin-top:6px">'+(meOk ? 'Etiqueta adicionada ao carrinho do Melhor Envio ✅' : '⚠️ Pedido criado, mas houve um problema ao adicionar no Melhor Envio — adicione manualmente.')+'</div>'
+        + (meDetalhe ? '<pre style="text-align:left;background:#fff;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:11px;color:#991b1b;margin-top:10px;white-space:pre-wrap;word-break:break-word;max-width:480px">'+meDetalhe.replace(/</g,'&lt;')+'</pre>' : '')
         + '<button class="btn btn-primary" id="pm-novo" style="margin-top:16px">➕ Criar outro pedido</button>'
         + '</div>';
       var bn = get('pm-novo'); if (bn) bn.addEventListener('click', function(){ renderAba('pedido-manual'); });
