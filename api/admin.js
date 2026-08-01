@@ -3007,7 +3007,7 @@ async function abrirConversa(phone) {
     });
     html += '</select>';
     if (!contato.ehCliente) {
-      html += '<button onclick="identificarCliente(\''+phone+'\')" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">\ud83d\udd0d Identificar</button>';
+      html += '<button data-action="identificar" data-phone="'+phone+'" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🔍 Identificar</button>';
     }
     if (contato.dadosShopify) {
       var sh = contato.dadosShopify;
@@ -3595,4 +3595,4 @@ renderAba('home');
 </script>
 </body>
 </html>`);
-}
+      html += '<button data-action="identificar" data-phone="'+phone+'" style="padding:5px 10px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🔍 Identificar</button>';
