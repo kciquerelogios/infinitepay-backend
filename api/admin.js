@@ -890,28 +890,27 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const subtotalCatalogo = itens.reduce((s, i) => s + parseFloat(i.preco) * (i.quantidade || 1), 0);
       const totalCatalogo = subtotalCatalogo + freteValor;
 
-      // Valor final: usa o informado manualmente (pode ter desconto combinado no WhatsApp) ou o calculado pelo catálogo
+      // Valor final: usa o informado manualmente (pode ter desconto combinado no WhatsApp) ou o calculado pelo catálogo.
+      // Os produtos ficam no preço de catálogo; o ajuste entra só como desconto/acréscimo separado,
+      // assim o total do pedido bate exatamente com o valor pago pelo cliente (sem descontar em dobro).
       const totalFinal = (typeof valorTotal === 'number' && valorTotal > 0) ? valorTotal : totalCatalogo;
       const ajuste = totalCatalogo - totalFinal; // > 0 = desconto dado; < 0 = cobrado a mais
       const subtotalFinal = Math.max(0.01, totalFinal - freteValor);
 
       const lineItems = itens.map(i => {
-        const qtd = i.quantidade || 1;
-        let precoUnit = parseFloat(i.preco);
-        if (ajuste !== 0 && subtotalCatalogo > 0) {
-          const proporcao = (precoUnit * qtd) / subtotalCatalogo;
-          const descontoItem = ajuste * proporcao;
-          precoUnit = Math.max(0.01, precoUnit - (descontoItem / qtd));
-        }
         const li = {
           title: i.nome + (i.variante && i.variante !== 'Default Title' ? ' - Cor: ' + i.variante : ''),
-          quantity: qtd,
-          price: precoUnit.toFixed(2),
+          quantity: i.quantidade || 1,
+          price: parseFloat(i.preco).toFixed(2),
           requires_shipping: true
         };
         if (i.variantId) li.variant_id = parseInt(i.variantId);
         return li;
       });
+      // Se o valor combinado for MAIOR que o catálogo (raro), soma a diferença como um item à parte
+      if (ajuste < 0) {
+        lineItems.push({ title: 'Ajuste no valor combinado', quantity: 1, price: (-ajuste).toFixed(2), requires_shipping: false });
+      }
 
       const partesNome = (cliente.nome || '').trim().split(/\s+/);
       const primeiroNome = partesNome[0] || 'Cliente';
