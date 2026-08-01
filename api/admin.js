@@ -246,6 +246,85 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
 
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+
+  // ── PEDIDOS UNFULFILLED ─────────────────────────────────────
+  if (req.query.action === 'pedidos-unfulfilled') {
+    try {
+      let all = [];
+      for (let page = 1; page <= 5; page++) {
+        const r = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&page=${page}`,
+          { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+        ).then(r => r.json()).catch(() => ({ orders: [] }));
+        const orders = r.orders || [];
+        all = all.concat(orders.map(o => ({ id: o.id, number: o.order_number, email: o.email, name: o.shipping_address?.name || o.email })));
+        if (orders.length < 250) break;
+      }
+      return res.status(200).json({ pedidos: all, total: all.length });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
+  // ── FULFILLMENT EM MASSA ─────────────────────────────────────
+  if (req.query.action === 'fulfillment-massa' && req.method === 'POST') {
+    const ids = req.body?.pedidos || [];
+    let atualizados = 0, erros = 0;
+    for (const orderId of ids) {
+      try {
+        // Buscar fulfillment_orders do pedido
+        const foResp = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/orders/${orderId}/fulfillment_orders.json`,
+          { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
+        ).then(r => r.json()).catch(() => ({}));
+        const fo = (foResp.fulfillment_orders || []).find(f => f.status === 'open');
+        if (!fo) continue;
+        const fulfillResp = await fetch(
+          `https://${SHOPIFY_STORE}/admin/api/2026-04/fulfillments.json`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+            body: JSON.stringify({
+              fulfillment: {
+                line_items_by_fulfillment_order: [{ fulfillment_order_id: fo.id }],
+                notify_customer: false
+              }
+            })
+          }
+        ).then(r => r.json()).catch(() => ({}));
+        if (fulfillResp.fulfillment?.id) atualizados++;
+        else erros++;
+        // Pequena pausa para não sobrecarregar a API do Shopify
+        await new Promise(r => setTimeout(r, 200));
+      } catch(e) { erros++; }
+    }
+    return res.status(200).json({ ok: true, atualizados, erros });
+  }
+
+  // ── RECUPERAÇÃO CONFIG (precisa de KV_URL) ───────────────────
+  if (req.query.action === 'recuperacao-config') {
+    try {
+      const r = await fetch(`${KV_URL}/get/recuperacao-config`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const d = await r.json();
+      let config = d.result;
+      while (typeof config === 'string') { try { config = JSON.parse(config); } catch(e) { break; } }
+      if (config && typeof config === 'object' && config.value) {
+        try { config = JSON.parse(config.value); } catch(e) {}
+      }
+      return res.status(200).json({ ok: true, config: config || {} });
+    } catch(e) { return res.status(200).json({ ok: true, config: {} }); }
+  }
+
+  if (req.query.action === 'recuperacao-config-salvar' && req.method === 'POST') {
+    try {
+      await fetch(`${KV_URL}/set/recuperacao-config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: JSON.stringify(req.body || {}) })
+      });
+      return res.status(200).json({ ok: true });
+    } catch(e) {
+      return res.status(500).json({ ok: false, erro: e.message });
+    }
+  }
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
   const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
   const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
@@ -293,7 +372,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       fetch('https://melhorenvio.com.br/api/v2/me/balance', { headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({})),
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
       fetch(`https://infinitepay-backend.vercel.app/api/leads?secret=${secret}`).then(r=>r.json()).catch(()=>({leads:[]})),
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
+      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&created_at_min=${hojeStr}T00:00:00-03:00`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     ]);
 
     const calc = (orders) => ({ count: (orders||[]).length, valor: (orders||[]).reduce((s,o) => s + parseFloat(o.total_price||0), 0) });
@@ -309,10 +388,34 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       });
     });
     const prods = prodShopify.products || [];
+
+    // Mapa variant_id -> imagem exata
+    const varImgMap = {};
+    prods.forEach(p => {
+      (p.variants||[]).forEach(v => {
+        if (v.featured_image?.src) varImgMap[String(v.id)] = v.featured_image.src;
+        else if (v.image_id) {
+          const img = (p.images||[]).find(i => i.id === v.image_id);
+          if (img) varImgMap[String(v.id)] = img.src;
+        }
+        if (!varImgMap[String(v.id)] && p.image) varImgMap[String(v.id)] = p.image.src;
+      });
+    });
+
     const getImg = (nome) => {
-      const base = nome.split(' - ')[0].trim();
-      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
-      return p?.image?.src || '';
+      if (!nome) return '';
+      const base = nome.split(' - Cor:')[0].trim(); // preserva variante do produto
+      const baseNorm2 = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim();
+      const bn = baseNorm2(base);
+      let best = null, bestPts = 0;
+      for (const p of prods) {
+        const pt = baseNorm2(p.title);
+        let pts = 0;
+        if (pt === bn) pts = 200;
+        else if (pt.includes(bn) || bn.includes(pt)) pts = 50;
+        if (pts > bestPts) { bestPts = pts; best = p; }
+      }
+      return (best && bestPts >= 20) ? (best.image?.src || '') : '';
     };
     const topProdutos = Object.entries(prodContagem)
       .filter(([n]) => !n.toLowerCase().includes('frete') && n.length > 5)
@@ -386,14 +489,126 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     } catch(e) {}
     const [pedidosR, prodShopify] = await Promise.all([
       fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-      fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=100`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+      // Buscar todos os produtos com paginação
+      (async () => {
+        let all = [], pageInfo = null, pages = 0;
+        while (pages < 10) {
+          const url = pageInfo
+            ? `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants&page_info=${pageInfo}`
+            : `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants`;
+          const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+          const d = await r.json().catch(()=>({products:[]}));
+          all = all.concat(d.products || []);
+          const link = r.headers.get('link') || '';
+          const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+          pageInfo = m ? m[1] : null;
+          pages++;
+          if (!pageInfo) break;
+        }
+        return { products: all };
+      })(),
     ]);
     const prods = prodShopify.products || [];
+
+    // Mapa variant_id -> imagem exata da variante
+    const variantImgMap = {};
+    prods.forEach(p => {
+      (p.variants||[]).forEach(v => {
+        if (v.featured_image && v.featured_image.src) {
+          variantImgMap[String(v.id)] = v.featured_image.src;
+        } else if (v.image_id) {
+          const img = (p.images||[]).find(i => i.id === v.image_id);
+          if (img) variantImgMap[String(v.id)] = img.src;
+        }
+        if (!variantImgMap[String(v.id)] && p.image) {
+          variantImgMap[String(v.id)] = p.image.src;
+        }
+      });
+    });
+
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/  +/g,' ').trim();
+
     const getImg = (nome) => {
-      const base = nome.split(' - ')[0].trim();
-      const p = prods.find(p => p.title === nome || p.title === base || p.title.includes(base));
-      return p?.image?.src || '';
+      if (!nome) return '';
+      // Usar título completo antes de "- Cor:" como base (inclui variante do produto ex: "DOURADO")
+      const base = nome.split(' - Cor:')[0].trim();
+      const baseNorm = norm(base);
+      const modelo = (nome.match(/[A-Z]{1,5}-[0-9]{3,5}[A-Z0-9]*/i)||[])[0]?.toUpperCase() || '';
+
+      // Extrair cor do título: "Pro Trek GA-1017 - Cor: Preto pulseira verde" -> "Preto pulseira verde"
+      const corMatch = nome.match(/Cor:\s*(.+?)(?:\s*-\s*|$)/i);
+      const corTitulo = corMatch ? norm(corMatch[1]) : '';
+
+      let melhor = null, melhorPts = 0;
+      const palavrasBase = baseNorm.split(' ').filter(w=>w.length>2);
+      for (const p of prods) {
+        const pt = norm(p.title);
+        let pts = 0;
+        if (pt === baseNorm) pts = 200;
+        else if (modelo && p.title.toUpperCase().includes(modelo)) pts = 100;
+        else if (pt.includes(baseNorm) || baseNorm.includes(pt)) pts = 50;
+        else {
+          // Pontuação proporcional: precisa de pelo menos 50% das palavras
+          const matches = palavrasBase.filter(w=>pt.includes(w)).length;
+          if (matches > 0 && palavrasBase.length > 0) {
+            const pct = matches / palavrasBase.length;
+            if (pct >= 0.5) pts = Math.round(pct * 40); // máx 40 pts para match parcial
+          }
+        }
+        if (pts > melhorPts) { melhorPts = pts; melhor = p; }
+      }
+      // Só usar match se tiver pontuação mínima razoável
+      if (!melhor || melhorPts < 20) return '';
+
+      // Tentar imagem da variante pela cor extraída do título
+      if (corTitulo) {
+        const varianteImg = (v) => {
+          if (v.featured_image?.src) return v.featured_image.src;
+          if (v.image_id) {
+            const img = (melhor.images||[]).find(i => i.id === v.image_id);
+            if (img) return img.src;
+          }
+          return '';
+        };
+
+        const variants = melhor.variants || [];
+
+        // 1. Match exato da cor
+        const exato = variants.find(v => norm(v.title) === corTitulo);
+        if (exato) { const img = varianteImg(exato); if (img) return img; }
+
+        // 2. Variante cujo título está CONTIDO na cor (ex: variante "Preto" dentro de "Preto")
+        // Ordenar por comprimento decrescente para pegar o match mais específico primeiro
+        const porLen = [...variants].sort((a,b) => b.title.length - a.title.length);
+        const contido = porLen.find(v => {
+          const vt = norm(v.title);
+          // Evitar match de "Preto" em "Branco com Preto" quando a cor é apenas "Preto"
+          // Só aceitar se a variante inteira está na cor OU a cor inteira está na variante
+          return corTitulo === vt || corTitulo.startsWith(vt + ' ') || corTitulo.endsWith(' ' + vt);
+        });
+        if (contido) { const img = varianteImg(contido); if (img) return img; }
+
+        // 3. Todas as palavras da variante aparecem na cor (match mais específico)
+        const melhorVar = porLen.find(v => {
+          const palavrasVar = norm(v.title).split(' ').filter(w => w.length > 2);
+          return palavrasVar.length > 0 && palavrasVar.every(w => corTitulo.includes(w));
+        });
+        if (melhorVar) { const img = varianteImg(melhorVar); if (img) return img; }
+      }
+
+      // Fallback: primeira imagem do produto
+      return melhor.image?.src || '';
     };
+
+    // Buscar imagem exata por variant_id do line_item
+    const getImgVariant = (lineItem) => {
+      if (lineItem.image?.src) return lineItem.image.src;
+      if (lineItem.variant_id && variantImgMap[String(lineItem.variant_id)]) {
+        return variantImgMap[String(lineItem.variant_id)];
+      }
+      return getImg(lineItem.title);
+    };
+
     const pedidos = (pedidosR.orders||[]).map(o => ({
       id: o.id,
       numero: o.order_number,
@@ -402,7 +617,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       telefone: o.shipping_address?.phone || o.billing_address?.phone || o.customer?.phone || o.phone || '',
       endereco: o.shipping_address ? `${o.shipping_address.address1||''}, ${o.shipping_address.city||''} - ${o.shipping_address.province_code||''}, ${o.shipping_address.zip||''}` : '',
       produto: (o.line_items||[]).map(i => i.title + (i.variant_title&&i.variant_title!=='Default Title'?' - '+i.variant_title:'')).join(', '),
-      itens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title, quantidade: i.quantity, preco: i.price })),
+      itens: (o.line_items||[]).map(i => ({ nome: i.title, variante: i.variant_title, quantidade: i.quantity, preco: i.price, variant_id: String(i.variant_id||'') })),
       subtotal: o.subtotal_price,
       frete_valor: o.total_shipping_price_set?.shop_money?.amount || '0',
       desconto: o.total_discounts,
@@ -416,13 +631,19 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       cupom: (o.discount_codes||[]).map(d => d.code).join(', '),
       meOrderId: '',
       criado_em: o.created_at,
-      imagem: getImg((o.line_items||[])[0]?.title || ''),
+      imagem: (o.line_items||[])[0]?.image?.src || getImgVariant((o.line_items||[])[0] || {}),
+      imagens: (o.line_items||[]).map(i => ({
+        nome: i.title,
+        variante: i.variant_title||'',
+        variant_id: String(i.variant_id||''),
+        img: i.image?.src || getImgVariant(i)
+      })),
     }));
     const pedResult = { pedidos };
     fetch(`${KV_URL}/set/${cachePedidos}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: JSON.stringify(pedResult), ex: 300 })
+      body: JSON.stringify({ value: JSON.stringify(pedResult), ex: 60 })
     }).catch(()=>{});
     return res.status(200).json(pedResult);
   }
@@ -932,6 +1153,47 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     }
   }
 
+  // ===== ACTION: DEBUG VARIANTES =====
+  if (req.query.action === 'variantes-debug') {
+    const titulo = req.query.titulo || '';
+    // Busca exata por titulo
+    const r1 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?title=${encodeURIComponent(titulo)}&fields=id,title,variants,images&limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d1 = await r1.json();
+    // Busca geral nos produtos já carregados (busca parcial)
+    let produtos = (d1.products||[]);
+    if (!produtos.length) {
+      // Tentar busca com primeiras palavras
+      const palavras = titulo.split(' ').slice(0,2).join(' ');
+      const r2 = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?title=${encodeURIComponent(palavras)}&fields=id,title,variants,images&limit=10`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+      const d2 = await r2.json();
+      produtos = (d2.products||[]).filter(p => p.title.toLowerCase().includes(titulo.toLowerCase().split(' ')[0].toLowerCase()));
+    }
+    const result = produtos.map(p => ({
+      id: p.id,
+      title: p.title,
+      imagens: (p.images||[]).map(i => ({ id: i.id, src: i.src.split('/').pop().split('?')[0] })),
+      variantes: (p.variants||[]).map(v => ({ id: v.id, title: v.title, image_id: v.image_id, tem_imagem: !!(v.image_id || (v.featured_image && v.featured_image.src)) }))
+    }));
+    return res.status(200).json({ produtos: result });
+  }
+
+  // ===== ACTION: DEBUG LINE ITEMS =====
+  if (req.query.action === 'lineitems-debug') {
+    const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=2&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d = await r.json();
+    const items = (d.orders||[]).map(o => ({
+      order: o.order_number,
+      line_items: (o.line_items||[]).map(i => ({
+        title: i.title,
+        variant_id: i.variant_id,
+        variant_title: i.variant_title,
+        image: i.image,
+        properties: i.properties,
+      }))
+    }));
+    return res.status(200).json({ items });
+  }
+
   // ===== ACTION: DEBUG PRODUTOS =====
   if (req.query.action === 'prod-debug') {
     const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=5`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
@@ -1054,197 +1316,6 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return res.status(200).json({ ok: true });
   }
 
-// ===== ENDPOINT: CRIAR PEDIDO MANUAL =====
-// Adicionar no admin.js ANTES do bloco "// ===== DATAS =====" 
-// Requer: SHOPIFY_STORE, SHOPIFY_TOKEN, MELHORENVIO_TOKEN, MELHORENVIO_CPF
-
-  if (req.query.action === 'calcular-frete' && req.method === 'POST') {
-    try {
-      const { cep, produtos } = req.body || {};
-      const cepLimpo = (cep||'').replace(/\D/g,'');
-      if (cepLimpo.length !== 8) return res.status(400).json({ erro: 'CEP invalido' });
-      const peso = (produtos||[]).reduce((s,p) => s + (p.quantidade||1) * 0.5, 0) || 0.5;
-      const valor = (produtos||[]).reduce((s,p) => s + (p.preco||0) * (p.quantidade||1) / 100, 0) || 50;
-      const body = {
-        from: { postal_code: '01005020' },
-        to: { postal_code: cepLimpo },
-        package: { height: 10, width: 12, length: 18, weight: peso },
-        insurance_value: valor,
-        services: '1,2'
-      };
-      const r = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/calculate', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-        body: JSON.stringify(body)
-      });
-      const fretes = await r.json();
-      const opcoes = (Array.isArray(fretes) ? fretes : []).filter(f => !f.error).map(f => ({
-        id: f.id,
-        nome: f.name,
-        preco: parseFloat(f.price),
-        prazo: f.delivery_time,
-        empresa: f.company?.name || ''
-      }));
-      return res.status(200).json({ opcoes });
-    } catch(e) { return res.status(500).json({ erro: e.message }); }
-  }
-
-  if (req.query.action === 'buscar-cep' && req.method === 'GET') {
-    try {
-      const cep = (req.query.cep||'').replace(/\D/g,'');
-      if (cep.length !== 8) return res.status(400).json({ erro: 'CEP invalido' });
-      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const d = await r.json();
-      if (d.erro) return res.status(404).json({ erro: 'CEP nao encontrado' });
-      return res.status(200).json({ logradouro: d.logradouro, bairro: d.bairro, cidade: d.localidade, estado: d.uf });
-    } catch(e) { return res.status(500).json({ erro: e.message }); }
-  }
-
-  if (req.query.action === 'criar-pedido-manual' && req.method === 'POST') {
-    try {
-      const { cliente, endereco, produtos, frete, pagamento, observacao } = req.body || {};
-      if (!cliente || !endereco || !produtos?.length || !frete) {
-        return res.status(400).json({ erro: 'Dados incompletos' });
-      }
-
-      // 1. Montar line items para o Shopify
-      const lineItems = produtos.map(p => ({
-        title: p.nome + (p.variante && p.variante !== 'Default Title' ? ' - Cor: ' + p.variante : ''),
-        quantity: p.quantidade || 1,
-        price: (p.preco / 100).toFixed(2),
-        requires_shipping: true
-      }));
-
-      // 2. Criar pedido no Shopify
-      const partesNome = (cliente.nome||'').trim().split(/\s+/);
-      const orderData = {
-        order: {
-          line_items: lineItems,
-          financial_status: 'paid',
-          fulfillment_status: null,
-          currency: 'BRL',
-          note: `Pedido manual via dashboard | Método: ${pagamento||'nao_informado'} | Telefone: ${cliente.telefone||''} | Origem: whatsapp${observacao ? ' | Obs: ' + observacao : ''}`,
-          tags: 'Pedido Manual,WhatsApp',
-          transactions: [{
-            kind: 'sale',
-            status: 'success',
-            amount: ((produtos.reduce((s,p) => s + p.preco * p.quantidade, 0) / 100) + frete.preco).toFixed(2),
-            gateway: pagamento === 'pix' ? 'PIX' : pagamento === 'credito' ? 'Cartão Crédito' : pagamento === 'debito' ? 'Cartão Débito' : 'Dinheiro'
-          }],
-          customer: {
-            first_name: partesNome[0] || 'Cliente',
-            last_name: partesNome.slice(1).join(' ') || partesNome[0] || '',
-            email: cliente.email || '',
-            phone: cliente.telefone || ''
-          },
-          shipping_address: {
-            first_name: partesNome[0] || 'Cliente',
-            last_name: partesNome.slice(1).join(' ') || '',
-            address1: `${endereco.rua}, ${endereco.numero}`,
-            address2: endereco.complemento || '',
-            zip: endereco.cep.replace(/\D/g,''),
-            city: endereco.cidade,
-            province: endereco.estado,
-            country: 'BR',
-            phone: cliente.telefone || ''
-          },
-          shipping_lines: [{
-            title: frete.nome,
-            price: frete.preco.toFixed(2),
-            code: frete.nome.toLowerCase().includes('sedex') ? 'SEDEX' : 'PAC'
-          }]
-        }
-      };
-      orderData.order.billing_address = orderData.order.shipping_address;
-
-      const shopifyResp = await fetch(
-        `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN }, body: JSON.stringify(orderData) }
-      );
-      const shopifyData = await shopifyResp.json();
-      if (!shopifyData.order) {
-        return res.status(400).json({ erro: 'Erro ao criar pedido no Shopify', detalhe: shopifyData.errors });
-      }
-      const orderId = shopifyData.order.id;
-      const orderNumber = shopifyData.order.order_number;
-
-      // 3. Gerar etiqueta no Melhor Envio
-      const meBody = {
-        service: frete.id === 2 ? 2 : 1,
-        agency: null,
-        from: {
-          name: 'Kcique Relogios',
-          phone: '11000000000',
-          email: 'kciqueadm@gmail.com',
-          document: process.env.MELHORENVIO_CPF || '',
-          company_document: '66609452000183',
-          state_register: null,
-          address: 'Rua Sao Francisco',
-          complement: 'Ap 804',
-          number: '98',
-          district: 'Se',
-          city: 'Sao Paulo',
-          country_id: 'BR',
-          postal_code: '01005020',
-          note: ''
-        },
-        to: {
-          name: cliente.nome,
-          phone: (cliente.telefone||'').replace(/\D/g,''),
-          email: cliente.email || '',
-          document: (cliente.cpf||'').replace(/\D/g,''),
-          address: endereco.rua,
-          complement: endereco.complemento || '',
-          number: endereco.numero,
-          district: endereco.bairro,
-          city: endereco.cidade,
-          country_id: 'BR',
-          postal_code: endereco.cep.replace(/\D/g,''),
-          note: ''
-        },
-        products: produtos.map(p => ({
-          name: p.nome,
-          quantity: p.quantidade || 1,
-          unitary_value: Math.max(1, p.preco / 100).toFixed(2),
-          weight: 0.5
-        })),
-        volumes: [{ height: 10, width: 12, length: 18, weight: produtos.reduce((s,p) => s + (p.quantidade||1) * 0.5, 0.5) }],
-        tag: String(orderId),
-        platform: 'Shopify',
-        invoice: { key: null },
-        options: {
-          insurance_value: (produtos.reduce((s,p) => s + p.preco * p.quantidade, 0) / 100).toFixed(2),
-          receipt: false,
-          own_hand: false,
-          collect: false,
-          reverse: false,
-          non_commercial: false
-        }
-      };
-
-      const meResp = await fetch('https://melhorenvio.com.br/api/v2/me/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ME_TOKEN}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
-        body: JSON.stringify(meBody)
-      });
-      const meData = await meResp.json();
-      console.log('ME cart pedido manual:', JSON.stringify(meData).substring(0,200));
-
-      return res.status(200).json({
-        ok: true,
-        shopify_order: orderNumber,
-        shopify_id: orderId,
-        me_etiqueta: meData.id || null,
-        me_erro: meData.id ? null : JSON.stringify(meData).substring(0,200)
-      });
-    } catch(e) {
-      console.error('criar-pedido-manual erro:', e.message);
-      return res.status(500).json({ erro: e.message });
-    }
-  }
-
-
-
   // ===== DATAS =====
   const hoje = new Date();
   // Ajustar para horário de Brasília (UTC-3)
@@ -1280,10 +1351,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&created_at_min=${inicioMesAnt}&created_at_max=${fimMesAnt}&limit=250&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Shopify novos clientes hoje
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?created_at_min=${inicioDia}&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({customers:[]})),
-    // Shopify pedidos aguardando pagamento/envio
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
-    // Shopify produtos (estoque + imagens)
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
+    // Shopify pedidos de hoje aguardando envio
+    (() => {
+      const hoje = new Date();
+      hoje.setHours(0,0,0,0);
+      const hojeISO = hoje.toISOString();
+      return fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=open&fulfillment_status=unfulfilled&financial_status=paid&limit=250&created_at_min=${encodeURIComponent(hojeISO)}`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]}));
+    })(),
+    // Shopify produtos (estoque + imagens) — incluir variantes e imagens
+    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,image,images,variants,inventory_management`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({products:[]})),
     // Shopify pedidos recentes com fulfillment
     fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }).then(r=>r.json()).catch(()=>({orders:[]})),
     // Melhor Envio saldo
@@ -1428,7 +1504,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos para postar</div></div>
+      <div class="stat-card"><div class="stat-label">📦 Aguardando Envio</div><div class="stat-value" style="color:${pedidosPendentes>0?'#f59e0b':'#10b981'}">${pedidosPendentes}</div><div class="stat-sub">pedidos de hoje</div></div>
       <div class="stat-card"><div class="stat-label">↩️ Devoluções no Mês</div><div class="stat-value" style="color:${devolucoes>0?'#ef4444':'#10b981'}">${devolucoes}</div><div class="stat-sub">pedidos com reembolso</div></div>
       <div class="stat-card"><div class="stat-label">👥 Novos Clientes Hoje</div><div class="stat-value">${novosClientes}</div><div class="stat-sub">cadastros hoje</div></div>
       <div class="stat-card"><div class="stat-label">🛒 Carrinhos Abandonados</div><div class="stat-value">${leads.length}</div><div class="stat-sub">R$ ${totalValorLeads.toFixed(2).replace('.',',')} potencial</div></div>
@@ -1591,11 +1667,85 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     });
   });
 
-  const getImgPedido = (titulo) => {
-    const base = titulo.split(' - Cor:')[0].split(' - ')[0].trim();
-    const p = (produtosSemEstoque.products||[]).find(p => p.title === titulo || p.title === base || p.title.includes(base) || base.includes(p.title));
-    return p && p.image ? p.image.src : '';
+  const getImgPedido = (titulo, varianteTitulo) => {
+    if (!titulo) return '';
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
+
+    // Extrair nome base — remover tudo após " - Cor:", " - ", etc
+    const tituloBase = titulo.split(' - Cor:')[0].trim(); // título completo antes da cor
+    const baseNorm = norm(tituloBase);
+
+    // Extrair código do modelo (ex: "GA-1017", "GBX-100", "GXW-56")
+    const modeloMatch = titulo.match(/[A-Z]{1,5}-?\d{3,5}[A-Z0-9]*/i);
+    const modelo = modeloMatch ? modeloMatch[0].toUpperCase() : '';
+
+    const prds = produtosSemEstoque.products || [];
+    let melhor = null, melhorPontos = 0;
+
+    for (const p of prds) {
+      const pt = norm(p.title);
+      let pontos = 0;
+
+      // Match exato do base
+      if (pt === baseNorm) { pontos = 200; }
+      // Match do código do modelo (mais confiável)
+      else if (modelo && p.title.toUpperCase().includes(modelo)) { pontos = 100; }
+      // Match parcial por palavras — exige mínimo 50% das palavras
+      else {
+        const palavras = baseNorm.split(' ').filter(w => w.length > 2);
+        const matches = palavras.filter(w => pt.includes(w)).length;
+        if (palavras.length > 0 && matches / palavras.length >= 0.5) {
+          pontos = Math.round((matches / palavras.length) * 40);
+        }
+      }
+
+      if (pontos > melhorPontos) { melhorPontos = pontos; melhor = p; }
+    }
+
+    if (!melhor || melhorPontos < 20) return '';
+
+    // Tentar imagem da variante pela cor
+    if (varianteTitulo && varianteTitulo !== 'Default Title') {
+      const normV = norm(varianteTitulo);
+      const v = (melhor.variants||[]).find(v => norm(v.title) === normV || norm(v.title).includes(normV) || normV.includes(norm(v.title)));
+      if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
+      if (v && v.image_id) {
+        const img = (melhor.images||[]).find(i => i.id === v.image_id);
+        if (img) return img.src;
+      }
+    }
+
+    // Tentar encontrar imagem pela cor no título (ex: "Preto pulseira verde")
+    const corMatch = titulo.match(/Cor:\s*(.+?)(?:\s*-|$)/i);
+    if (corMatch) {
+      const cor = norm(corMatch[1]);
+      const v = (melhor.variants||[]).find(v => {
+        const vt = norm(v.title);
+        return cor.split(' ').some(w => w.length > 2 && vt.includes(w));
+      });
+      if (v && v.featured_image && v.featured_image.src) return v.featured_image.src;
+      if (v && v.image_id) {
+        const img = (melhor.images||[]).find(i => i.id === v.image_id);
+        if (img) return img.src;
+      }
+    }
+
+    // Fallback: primeira imagem do produto
+    return melhor.image ? melhor.image.src : '';
   };
+
+  // Construir variantImgMap para a aba pedidos (mesmo do pedidos-json)
+  const variantImgMap = {};
+  (produtosSemEstoque.products || []).forEach(p => {
+    (p.variants||[]).forEach(v => {
+      if (v.featured_image && v.featured_image.src) variantImgMap[String(v.id)] = v.featured_image.src;
+      else if (v.image_id) {
+        const img = (p.images||[]).find(i => i.id === v.image_id);
+        if (img) variantImgMap[String(v.id)] = img.src;
+      }
+      if (!variantImgMap[String(v.id)] && p.image) variantImgMap[String(v.id)] = p.image.src;
+    });
+  });
 
   const pedidosFulfilled = pedidosList.filter(o => o.fulfillment_status === 'fulfilled').length;
   const pedidosPagosNaoEnviados = pedidosList.filter(o => o.financial_status === 'paid' && !o.fulfillment_status).length;
@@ -1621,19 +1771,24 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     else { statusLabel = '💳 Pago'; }
 
     const msgRastreio = rastreios.length > 0
-      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Seu pedido foi enviado!\n\n📦 Rastreie: https://www.melhorrastreio.com.br/rastreio/' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
+      ? encodeURIComponent('Olá ' + nome.split(' ')[0] + '! 😊 Boa notícia! Seu pedido já está em preparação para envio! 🚀\n\n📦 Rastreie aqui: https://rastreamento.correios.com.br/app/index.php?objetos=' + rastreios[0] + '\n\nQualquer dúvida estamos aqui! — Kcique Relógios ⌚')
       : '';
     const msgWpp = encodeURIComponent('Olá ' + nome.split(' ')[0] + '! Aqui é da Kcique Relógios. Posso te ajudar?');
 
     const produtosHtml = (order.line_items||[]).map(item => {
-      const img = getImgPedido(item.title);
-      return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6">'
+      const img = item.image?.src
+        || (String(item.variant_id||'') && variantImgMap[String(item.variant_id||'')])
+        || getImgPedido(item.title, item.variant_title);
+      const varLabel = item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : '';
+      return '<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;border-bottom:1px solid #f3f4f6">'
         + (img
-          ? '<img src="' + img + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0">'
-          : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px">⌚</div>')
-        + '<div>'
-        + '<div style="font-size:14px;font-weight:600">' + item.title + '</div>'
-        + '<div style="font-size:12px;color:#6b7280;margin-top:2px">x' + item.quantity + ' — R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + '</div>'
+          ? '<img src="' + img + '" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="abrirFoto(this.src)">'
+          : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>')
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:14px;font-weight:700;line-height:1.4">' + item.title + '</div>'
+        + (varLabel ? '<div style="font-size:12px;color:#6b7280;margin-top:4px;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px">' + varLabel + '</div>' : '')
+        + '<div style="font-size:13px;color:#374151;margin-top:6px;font-weight:600">x' + item.quantity + ' &nbsp;·&nbsp; R$ ' + parseFloat(item.price||0).toFixed(2).replace('.',',') + ' cada</div>'
+        + '<div style="font-size:13px;color:#16a34a;font-weight:700;margin-top:2px">Total: R$ ' + (parseFloat(item.price||0) * (item.quantity||1)).toFixed(2).replace('.',',') + '</div>'
         + '</div></div>';
     }).join('');
 
@@ -1671,10 +1826,16 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
           : '<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;color:#92400e">⚠️ Sem código de rastreio ainda</div>')
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
           + (tel ? '<a href="https://wa.me/55'+tel+'?text='+msgWpp+'" target="_blank" class="btn-wpp">💬 WhatsApp</a>' : '')
-          + (tel && msgRastreio ? '<a href="https://wa.me/55'+tel+'?text='+msgRastreio+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">📦 Enviar Rastreio</a>' : '')
+          + (tel && msgRastreio && rastreios.length > 0
+            ? '<button onclick="enviarRastreioCliente(this,\'' + order.id + '\',\'' + rastreios[0] + '\',\'55' + tel + '\',\'' + msgRastreio + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">' + (order.fulfillment_status === 'fulfilled' ? '✅ Rastreio Enviado' : '📦 Enviar Rastreio') + '</button>'
+            : '')
           + '<button onclick="enviarFornecedor(\'' + nome.replace(/'/g,"\'") + '\',\'' + (rastreios[0]||'') + '\',\'' + getImgPedido((order.line_items&&order.line_items[0]&&order.line_items[0].title)||'').replace(/'/g,"\'") + '\',\'' + (trackingToMeId[rastreios[0]]||'') + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🚀 Fornecedor</button>'
+          + (order.fulfillment_status !== 'fulfilled'
+            ? '<button id="btn-fulfil-' + order.id + '" onclick="marcarEnviado(' + JSON.stringify(String(order.id)) + ',' + JSON.stringify(rastreios[0]||'') + ',' + JSON.stringify(order.email||'') + ')" style="display:inline-flex;align-items:center;gap:4px;padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">✅ Marcar Enviado no Shopify</button>'
+            : '<span style="padding:8px 14px;background:#f0fdf4;color:#16a34a;border-radius:6px;font-size:13px;font-weight:600">✅ Já enviado no Shopify</span>')
         + '</div>'
       + '</div>'
+    + '</div>'
     + '</div>';
   }).join('');
 
@@ -1843,7 +2004,6 @@ tr:hover td{background:#fafafa}
     <button class="nav-item" data-aba="roleta"><span class="nav-icon">🎡</span><span class="nav-label">Roleta</span></button>
     <button class="nav-item" data-aba="atendimento"><span class="nav-icon">🎧</span><span class="nav-label">Atendimento</span></button>
     <button class="nav-item" data-aba="inbox"><span class="nav-icon">📱</span><span class="nav-label">Inbox</span></button>
-    <button class="nav-item" data-aba="novopedido"><span class="nav-icon">➕</span><span class="nav-label">Novo Pedido</span></button>
   </nav>
   <div class="sidebar-foot">Kcique © 2026</div>
 </aside>
@@ -1861,7 +2021,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação',roleta:'🎡 Roleta',atendimento:'🎧 Atendimento',inbox:'📱 Inbox',novopedido:'➕ Novo Pedido'};
+const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -1892,7 +2052,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento, inbox:renderInbox, novopedido:renderNovoPedido};
+  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -1902,13 +2062,33 @@ async function renderHome(force) {
   if (_homeCache && !force) { renderHomeHtml(_homeCache); return; }
   loading();
   try {
-    var [d, presenca, grupos] = await Promise.all([
+    var [d, presenca, grupos, ofertasData] = await Promise.all([
       fetch(API+'/api/admin?secret='+S+'&action=dashboard-home'+(force?'&refresh=1':'')).then(r=>r.json()),
       fetch(API+'/api/checkout?action=contar').then(r=>r.json()).catch(function(){return {ativos:0,totalDia:0};}),
-      fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json()).catch(function(){return {};})
+      fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json()).catch(function(){return {};}),
+      fetch(API+'/api/ofertas?action=listar-json&secret='+S).then(r=>r.json()).catch(function(){return {ofertas:[]};})
     ]);
     d.presenca = presenca;
     d.gruposVip = { total: grupos.totalMembros||0, entradasHoje: grupos.entradasHoje||0, grupoAtivo: grupos.grupoAtivo||{} };
+
+    // Processar ofertas — hoje e amanhã
+    var agora = new Date();
+    var hoje = agora.toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+    var amanha = new Date(agora.getTime() + 86400000).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+    var ofertas = ofertasData.ofertas || [];
+    var ofertasHoje = ofertas.filter(function(o){
+      if (o.status === 'enviada') return false;
+      var d = new Date(o.dataHora).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+      return d === hoje;
+    });
+    var ofertasAmanha = ofertas.filter(function(o){
+      if (o.status === 'enviada') return false;
+      var d = new Date(o.dataHora).toLocaleDateString('pt-BR', {timeZone:'America/Sao_Paulo'});
+      return d === amanha;
+    });
+    d.ofertasHoje = ofertasHoje.length;
+    d.ofertasAmanha = ofertasAmanha.length;
+
     _homeCache = d;
     renderHomeHtml(d);
   } catch(e) { errMsg('Erro: '+e.message); }
@@ -2014,6 +2194,27 @@ function renderHomeHtml(d) {
   html += '</div>';
   html += '</div>'; // fim grid 2 colunas
 
+  // Ofertas widget
+  var ofHoje = d.ofertasHoje || 0;
+  var ofAmanha = d.ofertasAmanha || 0;
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
+  // Card Hoje
+  html += '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:14px 18px;display:flex;align-items:center;gap:12px">';
+  html += '<span style="font-size:22px">📣</span>';
+  html += '<div><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">Ofertas hoje</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:'+(ofHoje>0?'#16a34a':'#9ca3af')+'">'+ofHoje+'</div></div>';
+  html += '</div>';
+  // Card Amanhã
+  html += '<div style="background:'+(ofAmanha===0?'#fef9c3':'#fff')+';border-radius:12px;border:1.5px solid '+(ofAmanha===0?'#fde68a':'#e8eaf0')+';padding:14px 18px;display:flex;align-items:center;gap:12px">';
+  html += '<span style="font-size:22px">📅</span>';
+  html += '<div style="flex:1"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">Ofertas amanhã</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:'+(ofAmanha>0?'#16a34a':'#f59e0b')+'">'+ofAmanha+'</div>';
+  if (ofAmanha === 0) html += '<div style="font-size:11px;color:#92400e;margin-top:2px">⚠️ Nenhuma oferta programada</div>';
+  html += '</div>';
+  if (ofAmanha === 0) html += '<button id="btn-prog-amanha" style="padding:6px 12px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">Programar →</button>';
+  html += '</div>';
+  html += '</div>';
+
   // Top produtos + Últimos pedidos
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
 
@@ -2058,7 +2259,17 @@ function renderHomeHtml(d) {
   html += '</div>';
   html += '</div>'; // fim grid top+últimos
 
+
+
   ct().innerHTML = html;
+
+
+
+  // Botão programar ofertas amanhã
+  var btnProg = get('btn-prog-amanha');
+  if (btnProg) btnProg.addEventListener('click', function() { renderAba('ofertas'); });
+
+
 
   // Live update da presença a cada 30s
   if (window._presencaInterval) clearInterval(window._presencaInterval);
@@ -2077,8 +2288,10 @@ function renderHomeHtml(d) {
 async function renderCarrinhos() {
   loading();
   try {
-    var d = await fetch(API+'/api/leads?secret='+S).then(r=>r.json());
-    _leads = (d.leads||[]).sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
+    var d = await fetch(API+'/api/leads?secret='+S+'&ts='+Date.now()).then(r=>r.json());
+    _leads = (d.leads||[])
+      .filter(function(l){ return l.email && l.email.includes('@'); }) // só leads com email válido
+      .sort(function(a,b){return new Date(b.atualizado_em||b.criado_em)-new Date(a.atualizado_em||a.criado_em);});
     renderLeadsList(_leads);
   } catch(e) { errMsg('Erro: '+e.message); }
 }
@@ -2138,7 +2351,8 @@ function renderLeadsList(leads) {
     if (!b) return;
     if (!confirm('Remover carrinho?')) return;
     var tr=b.closest('tr'); if(tr)tr.style.opacity='0.4';
-    fetch(API+'/api/admin?secret='+S+'&del_lead='+b.getAttribute('data-lid')).then(function(){if(tr)tr.remove();});
+    fetch(API+'/api/leads?secret='+S+'&id='+encodeURIComponent(b.getAttribute('data-lid')), {method:'DELETE'})
+      .then(function(){if(tr)tr.remove(); _leads=_leads.filter(function(l){return l.id!==b.getAttribute('data-lid');});});
   }, {once:true});
 }
 function _attachLeadSearch() {
@@ -2155,7 +2369,7 @@ function _attachLeadSearch() {
     fetch(API+'/api/leads', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({action:'limpar_leads', secret:S})
+      body: JSON.stringify({action:'limpar_todos', secret:S})
     }).then(function(r){return r.json();}).then(function(d){
       if (d.ok) { alert('✅ '+d.deletados+' carrinhos removidos'); renderCarrinhos(); }
       else { alert('❌ Erro'); bl.disabled=false; bl.textContent='🗑 Limpar todos'; }
@@ -2177,12 +2391,36 @@ function renderOfertasHtml() {
   var html = '<div class="form-card">';
   html += '<div class="form-title">📅 Agendar nova oferta</div>';
   html += '<div class="field"><label>Texto da oferta</label><textarea id="of-texto" placeholder="Digite o texto..."></textarea></div>';
-  html += '<div class="row-2"><div class="field"><label>URL da Imagem (opcional)</label><input id="of-imagem" placeholder="https://cdn.shopify.com/..."></div>';
+  html += '<div class="field"><label>Mídias (opcional) — selecione uma ou mais imagens/vídeos</label>';
+  html += '<label style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">';
+  html += '<input type="file" id="of-arquivo" accept="image/*,video/*" multiple style="display:none">📎 Selecionar arquivos (múltiplos)</label>';
+  html += '<div id="of-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>';
+  html += '<input type="hidden" id="of-imagem" value="">';
+  html += '</div>';
   html += '<div class="field"><label>Link (opcional)</label><input id="of-link" placeholder="https://kcique.com.br/..."></div></div>';
   html += '<div class="row-2"><div class="field"><label>Data e hora (Brasília)</label><input type="datetime-local" id="of-data"></div>';
-  html += '<div class="field"><label>Grupos</label><select id="of-grupos"><option value="todos">Todos os grupos (1-17)</option>';
-  GRUPOS_NOMES.forEach(function(g){ html += '<option value="'+g+'">Grupo '+g+'</option>'; });
-  html += '</select></div></div>';
+  html += '<div class="field"><label>Grupos</label>';
+  html += '<div style="border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden">';
+  // Opção todos
+  html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-bottom:1px solid #d1d5db;cursor:pointer;font-weight:600">';
+  html += '<input type="checkbox" id="of-grupos-todos" style="width:15px;height:15px;accent-color:#25d366"> Todos os grupos (1-17)</label>';
+  // Grid de grupos
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);max-height:180px;overflow-y:auto">';
+  GRUPOS_NOMES.forEach(function(g){
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #f3f4f6">';
+    html += '<input type="checkbox" class="of-grupo-check" value="'+g+'" style="width:13px;height:13px;accent-color:#25d366"> '+g+'</label>';
+  });
+  html += '</div></div></div></div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+  html += '<input type="checkbox" id="of-mention" checked style="width:16px;height:16px;cursor:pointer;accent-color:#25d366">';
+  html += '<label for="of-mention" style="font-size:13px;font-weight:600;cursor:pointer;color:#374151">Marcar todos (@all) no grupo</label>';
+  html += '</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">';
+  html += '<input type="checkbox" id="of-teste" style="width:16px;height:16px;cursor:pointer;accent-color:#f59e0b">';
+  html += '<label for="of-teste" style="font-size:13px;font-weight:600;cursor:pointer;color:#92400e">🧪 Enviar só no grupo de teste</label>';
+  html += '</div>';
+  html += '<div class="row-2"><div class="field"><label>📱 Contato — Nome <span style="font-size:10px;color:#9ca3af;font-weight:400">(opcional)</span></label><input id="of-contato-nome" placeholder="Ex: Kcique Relógios"></div>';
+  html += '<div class="field"><label>📱 Contato — Telefone <span style="font-size:10px;color:#9ca3af;font-weight:400">(opcional, com DDI: 5545...)</span></label><input id="of-contato-tel" placeholder="5545999999999" type="tel"></div></div>';
   html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-agendar">📅 Agendar</button><span id="of-msg" style="font-size:13px"></span></div>';
   html += '</div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
@@ -2207,8 +2445,76 @@ function renderOfertasHtml() {
 function _attachOfertas() {
   var btn = get('btn-agendar');
   if (btn) btn.addEventListener('click', salvarOferta);
+
+
+  // Toggle "Todos" — marca/desmarca todos
+  var todosCheck = get('of-grupos-todos');
+  if (todosCheck) todosCheck.addEventListener('change', function() {
+    document.querySelectorAll('.of-grupo-check').forEach(function(c){ c.checked = todosCheck.checked; });
+  });
+
+  // Se desmarcar qualquer um, desmarca "Todos"
+  ct().addEventListener('change', function(e) {
+    if (e.target.classList.contains('of-grupo-check')) {
+      var todos = document.querySelectorAll('.of-grupo-check');
+      var marcados = document.querySelectorAll('.of-grupo-check:checked');
+      var todosEl = get('of-grupos-todos');
+      if (todosEl) todosEl.checked = todos.length === marcados.length;
+    }
+  });
   var bl = get('btn-limpar-of');
   if (bl) bl.addEventListener('click', limparOfertas);
+  // Upload múltiplo direto pro Cloudinary
+  window._ofMidias = window._ofMidias || [];
+  var arq = get('of-arquivo');
+  if (arq) arq.addEventListener('change', async function() {
+    var files = Array.from(this.files); if (!files.length) return;
+    var prev = get('of-upload-preview');
+    var imgInput = get('of-imagem');
+    var creds = null;
+    try {
+      var cr = await fetch(API+'/api/fornecedor?action=cloudinary-config&secret='+S).then(function(r){return r.json();});
+      creds = cr;
+    } catch(e) {}
+    if (!creds || !creds.cloudName || !creds.uploadPreset) {
+      if (prev) prev.innerHTML = '<div style="color:#ef4444;font-size:12px">❌ Cloudinary não configurado</div>';
+      return;
+    }
+    var placeholders = files.map(function(f) {
+      var el = document.createElement('div');
+      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;color:#9ca3af;margin-bottom:4px';
+      el.innerHTML = '⏳ '+f.name+' ('+Math.round(f.size/1024/1024*10)/10+'MB)';
+      if (prev) prev.appendChild(el);
+      return el;
+    });
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      var ph = placeholders[i];
+      var isVideo = file.type.startsWith('video');
+      var resourceType = isVideo ? 'video' : 'image';
+      try {
+        var fd = new FormData();
+        fd.append('file', file);
+        fd.append('upload_preset', creds.uploadPreset);
+        fd.append('folder', 'kcique-ofertas');
+        var cloudResp = await fetch('https://api.cloudinary.com/v1_1/'+creds.cloudName+'/'+resourceType+'/upload', { method:'POST', body:fd });
+        var d2 = await cloudResp.json();
+        if (d2.secure_url) {
+          var midIdx = window._ofMidias.length;
+          window._ofMidias.push({ url: d2.secure_url, tipo: resourceType });
+          if (ph) ph.innerHTML = isVideo
+            ? '🎥 <a href="'+d2.secure_url+'" target="_blank" style="color:#2563eb">'+file.name+'</a> <button data-idx="'+midIdx+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>'
+            : '<img src="'+d2.secure_url+'" style="height:48px;width:48px;object-fit:cover;border-radius:6px;margin-right:4px"><span style="color:#374151">'+file.name+'</span> <button data-idx="'+midIdx+'" onclick="window._ofMidias[+this.dataset.idx]=null;this.parentNode.remove()" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>';
+          if (imgInput) imgInput.value = window._ofMidias.filter(Boolean).map(function(m){return m.url;}).join('|');
+        } else {
+          if (ph) { ph.textContent = '❌ '+file.name+': '+(d2.error&&d2.error.message||'erro'); ph.style.color='#ef4444'; }
+        }
+      } catch(e) {
+        if (ph) { ph.textContent = '❌ '+file.name+': '+e.message; ph.style.color='#ef4444'; }
+      }
+    }
+    arq.value = '';
+  });
   ct().addEventListener('click', function(e) {
     var b = e.target.closest('[data-oid]');
     if (!b) return;
@@ -2222,9 +2528,24 @@ async function salvarOferta() {
   if (!texto||!data){if(msg)msg.textContent='⚠️ Preencha texto e data';return;}
   var btn=get('btn-agendar');btn.disabled=true;btn.textContent='Agendando...';
   try {
-    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:val('of-imagem'),link:val('of-link'),dataHora:data+':00-03:00',grupos:val('of-grupos')||'todos'})});
+    // Ler grupos selecionados
+    var todosChecked = get('of-grupos-todos') && get('of-grupos-todos').checked;
+    var gruposSel = [];
+    if (!todosChecked) {
+      document.querySelectorAll('.of-grupo-check:checked').forEach(function(c){ gruposSel.push(c.value); });
+    }
+    var gruposVal = todosChecked ? 'todos' : (gruposSel.length ? gruposSel.join(',') : 'todos');
+    var midia = val('of-imagem') || '';
+    var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias : (midia ? [{url:midia,tipo:'image'}] : []);
+    var midia = val('of-imagem') || '';
+    var midias = window._ofMidias && window._ofMidias.length ? window._ofMidias.filter(Boolean) : (midia ? [{url:midia,tipo:'image'}] : []);
+    var isTeste = !!(get('of-teste') && get('of-teste').checked);
+    var gruposFinais = isTeste ? '120363411835027246-group' : gruposVal;
+    var contatoNome = (get('of-contato-nome') ? get('of-contato-nome').value.trim() : '');
+    var contatoTel = (get('of-contato-tel') ? get('of-contato-tel').value.replace(/\D/g,'') : '');
+    var r = await fetch(API+'/api/ofertas?action=salvar&secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto,imagem:midias[0]?midias[0].url:'',midias:midias,link:val('of-link'),dataHora:data+':00-03:00',grupos:gruposFinais,mentionEveryOne:!!(get('of-mention')&&get('of-mention').checked),teste:isTeste,contatoNome:contatoNome||null,contatoTel:contatoTel||null})});
     var d = await r.json();
-    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}setTimeout(function(){renderOfertas();},1000);}
+    if(d.success){if(msg){msg.textContent='✅ Agendada!';msg.style.color='#16a34a';}window._ofMidias=[];setTimeout(function(){renderOfertas();},1000);}
     else{if(msg){msg.textContent='❌ '+(d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
   btn.disabled=false;btn.textContent='📅 Agendar';
@@ -2251,7 +2572,11 @@ async function renderPedidos(force) {
     _pedidos.forEach(function(p,i){
       var origem=(p.nota||'').split('Origem: ')[1];if(origem)origem=origem.split('|')[0].trim();
       html+='<tr style="cursor:pointer" data-pi="'+i+'">';
-      html+='<td>'+(p.imagem?'<img src="'+p.imagem+'" style="width:32px;height:32px;object-fit:cover;border-radius:6px">':'')+'</td>';
+      // Show all item images (up to 3) in the list using pre-computed imagens array
+      var imgsHtml = (p.imagens||[{img:p.imagem}]).slice(0,3).map(function(it){
+        return it.img ? '<img src="'+it.img+'" title="'+((it.nome||'')+(it.variante&&it.variante!=='Default Title'?' - '+it.variante:'')).substring(0,40)+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #e8eaf0">' : '';
+      }).filter(Boolean).join('');
+      html+='<td><div style="display:flex;gap:2px;align-items:center">'+(imgsHtml||'<span style="color:#d1d5db;font-size:16px">⌚</span>')+'</div></td>';
       html+='<td><strong>#'+p.numero+'</strong><div style="font-size:11px;color:#9ca3af">'+fmtDate(p.criado_em)+'</div></td>';
       html+='<td>'+p.cliente+'</td>';
       html+='<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.produto+'</td>';
@@ -2308,12 +2633,20 @@ function abrirModalPedido(i) {
   // Itens
   if (p.itens && p.itens.length) {
     html+='<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Itens do Pedido</div>';
-    html+='<div style="background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:16px">';
-    p.itens.forEach(function(it){
-      html+='<div style="padding:10px 12px;border-bottom:1px solid #e8eaf0;display:flex;justify-content:space-between;align-items:center">';
-      html+='<div><div style="font-size:13px;font-weight:600">'+it.nome+'</div>';
-      if(it.variante&&it.variante!=='Default Title')html+='<div style="font-size:11px;color:#9ca3af">'+it.variante+'</div>';
-      html+='</div><div style="text-align:right"><div style="font-size:12px;color:#6b7280">x'+it.quantidade+'</div><div style="font-size:13px;font-weight:600">'+fmt(parseFloat(it.preco)*it.quantidade)+'</div></div></div>';
+    html+='<div style="margin-bottom:16px">';
+    p.itens.forEach(function(it, idx){
+      var imgObj = p.imagens && p.imagens[idx];
+      var img = imgObj ? imgObj.img : (p.imagem||'');
+      html+='<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid #f3f4f6">';
+      html+=(img
+        ? '<img src="'+img+'" style="width:90px;height:90px;object-fit:cover;border-radius:10px;flex-shrink:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)" onclick="abrirFoto(this.src)">'
+        : '<div style="width:90px;height:90px;background:#f3f4f6;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:36px">⌚</div>');
+      html+='<div style="flex:1;min-width:0">';
+      html+='<div style="font-size:14px;font-weight:700;line-height:1.4">'+it.nome+'</div>';
+      if(it.variante&&it.variante!=='Default Title')html+='<div style="font-size:12px;color:#6b7280;margin-top:4px;background:#f3f4f6;display:inline-block;padding:2px 8px;border-radius:20px">'+it.variante+'</div>';
+      html+='<div style="font-size:13px;color:#374151;margin-top:6px;font-weight:600">x'+it.quantidade+' &nbsp;·&nbsp; R$ '+parseFloat(it.preco||0).toFixed(2).replace('.',',')+'</div>';
+      html+='<div style="font-size:13px;color:#16a34a;font-weight:700;margin-top:2px">Total: R$ '+(parseFloat(it.preco||0)*it.quantidade).toFixed(2).replace('.',',')+'</div>';
+      html+='</div></div>';
     });
     html+='</div>';
   }
@@ -2357,30 +2690,41 @@ async function enviarFornecedorPed(btn, i) {
 }
 
 // ===== CUPONS =====
-async function renderCupons() {
+async function renderCupons(){
   loading();
-  try {
-    var d = await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
+  try{
+    var d=await fetch(API+'/api/cupons?secret='+S+'&action=listar').then(r=>r.json());
     var cupons=d.cupons||[];
     var html='<div class="form-card"><div class="form-title">🎟 Criar novo cupom</div>';
     html+='<div class="row-3"><div class="field"><label>Código</label><input id="c-cod" placeholder="KCIQUE10" oninput="this.value=this.value.toUpperCase()"></div>';
-    html+='<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option></select></div>';
+    html+='<div class="field"><label>Tipo</label><select id="c-tipo"><option value="percentual">% Percentual</option><option value="fixo">R$ Fixo</option><option value="frete_gratis">Frete Grátis</option><option value="percentual_frete">% no Frete</option><option value="percentual_mais_frete">% Desconto + Frete Grátis</option></select></div>';
     html+='<div class="field" id="campo-val"><label>Valor</label><input type="number" id="c-val" placeholder="10" min="0" step="0.01"></div></div>';
     html+='<div class="row-3"><div class="field"><label>Validade (opcional)</label><input type="datetime-local" id="c-valid"></div>';
     html+='<div class="field"><label>Limite de usos (opcional)</label><input type="number" id="c-limite" placeholder="100"></div>';
-    html+='<div class="field"><label>Produto (opcional)</label><input id="c-prod" placeholder="TAG Senna"></div></div>';
+    html+='<div class="field"><label>Produto específico (opcional)</label>';
+    html+='<button type="button" id="btn-toggle-prods" style="margin-top:4px;padding:6px 14px;border:1.5px solid #e8eaf0;border-radius:8px;background:#f9fafb;cursor:pointer;font-size:13px;font-weight:600;width:100%;text-align:left;color:#374151">▶ Clique para selecionar produto</button>';
+    html+='<div id="cprod-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;max-height:220px;overflow-y:auto;margin-top:6px;padding:2px"><div style="padding:12px;color:#9ca3af;font-size:13px">Carregando...</div></div>';
+    html+='</div></div>';
     html+='<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-criar-cupom">💾 Criar Cupom</button><span id="c-msg" style="font-size:13px"></span></div></div>';
-    html+='<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button></div>';
+    var agora=Date.now();
+    var nExp=cupons.filter(function(c){return c.validade&&new Date(c.validade).getTime()<agora;}).length;
+    html+='<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-bottom:12px;flex-wrap:wrap">';
+    if(nExp>0)html+='<button class="btn btn-danger btn-sm" id="btn-exp-cupons">🗑 Expirados ('+nExp+')</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-del-sel-c" style="display:none">🗑 Excluir selecionados (<span id="n-sel-c">0</span>)</button>';
+    html+='<button class="btn btn-danger btn-sm" id="btn-limpar-cupons">🗑 Limpar todos</button>';
+    html+='</div>';
     if(!cupons.length){html+='<div class="vazio">Nenhum cupom cadastrado</div>';ct().innerHTML=html;_attachCupons();return;}
-    html+='<div class="tbl-wrap"><table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+    html+='<div class="tbl-wrap"><table><thead><tr><th><input type="checkbox" id="sel-all-c"></th><th>Código</th><th>Tipo</th><th>Valor</th><th>Produto</th><th>Validade</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
     cupons.forEach(function(c){
-      html+='<tr>';
-      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong></td>';
+      var exp=c.validade&&new Date(c.validade).getTime()<agora;
+      html+='<tr style="'+(exp?'opacity:.6':'')+'"><td><input type="checkbox" class="cchk" data-cid="'+c.id+'" data-ccod="'+c.codigo+'"></td>';
+      html+='<td><strong style="font-family:monospace">'+c.codigo+'</strong>'+(exp?' <span style="font-size:10px;background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:4px">Expirado</span>':'')+'</td>';
       html+='<td>'+c.tipo+'</td>';
-      html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.valor+'%')+'</td>';
+      html+='<td>'+(c.tipo==='percentual'?c.valor+'%':c.tipo==='fixo'?fmt(c.valor):c.tipo==='frete_gratis'?'Grátis':c.tipo==='percentual_mais_frete'?c.valor+'% + Frete Grátis':c.valor+'%')+'</td>';
+      html+='<td style="font-size:12px;color:#6b7280">'+(c.produto&&c.produto!=='todos'?c.produto:'Todos')+'</td>';
       html+='<td style="font-size:12px">'+(c.validade?fmtDate(c.validade):'Sem validade')+'</td>';
       html+='<td>'+(c.usos||0)+(c.limite?'/'+c.limite:'')+'</td>';
-      html+='<td><span class="badge" style="background:'+(c.ativo?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo?'#16a34a':'#6b7280')+'">'+(c.ativo?'Ativo':'Inativo')+'</span></td>';
+      html+='<td><span class="badge" style="background:'+(c.ativo&&!exp?'#bbf7d0':'#f3f4f6')+';color:'+(c.ativo&&!exp?'#16a34a':'#6b7280')+'">'+(c.ativo&&!exp?'Ativo':exp?'Expirado':'Inativo')+'</span></td>';
       html+='<td style="display:flex;gap:4px"><button class="btn-del" data-cid="'+c.id+'" data-action="toggle">⟳</button><button class="btn-del" data-cid="'+c.id+'" data-ccod="'+c.codigo+'" data-action="del">🗑</button></td>';
       html+='</tr>';
     });
@@ -2392,25 +2736,94 @@ async function renderCupons() {
 function _attachCupons(){
   var bc=get('btn-criar-cupom');if(bc)bc.addEventListener('click',salvarCupom);
   var bl=get('btn-limpar-cupons');if(bl)bl.addEventListener('click',limparCupons);
+  var be=get('btn-exp-cupons');if(be)be.addEventListener('click',limparExpiradosCupons);
+  var sa=get('sel-all-c');
+  if(sa)sa.addEventListener('change',function(){document.querySelectorAll('.cchk').forEach(function(c){c.checked=sa.checked;});_atualizarSelCupons();});
+  var bds=get('btn-del-sel-c');if(bds)bds.addEventListener('click',_delCuponsSel);
   var tipo=get('c-tipo');if(tipo)tipo.addEventListener('change',function(){var cv=get('campo-val');if(cv)cv.style.display=this.value==='frete_gratis'?'none':'block';});
+  // Toggle produto grid lazy
+  var btp=get('btn-toggle-prods');
+  var _cpLoaded=false;
+  if(btp)btp.addEventListener('click',function(){
+    var g=get('cprod-grid');if(!g)return;
+    var open=g.style.display!=='none';
+    if(open){g.style.display='none';btp.textContent='▶ Clique para selecionar produto';return;}
+    g.style.display='grid';
+    var sel=Array.from(document.querySelectorAll('input[name="c-prod-chk"]:checked')).map(function(i){return i.value;});
+    btp.textContent='▼ '+(sel.length?sel.length+' produto(s) selecionado(s) — fechar':'Fechar seletor');
+    if(_cpLoaded)return;
+    _cpLoaded=true;
+    var prom=_produtos.length?Promise.resolve({produtos:_produtos}):fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(function(r){return r.json();}).catch(function(){return {produtos:[]};});
+    prom.then(function(pp){
+      if(pp.produtos)_produtos=pp.produtos;
+      var h2='';
+      _produtos.forEach(function(p){
+        var nome=p.titulo||p.nome||p.title||'';
+        var preco=parseFloat(p.preco)||0;
+        h2+='<label style="display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;cursor:pointer;border:1.5px solid #e8eaf0;background:#fff" class="cprod-lbl">';
+        h2+='<input type="checkbox" name="c-prod-chk" value="'+nome+'" style="width:14px;height:14px;accent-color:#111;flex-shrink:0">';
+        h2+=(p.imagem?'<img src="'+p.imagem+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0">':'');
+        h2+='<div style="min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</div>'+(preco>0?'<div style="font-size:10px;color:#9ca3af">R$ '+preco+'</div>':'')+'</div></label>';
+      });
+      if(g)g.innerHTML=h2||'<div style="padding:12px;color:#9ca3af;font-size:13px">Nenhum produto</div>';
+    });
+  });
+  // Eventos de change (checkbox cchk e cprod) e click (toggle/del)
+  // Usando AbortController para remover listeners antigos ao re-renderizar
+  var _ac=new AbortController();
+  var _sig={signal:_ac.signal};
+  ct().addEventListener('change',function(e){
+    if(e.target.classList.contains('cchk'))_atualizarSelCupons();
+    if(e.target.name==='c-prod-chk'){
+      var lbl=e.target.closest('.cprod-lbl');
+      if(lbl){lbl.style.border='1.5px solid '+(e.target.checked?'#111':'#e8eaf0');lbl.style.background=e.target.checked?'#f3f4f6':'#fff';}
+      var sel=Array.from(document.querySelectorAll('input[name="c-prod-chk"]:checked')).map(function(i){return i.value;});
+      var b=get('btn-toggle-prods');if(b)b.textContent='▼ '+(sel.length?sel.length+' produto(s) selecionado(s) — fechar':'Fechar seletor');
+    }
+  },_sig);
   ct().addEventListener('click',function(e){
     var b=e.target.closest('[data-cid]');if(!b)return;
     var act=b.getAttribute('data-action');
     if(act==='toggle'){fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',secret:S,id:b.getAttribute('data-cid')})}).then(function(){renderCupons();});}
     if(act==='del'){if(!confirm('Deletar cupom '+b.getAttribute('data-ccod')+'?'))return;var tr=b.closest('tr');if(tr)tr.style.opacity='0.4';fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:b.getAttribute('data-cid')})}).then(function(){if(tr)tr.remove();});}
-  },{once:true});
+  },_sig);
+  // Guardar abort no elemento para cancelar na próxima renderização
+  var ctEl=ct();if(ctEl._cuponsAC)ctEl._cuponsAC.abort();ctEl._cuponsAC=_ac;
 }
 async function salvarCupom(){
   var cod=val('c-cod').trim().toUpperCase(),tipo=val('c-tipo'),v=parseFloat(val('c-val')||0),msg=get('c-msg');
-  console.log('salvarCupom:',cod,tipo,v);
   if(!cod){if(msg)msg.textContent='⚠️ Digite o código';return;}
   var btn=get('btn-criar-cupom');btn.disabled=true;btn.textContent='Salvando...';
   try{
-    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:val('c-prod')||null})}).then(r=>r.json());
+    var prods=Array.from(document.querySelectorAll('input[name="c-prod-chk"]:checked')).map(function(i){return i.value;});
+    var prodVal=prods.length?prods.join(','):null;
+    var d=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'salvar',secret:S,codigo:cod,tipo,valor:v,ativo:true,validade:val('c-valid')||null,limiteUsos:parseInt(val('c-limite'))||null,produto:prodVal})}).then(r=>r.json());
     if(d.ok){if(msg){msg.textContent='✅ Criado!';msg.style.color='#16a34a';}setTimeout(function(){renderCupons();},800);}
     else{if(msg){msg.textContent='❌ '+(d.erro||d.error||'Erro');msg.style.color='#ef4444';}}
   }catch(e){if(msg)msg.textContent='❌ '+e.message;}
   btn.disabled=false;btn.textContent='💾 Criar Cupom';
+}
+function _atualizarSelCupons(){
+  var sels=document.querySelectorAll('.cchk:checked');
+  var btn=get('btn-del-sel-c');var n=get('n-sel-c');
+  if(btn)btn.style.display=sels.length?'inline-flex':'none';
+  if(n)n.textContent=sels.length;
+}
+async function _delCuponsSel(){
+  var sels=Array.from(document.querySelectorAll('.cchk:checked'));
+  if(!sels.length)return;
+  if(!confirm('Excluir '+sels.length+' cupom(ns) selecionado(s)?'))return;
+  for(var i=0;i<sels.length;i++){
+    await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletar',secret:S,id:sels[i].getAttribute('data-cid')})});
+  }
+  renderCupons();
+}
+async function limparExpiradosCupons(){
+  if(!confirm('Excluir todos os cupons expirados?'))return;
+  var r=await fetch(API+'/api/cupons?secret='+S,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'limpar_expirados',secret:S})});
+  var d=await r.json();
+  if(d.ok){alert('✅ '+d.deletados+' expirados removidos');renderCupons();}
+  else{alert('❌ Erro ao remover expirados');}
 }
 async function limparCupons(){
   if(!confirm('Deletar TODOS os cupons?'))return;
@@ -2523,34 +2936,40 @@ function renderBundleHtml(){
   });
 }
 
+// ===== RECUPERAÇÃO =====
 async function renderRecuperacao() {
   loading();
   try {
     var config = await fetch(API+'/api/admin?secret='+S+'&action=recuperacao-config').then(r=>r.json()).catch(function(){return {};});
     var c = config.config || {};
+
     var regras = [
-      { key: 'regra_identificacao', label: '\ud83d\udccb Preencheu identifica\u00e7\u00e3o (nome/email)', desc: 'Pessoa preencheu dados pessoais mas n\u00e3o foi ao endere\u00e7o' },
-      { key: 'regra_frete',         label: '\ud83d\ude9a Abandonou no frete',                  desc: 'Pessoa calculou ou selecionou frete mas n\u00e3o foi ao pagamento' },
-      { key: 'regra_pagamento',     label: '\ud83d\udcb3 Abandonou no pagamento',               desc: 'Pessoa clicou em pagar mas n\u00e3o completou' },
+      { key: 'regra_identificacao', label: '📋 Preencheu identificação (nome/email)', desc: 'Pessoa preencheu dados pessoais mas não foi ao endereço' },
+      { key: 'regra_frete',         label: '🚚 Abandonou no frete',                  desc: 'Pessoa calculou ou selecionou frete mas não foi ao pagamento' },
+      { key: 'regra_pagamento',     label: '💳 Abandonou no pagamento',               desc: 'Pessoa clicou em pagar mas não completou' },
     ];
+
     var html = '';
+
     // Status global
     var ativo = c.ativo !== false;
     html += '<div class="form-card" style="margin-bottom:16px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between">';
-    html += '<div><div class="form-title">\ud83d\udcac Recupera\u00e7\u00e3o Autom\u00e1tica de Carrinhos</div>';
-    html += '<div style="font-size:13px;color:#6b7280">Mensagens autom\u00e1ticas via WhatsApp para recuperar carrinhos abandonados</div></div>';
+    html += '<div><div class="form-title">💬 Recuperação Automática de Carrinhos</div>';
+    html += '<div style="font-size:13px;color:#6b7280">Mensagens automáticas via WhatsApp para recuperar carrinhos abandonados</div></div>';
     html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">';
     html += '<span style="font-size:13px;font-weight:600">'+(ativo?'Ativo':'Inativo')+'</span>';
     html += '<div style="position:relative;width:44px;height:24px"><input type="checkbox" id="rec-ativo" '+(ativo?'checked':'')+'style="opacity:0;position:absolute;width:100%;height:100%;margin:0;cursor:pointer;z-index:2">';
     html += '<div id="rec-ativo-bg" style="position:absolute;inset:0;border-radius:12px;background:'+(ativo?'#25d366':'#d1d5db')+';transition:background .2s"></div>';
     html += '<div id="rec-ativo-dot" style="position:absolute;top:3px;left:'+(ativo?'23':'3')+'px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></label>';
     html += '</div></div>';
-    // Vari\u00e1veis dispon\u00edveis
+
+    // Variáveis disponíveis
     html += '<div style="margin-bottom:16px;padding:12px 16px;background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;font-size:12px;color:#0369a1">';
-    html += '<strong>Vari\u00e1veis dispon\u00edveis nas mensagens:</strong> ';
-    html += '<code>{nome}</code> \u00b7 <code>{produtos}</code> \u00b7 <code>{link}</code> \u00b7 <code>{email}</code>';
+    html += '<strong>Variáveis disponíveis nas mensagens:</strong> ';
+    html += '<code>{nome}</code> · <code>{produtos}</code> · <code>{link}</code> · <code>{email}</code>';
     html += '</div>';
+
     // Regras
     regras.forEach(function(regra) {
       var r = c[regra.key] || {};
@@ -2568,18 +2987,21 @@ async function renderRecuperacao() {
       html += '<input type="number" class="rec-delay" data-regra="'+regra.key+'" value="'+(r.delay_minutos||30)+'" min="1" max="10080" style="width:100%"></div>';
       html += '<div class="field"><label>Enviar apenas uma vez por lead</label>';
       html += '<select class="rec-reenvio" data-regra="'+regra.key+'" style="width:100%">';
-      html += '<option value="1" '+(r.reenviar!==false?'selected':'')+'>Sim \u2014 n\u00e3o reenviar</option>';
+      html += '<option value="1" '+(r.reenviar!==false?'selected':'')+'>Sim — não reenviar</option>';
       html += '</select></div></div>';
       html += '<div class="field"><label>Mensagem WhatsApp</label>';
-      html += '<textarea class="rec-mensagem" data-regra="'+regra.key+'" rows="4" placeholder="Ex: Ol\u00e1 {nome}! Vi que voc\u00ea deixou {produtos} no carrinho...">'+(r.mensagem||'')+'</textarea></div>';
+      html += '<textarea class="rec-mensagem" data-regra="'+regra.key+'" rows="4" placeholder="Ex: Olá {nome}! Vi que você deixou {produtos} no carrinho...">'+(r.mensagem||'')+'</textarea></div>';
       html += '</div>';
     });
+
     html += '<div style="display:flex;gap:10px;align-items:center">';
-    html += '<button class="btn btn-primary" id="btn-salvar-rec">\ud83d\udcbe Salvar configura\u00e7\u00f5es</button>';
-    html += '<button class="btn btn-ghost" id="btn-testar-rec">\u25b6 Disparar agora</button>';
+    html += '<button class="btn btn-primary" id="btn-salvar-rec">💾 Salvar configurações</button>';
+    html += '<button class="btn btn-ghost" id="btn-testar-rec">▶ Disparar agora</button>';
     html += '<span id="rec-msg" style="font-size:13px"></span>';
     html += '</div>';
+
     ct().innerHTML = html;
+
     // Toggle global
     var recAtivoBg = document.getElementById('rec-ativo-bg');
     var recAtivoDot = document.getElementById('rec-ativo-dot');
@@ -2587,6 +3009,7 @@ async function renderRecuperacao() {
       recAtivoBg.style.background = this.checked ? '#25d366' : '#d1d5db';
       recAtivoDot.style.left = this.checked ? '23px' : '3px';
     });
+
     // Salvar
     document.getElementById('btn-salvar-rec').addEventListener('click', async function() {
       var btn = this; btn.disabled=true; btn.textContent='Salvando...';
@@ -2602,22 +3025,41 @@ async function renderRecuperacao() {
         method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(novaConfig)
       }).then(function(r){return r.json();});
       var msg = document.getElementById('rec-msg');
-      if (r.ok) { msg.textContent='\u2705 Salvo!'; msg.style.color='#16a34a'; }
-      else { msg.textContent='\u274c Erro'; msg.style.color='#ef4444'; }
-      btn.disabled=false; btn.textContent='\ud83d\udcbe Salvar configura\u00e7\u00f5es';
+      if (r.ok) { msg.textContent='✅ Salvo!'; msg.style.color='#16a34a'; }
+      else { msg.textContent='❌ Erro'; msg.style.color='#ef4444'; }
+      btn.disabled=false; btn.textContent='💾 Salvar configurações';
       setTimeout(function(){ msg.textContent=''; }, 3000);
     });
+
     // Disparar agora
     document.getElementById('btn-testar-rec').addEventListener('click', async function() {
       var btn=this; btn.disabled=true; btn.textContent='Disparando...';
       var r = await fetch(API+'/api/recuperacao?secret='+S, {method:'POST'}).then(function(r){return r.json();}).catch(function(){return {ok:false};});
       var msg = document.getElementById('rec-msg');
-      if (r.ok) { msg.textContent='\u2705 '+r.disparos+' mensagens enviadas'; msg.style.color='#16a34a'; }
-      else { msg.textContent='\u274c Erro ao disparar'; msg.style.color='#ef4444'; }
-      btn.disabled=false; btn.textContent='\u25b6 Disparar agora';
+      if (r.ok) { msg.textContent='✅ '+r.disparos+' mensagens enviadas'; msg.style.color='#16a34a'; }
+      else { msg.textContent='❌ Erro ao disparar'; msg.style.color='#ef4444'; }
+      btn.disabled=false; btn.textContent='▶ Disparar agora';
     });
+
   } catch(e) { errMsg('Erro: '+e.message); }
 }
+
+
+
+// Popup de foto
+function abrirFoto(src) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  overlay.onclick = function() { document.body.removeChild(overlay); };
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.6);object-fit:contain';
+  img.onclick = function(e) { e.stopPropagation(); };
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+// ===== ROLETA =====
 async function renderRoleta(force) {
   loading();
   try {
@@ -2629,6 +3071,7 @@ async function renderRoleta(force) {
     var historico = hist.historico || [];
     var aberta = cfg.aberta !== false;
     window._rkItens = JSON.parse(JSON.stringify(itens));
+
     var itensHtml = itens.map(function(it, i) {
       var row = '<tr>';
       row += '<td style="padding:8px 4px"><input type="color" value="'+(it.cor||'#333')+'" data-i="'+i+'" data-f="cor" onchange="rkUpd(this)" style="width:36px;height:28px;padding:0;border:1px solid #e8eaf0;border-radius:4px;cursor:pointer"></td>';
@@ -2640,6 +3083,7 @@ async function renderRoleta(force) {
       row += '</tr>';
       return row;
     }).join('');
+
     var histHtml = historico.length ? historico.slice(0,50).map(function(h){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #f3f4f6;font-size:13px">'
         + '<span style="font-weight:600">'+(h.premio||'')+'</span>'
@@ -2648,16 +3092,17 @@ async function renderRoleta(force) {
         + '</div>';
     }).join('')
     : '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Nenhum giro registrado ainda</div>';
+
     var html = '<div style="padding:24px;max-width:900px">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-      + '<h2 style="font-size:20px;font-weight:700">&#127905; Roleta de Pr\u00eamios</h2>'
+      + '<h2 style="font-size:20px;font-weight:700">&#127905; Roleta de Prêmios</h2>'
       + '<button onclick="rkToggle()" id="rk-toggle-btn" style="padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;'+(aberta?'background:#fee2e2;color:#dc2626':'background:#dcfce7;color:#16a34a')+'">'+(aberta?'&#128274; Fechar Roleta':'&#128275; Abrir Roleta')+'</button>'
       + '</div>'
       + '<div id="rk-status-badge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:20px;'+(aberta?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626')+'">'
       + '<span style="width:7px;height:7px;border-radius:50%;background:'+(aberta?'#16a34a':'#dc2626')+'"></span>'
-      + (aberta?'Roleta aberta ao p\u00fablico':'Roleta fechada')
+      + (aberta?'Roleta aberta ao público':'Roleta fechada')
       + '</div>'
-      + '<p style="color:#6b7280;font-size:13px;margin-bottom:24px">Configure os itens da roleta. A probabilidade \u00e9 relativa \u2014 os valores n\u00e3o precisam somar 100.</p>'
+      + '<p style="color:#6b7280;font-size:13px;margin-bottom:24px">Configure os itens da roleta. A probabilidade é relativa — os valores não precisam somar 100.</p>'
       + '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px;margin-bottom:20px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
       + '<span style="font-size:14px;font-weight:700">Itens da Roleta</span>'
@@ -2676,13 +3121,14 @@ async function renderRoleta(force) {
       + '<tbody id="rk-tbody">' + itensHtml + '</tbody>'
       + '</table></div>'
       + '<div style="margin-top:16px;display:flex;gap:12px;align-items:center">'
-      + '<button onclick="rkSalvar()" id="rk-save-btn" style="padding:10px 24px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Salvar configura\u00e7\u00e3o</button>'
+      + '<button onclick="rkSalvar()" id="rk-save-btn" style="padding:10px 24px;background:#111;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Salvar configuração</button>'
       + '<a href="https://kcique.com.br/pages/roleta" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:none">Ver roleta ao vivo &#8594;</a>'
       + '</div></div>'
       + '<div style="background:#fff;border-radius:12px;border:1px solid #e8eaf0;padding:20px">'
-      + '<div style="font-size:14px;font-weight:700;margin-bottom:16px">\u00daltimos giros ('+historico.length+')</div>'
+      + '<div style="font-size:14px;font-weight:700;margin-bottom:16px">Últimos giros ('+historico.length+')</div>'
       + histHtml
       + '</div></div>';
+
     document.getElementById('content').innerHTML = html;
   } catch(e) {
     document.getElementById('content').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">Erro: ' + e.message + '</div>';
@@ -2707,7 +3153,7 @@ window.rkToggle = async function() {
         btn.style.background='#fee2e2'; btn.style.color='#dc2626';
         btn.innerHTML='&#128274; Fechar Roleta';
         badge.style.background='#dcfce7'; badge.style.color='#16a34a';
-        badge.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:6px"></span>Roleta aberta ao p\u00fablico';
+        badge.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:6px"></span>Roleta aberta ao público';
       } else {
         btn.style.background='#dcfce7'; btn.style.color='#16a34a';
         btn.innerHTML='&#128275; Abrir Roleta';
@@ -2745,12 +3191,13 @@ window.rkSalvar = async function() {
       body: JSON.stringify({ itens: window._rkItens })
     });
     var d = await r.json();
-    btn.textContent = d.ok ? '\u2705 Salvo!' : '\u274c Erro';
-    setTimeout(function(){ btn.textContent='Salvar configura\u00e7\u00e3o'; btn.disabled=false; }, 2000);
+    btn.textContent = d.ok ? '✅ Salvo!' : '❌ Erro';
+    setTimeout(function(){ btn.textContent='Salvar configuração'; btn.disabled=false; }, 2000);
   } catch(e) {
-    btn.textContent = '\u274c Erro'; btn.disabled = false;
+    btn.textContent = '❌ Erro'; btn.disabled = false;
   }
 };
+
 // ===== ATENDIMENTO =====
 async function renderAtendimento() {
   loading();
@@ -2762,14 +3209,16 @@ async function renderAtendimento() {
     var tickets = ticketsR.tickets || [];
     var stats = statsR;
     var html = '';
+
     // Stats
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">';
-    html += '<div class="stat-card"><div class="stat-label">\ud83c\udfa7 Total Tickets</div><div class="stat-value">'+tickets.length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\ud83d\udd34 Abertos</div><div class="stat-value" style="color:#ef4444">'+tickets.filter(function(t){return t.status==='aberto';}).length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\ud83d\udd04 Em Atendimento</div><div class="stat-value" style="color:#f59e0b">'+tickets.filter(function(t){return t.status==='em_atendimento';}).length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\u2705 Resolvidos</div><div class="stat-value" style="color:#16a34a">'+tickets.filter(function(t){return t.status==='resolvido';}).length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🎧 Total Tickets</div><div class="stat-value">'+tickets.length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🔴 Abertos</div><div class="stat-value" style="color:#ef4444">'+tickets.filter(function(t){return t.status==='aberto';}).length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🔄 Em Atendimento</div><div class="stat-value" style="color:#f59e0b">'+tickets.filter(function(t){return t.status==='em_atendimento';}).length+'</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">✅ Resolvidos</div><div class="stat-value" style="color:#16a34a">'+tickets.filter(function(t){return t.status==='resolvido';}).length+'</div></div>';
     html += '</div>';
-        // Filtros
+
+    // Filtros
     html += '<div id="ticket-filtros" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
     html += '<button class="btn btn-ghost btn-sm" style="background:#1a1a2e;color:#fff" data-f="todos">Todos</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="aberto">🔴 Abertos</button>';
@@ -2778,19 +3227,56 @@ async function renderAtendimento() {
     html += '<button class="btn btn-ghost btn-sm" data-f="troca">🔁 Trocas</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="resolvido">✅ Resolvidos</button>';
     html += '</div>';
+
     if (!tickets.length) {
       html += '<div class="vazio">Nenhum ticket de atendimento ainda</div>';
       ct().innerHTML = html;
       return;
     }
+
     // Lista de tickets
     html += '<div id="tickets-lista">';
     html += _renderTicketsList(tickets, 'todos');
     html += '</div>';
+
     window._todosTickets = tickets;
     ct().innerHTML = html;
+    _attachAtendimento();
   } catch(e) { errMsg('Erro: '+e.message); }
 }
+
+function _attachAtendimento() {
+  // Filtros via event delegation
+  var filtros = document.getElementById('ticket-filtros');
+  if (filtros) filtros.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-f]');
+    if (!btn) return;
+    filtros.querySelectorAll('[data-f]').forEach(function(b) {
+      b.style.background = ''; b.style.color = '';
+    });
+    btn.style.background = '#1a1a2e'; btn.style.color = '#fff';
+    var lista = document.getElementById('tickets-lista');
+    if (lista && window._todosTickets) lista.innerHTML = _renderTicketsList(window._todosTickets, btn.getAttribute('data-f'));
+    _attachTicketsActions();
+  });
+  _attachTicketsActions();
+}
+
+function _attachTicketsActions() {
+  // Atualizar ticket via data-tid/data-tact
+  ct().querySelectorAll('[data-tid]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      atualizarTicket(this.getAttribute('data-tid'), this.getAttribute('data-tact'));
+    });
+  });
+  // Abrir foto via data-foto
+  ct().querySelectorAll('[data-foto]').forEach(function(img) {
+    img.addEventListener('click', function() {
+      abrirFoto(this.getAttribute('data-foto'));
+    });
+  });
+}
+
 function _renderTicketsList(tickets, filtro) {
   var lista = filtro === 'todos' ? tickets : tickets.filter(function(t) {
     if (filtro === 'problema') return t.tipo === 'problema';
@@ -2798,25 +3284,27 @@ function _renderTicketsList(tickets, filtro) {
     return t.status === filtro;
   });
   if (!lista.length) return '<div class="vazio">Nenhum ticket nesta categoria</div>';
+
   var corStatus = {aberto:'#ef4444', em_atendimento:'#f59e0b', resolvido:'#16a34a'};
-  var labelStatus = {aberto:'\ud83d\udd34 Aberto', em_atendimento:'\ud83d\udd04 Em Atendimento', resolvido:'\u2705 Resolvido'};
+  var labelStatus = {aberto:'🔴 Aberto', em_atendimento:'🔄 Em Atendimento', resolvido:'✅ Resolvido'};
   var corTipo = {problema:'#ef4444', troca:'#2563eb'};
-  var labelTipo = {problema:'\u26a0\ufe0f Problema', troca:'\ud83d\udd01 Troca'};
-  var html = '<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Pedido</th><th>Descri\u00e7\u00e3o</th><th>M\u00eddias</th><th>Status</th><th>Data</th><th>A\u00e7\u00f5es</th></tr></thead><tbody>';
+  var labelTipo = {problema:'⚠️ Problema', troca:'🔁 Troca'};
+
+  var html = '<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Pedido</th><th>Descrição</th><th>Mídias</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead><tbody>';
   lista.slice().reverse().forEach(function(t) {
     var midias = t.midias || [];
     html += '<tr>';
     html += '<td><div style="font-weight:600;font-size:13px">'+( t.nome||t.telefone)+'</div><div style="font-size:11px;color:#9ca3af">'+t.telefone+'</div></td>';
     html += '<td><span style="background:'+(corTipo[t.tipo]||'#6b7280')+'20;color:'+(corTipo[t.tipo]||'#6b7280')+';padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">'+(labelTipo[t.tipo]||t.tipo)+'</span></td>';
-    html += '<td style="font-size:12px">'+(t.pedido||'\u2014')+'</td>';
-    html += '<td style="max-width:200px;font-size:12px;color:#374151">'+(t.descricao||'\u2014').substring(0,80)+(t.descricao&&t.descricao.length>80?'...':'')+'</td>';
+    html += '<td style="font-size:12px">'+(t.pedido||'—')+'</td>';
+    html += '<td style="max-width:200px;font-size:12px;color:#374151">'+(t.descricao||'—').substring(0,80)+(t.descricao&&t.descricao.length>80?'...':'')+'</td>';
     html += '<td>';
     midias.forEach(function(m) {
       if (m.tipo==='image') html += '<img src="'+m.url+'" data-foto="'+m.url+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
-      else if (m.tipo==='video') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">\ud83c\udfa5 v\u00eddeo</a> ';
-      else if (m.tipo==='document') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">\ud83d\udcc4 doc</a> ';
+      else if (m.tipo==='video') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">🎥 vídeo</a> ';
+      else if (m.tipo==='document') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">📄 doc</a> ';
     });
-    if (!midias.length) html += '<span style="color:#9ca3af;font-size:12px">\u2014</span>';
+    if (!midias.length) html += '<span style="color:#9ca3af;font-size:12px">—</span>';
     html += '</td>';
     html += '<td><span style="background:'+(corStatus[t.status]||'#6b7280')+'20;color:'+(corStatus[t.status]||'#6b7280')+';padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">'+(labelStatus[t.status]||t.status)+'</span></td>';
     html += '<td style="font-size:11px;color:#9ca3af;white-space:nowrap">'+fmtDate(t.criado_em)+'</td>';
@@ -2826,8 +3314,8 @@ function _renderTicketsList(tickets, filtro) {
       html += '<button data-tid="'+t.id+'" data-tact="resolvido" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
     }
     if (t.telefone) {
-      var wppMsg = encodeURIComponent('Ol\u00e1 '+( t.nome||'').split(' ')[0]+'! Aqui \u00e9 da Kcique Rel\u00f3gios. Estamos analisando seu atendimento e j\u00e1 entramos em contato em breve! \u231a');
-      html += ' <a href="https://wa.me/55'+t.telefone.replace(/\\D/g,'')+"?text="+wppMsg+'" target="_blank" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none">\ud83d\udcac</a>';
+      var wppMsg = encodeURIComponent('Olá '+( t.nome||'').split(' ')[0]+'! Aqui é da Kcique Relógios. Estamos analisando seu atendimento e já entramos em contato em breve! ⌚');
+      html += ' <a href="https://wa.me/55'+t.telefone.replace(/\D/g,'')+"?text="+wppMsg+'" target="_blank" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none">💬</a>';
     }
     html += '</td>';
     html += '</tr>';
@@ -2835,12 +3323,14 @@ function _renderTicketsList(tickets, filtro) {
   html += '</tbody></table></div>';
   return html;
 }
+
 function filtrarTickets(btn, filtro) {
   document.querySelectorAll('[data-f]').forEach(function(b){b.style.background='';b.style.color='';});
   btn.style.background='#1a1a2e';btn.style.color='#fff';
   var lista = document.getElementById('tickets-lista');
   if (lista && window._todosTickets) lista.innerHTML = _renderTicketsList(window._todosTickets, filtro);
 }
+
 async function atualizarTicket(id, status) {
   await fetch(API+'/api/bot?action=atualizar-ticket&secret='+S, {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -2848,6 +3338,12 @@ async function atualizarTicket(id, status) {
   });
   renderAtendimento();
 }
+
+// ===== INBOX =====
+var _inboxContatos = [];
+var _inboxContatoAtivo = null;
+var _inboxMsgs = [];
+
 async function renderInbox() {
   loading();
   try {
@@ -2860,23 +3356,27 @@ async function renderInbox() {
 
     var html = '';
 
-    // \u2500\u2500 M\u00c9TRICAS \u2500\u2500
+    // ── MÉTRICAS ──
     var msgsOntem = stats.msgsOntem || 0;
     var varMsgs = msgsOntem > 0 ? ((stats.msgsHoje - msgsOntem) / msgsOntem * 100).toFixed(0) : null;
+    // Botão limpar LIDs
+    html += '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">';
+    html += '<button onclick="limparLids()" style="padding:7px 14px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">🗑 Limpar contatos inválidos (LID)</button>';
+    html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
-    html += '<div class="stat-card" style="border-left:3px solid #25d366"><div class="stat-label">\ud83d\udcac Mensagens Hoje</div><div class="stat-value">'+stats.msgsHoje+'</div>'+(varMsgs!==null?'<div class="stat-sub" style="color:'+(varMsgs>=0?'#16a34a':'#ef4444')+'">'+(varMsgs>=0?'\u25b2':'\u25bc')+' '+Math.abs(varMsgs)+'% vs ontem</div>':'')+'</div>';
-    html += '<div class="stat-card"><div class="stat-label">\ud83d\udc65 Total de Contatos</div><div class="stat-value">'+stats.totalContatos+'</div></div>';
+    html += '<div class="stat-card" style="border-left:3px solid #25d366"><div class="stat-label">💬 Mensagens Hoje</div><div class="stat-value">'+stats.msgsHoje+'</div>'+(varMsgs!==null?'<div class="stat-sub" style="color:'+(varMsgs>=0?'#16a34a':'#ef4444')+'">'+(varMsgs>=0?'▲':'▼')+' '+Math.abs(varMsgs)+'% vs ontem</div>':'')+'</div>';
+    html += '<div class="stat-card"><div class="stat-label">👥 Total de Contatos</div><div class="stat-value">'+stats.totalContatos+'</div></div>';
     var clientes = _inboxContatos.filter(function(c){return c.ehCliente;}).length;
-    html += '<div class="stat-card" style="border-left:3px solid #2563eb"><div class="stat-label">\ud83d\udecd Clientes Identificados</div><div class="stat-value">'+clientes+'</div><div class="stat-sub">'+Math.round(clientes/Math.max(1,stats.totalContatos)*100)+'% dos contatos</div></div>';
+    html += '<div class="stat-card" style="border-left:3px solid #2563eb"><div class="stat-label">🛍 Clientes Identificados</div><div class="stat-value">'+clientes+'</div><div class="stat-sub">'+Math.round(clientes/Math.max(1,stats.totalContatos)*100)+'% dos contatos</div></div>';
     var naoLidas = _inboxContatos.reduce(function(s,c){return s+(c.naoLidas||0);},0);
-    html += '<div class="stat-card" style="border-left:3px solid #f59e0b"><div class="stat-label">\ud83d\udd14 N\u00e3o Lidas</div><div class="stat-value" style="color:'+(naoLidas>0?'#f59e0b':'#111')+'">'+naoLidas+'</div></div>';
+    html += '<div class="stat-card" style="border-left:3px solid #f59e0b"><div class="stat-label">🔔 Não Lidas</div><div class="stat-value" style="color:'+(naoLidas>0?'#f59e0b':'#111')+'">'+naoLidas+'</div></div>';
     html += '</div>';
 
-    // \u2500\u2500 GR\u00c1FICO \u2500\u2500
+    // ── GRÁFICO ──
     if (stats.dias && stats.dias.length) {
       var maxVal = Math.max.apply(null, stats.dias.map(function(d){return d.total;})) || 1;
       html += '<div class="stat-card" style="margin-bottom:20px;padding:20px">';
-      html += '<div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em">Mensagens recebidas \u2014 \u00faltimos 30 dias</div>';
+      html += '<div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em">Mensagens recebidas — últimos 30 dias</div>';
       html += '<div style="display:flex;align-items:flex-end;gap:3px;height:80px">';
       stats.dias.forEach(function(d) {
         var h = Math.max(4, Math.round((d.total/maxVal)*80));
@@ -2892,25 +3392,25 @@ async function renderInbox() {
       html += '</div>';
     }
 
-    // \u2500\u2500 LAYOUT CONVERSAS \u2500\u2500
+    // ── LAYOUT CONVERSAS ──
     html += '<div style="display:grid;grid-template-columns:320px 1fr;gap:0;background:#fff;border-radius:12px;border:1px solid #e8eaf0;overflow:hidden;height:600px">';
 
     // Lista de contatos
     html += '<div style="border-right:1px solid #e8eaf0;display:flex;flex-direction:column;height:600px">';
     html += '<div style="padding:12px;border-bottom:1px solid #f3f4f6">';
-    html += '<input id="inbox-busca" placeholder="\ud83d\udd0d Buscar conversa..." style="width:100%;padding:8px 12px;border:1px solid #e8eaf0;border-radius:8px;font-size:13px;outline:none;font-family:inherit">';
+    html += '<input id="inbox-busca" placeholder="🔍 Buscar conversa..." style="width:100%;padding:8px 12px;border:1px solid #e8eaf0;border-radius:8px;font-size:13px;outline:none;font-family:inherit">';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">';
     ['Todos','cliente','possivel_cliente','vip','fornecedor','sem_etiqueta'].forEach(function(f,i){
       html += '<button class="inbox-filtro'+(i===0?' ativo':'')+'" data-f="'+f+'" style="padding:3px 10px;border-radius:20px;border:1px solid #e8eaf0;background:'+(i===0?'#1a1a2e':'#fff')+';color:'+(i===0?'#fff':'#6b7280')+';font-size:11px;cursor:pointer;font-weight:600">'+
-        (f==='Todos'?'Todos':f==='cliente'?'\ud83d\udecd Cliente':f==='possivel_cliente'?'\ud83d\udc64 Poss\u00edvel':f==='vip'?'\u2b50 VIP':f==='fornecedor'?'\ud83d\udce6 Fornecedor':'Sem etiqueta')+'</button>';
+        (f==='Todos'?'Todos':f==='cliente'?'🛍 Cliente':f==='possivel_cliente'?'👤 Possível':f==='vip'?'⭐ VIP':f==='fornecedor'?'📦 Fornecedor':'Sem etiqueta')+'</button>';
     });
     html += '</div>';
     html += '<div id="inbox-lista" style="flex:1;overflow-y:auto">';
     html += _renderContatosLista(_inboxContatos, 'Todos', '');
     html += '</div></div>';
 
-    // \u00c1rea da conversa
+    // Área da conversa
     html += '<div id="inbox-conversa" style="display:flex;flex-direction:column;height:600px">';
     html += '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px">Selecione uma conversa</div>';
     html += '</div>';
@@ -2923,7 +3423,7 @@ async function renderInbox() {
 
 function _etiquetaCor(etiqueta) {
   var cores = {cliente:'#16a34a',possivel_cliente:'#2563eb',vip:'#f59e0b',fornecedor:'#7c3aed',bloqueado:'#ef4444'};
-  var labels = {cliente:'Cliente',possivel_cliente:'Poss\u00edvel cliente',vip:'VIP',fornecedor:'Fornecedor',bloqueado:'Bloqueado'};
+  var labels = {cliente:'Cliente',possivel_cliente:'Possível cliente',vip:'VIP',fornecedor:'Fornecedor',bloqueado:'Bloqueado'};
   return { cor: cores[etiqueta]||'#9ca3af', label: labels[etiqueta]||etiqueta };
 }
 
@@ -2943,7 +3443,7 @@ function _renderContatosLista(contatos, filtro, busca) {
     var et = c.etiqueta ? _etiquetaCor(c.etiqueta) : null;
     var hora = c.ultimoContato ? new Date(c.ultimoContato).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     var iniciais = (c.nome||c.phone||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
-    return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">'
+    return '<div class="inbox-item" data-phone="'+c.phone+'" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid #f9f9f9;background:'+(isAtivo?'#f0fdf4':'#fff')+';border-left:3px solid '+(isAtivo?'#25d366':'transparent')+'">' 
       + '<div style="position:relative;flex-shrink:0">'
         + (c.foto ? '<img src="'+c.foto+'" style="width:42px;height:42px;border-radius:50%;object-fit:cover">'
           : '<div style="width:42px;height:42px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6b7280">'+iniciais+'</div>')
@@ -2966,7 +3466,7 @@ function _renderContatosLista(contatos, filtro, busca) {
 
 async function abrirConversa(phone) {
   _inboxContatoAtivo = phone;
-  // Atualizar sele\u00e7\u00e3o visual
+  // Atualizar seleção visual
   document.querySelectorAll('.inbox-item').forEach(function(el){
     var isAtivo = el.getAttribute('data-phone') === phone;
     el.style.background = isAtivo ? '#f0fdf4' : '#fff';
@@ -2997,7 +3497,7 @@ async function abrirConversa(phone) {
       :'<div style="width:38px;height:38px;border-radius:50%;background:#e8eaf0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#6b7280">'+iniciais+'</div>');
     html += '<div style="flex:1">';
     html += '<div style="font-size:14px;font-weight:600">'+(contato.nome||phone)+'</div>';
-    html += '<div style="font-size:11px;color:#9ca3af">'+phone+(contato.ehCliente?' \u00b7 <span style="color:#25d366;font-weight:600">\u2713 Cliente</span>':'')+'</div>';
+    html += '<div style="font-size:11px;color:#9ca3af">'+phone+(contato.ehCliente?' · <span style="color:#25d366;font-weight:600">✓ Cliente</span>':'')+'</div>';
     html += '</div>';
     // Painel direito: etiqueta + identificar
     html += '<div style="display:flex;align-items:center;gap:8px">';
@@ -3011,7 +3511,7 @@ async function abrirConversa(phone) {
     }
     if (contato.dadosShopify) {
       var sh = contato.dadosShopify;
-      html += '<div style="font-size:11px;color:#374151;background:#f9fafb;padding:5px 10px;border-radius:8px;border:1px solid #e8eaf0">'+sh.totalPedidos+' pedidos \u00b7 R$ '+sh.totalGasto.toFixed(2).replace('.',',')+' gastos</div>';
+      html += '<div style="font-size:11px;color:#374151;background:#f9fafb;padding:5px 10px;border-radius:8px;border:1px solid #e8eaf0">'+sh.totalPedidos+' pedidos · R$ '+sh.totalGasto.toFixed(2).replace('.',',')+' gastos</div>';
     }
     html += '</div>';
     html += '</div>';
@@ -3029,7 +3529,7 @@ async function abrirConversa(phone) {
 
     // Input resposta
     html += '<div style="padding:10px 14px;border-top:1px solid #e8eaf0;display:flex;gap:8px;align-items:flex-end;background:#fff">';
-    html += '<textarea id="inbox-reply" placeholder="Digite uma mensagem..." style="flex:1;padding:9px 12px;border:1px solid #e8eaf0;border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;min-height:40px;max-height:120px;line-height:1.4" rows="1" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'"></textarea>';
+    html += '<textarea id="inbox-reply" placeholder="Digite uma mensagem..." style="flex:1;padding:9px 12px;border:1px solid #e8eaf0;border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;min-height:40px;max-height:120px;line-height:1.4" rows="1" data-action="auto-resize"></textarea>';
     html += '<button data-action="enviar-reply" data-phone="'+phone+'" style="width:40px;height:40px;border-radius:50%;background:#25d366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
     html += '<svg width="18" height="18" fill="#fff" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg></button>';
     html += '</div>';
@@ -3045,7 +3545,7 @@ async function abrirConversa(phone) {
       if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); enviarResposta(phone); }
     });
 
-    // Atualizar badge de n\u00e3o lidas na lista
+    // Atualizar badge de não lidas na lista
     var item = document.querySelector('.inbox-item[data-phone="'+phone+'"]');
     if (item) {
       var badge = item.querySelector('[style*="border-radius:50%"]');
@@ -3073,19 +3573,19 @@ function _renderMensagem(msg) {
     conteudo = '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">'+(msg.texto||'')+'</div>';
   } else if (msg.tipo === 'image') {
     conteudo = msg.mediaThumbnail || msg.mediaUrl
-      if (m.tipo==='image') html += '<img src="'+m.url+'" data-foto="'+m.url+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
+      ? '<div style="cursor:pointer" data-action="abrir-foto" data-url="'+msg.mediaUrl+'">'
         + '<img src="'+(msg.mediaThumbnail||msg.mediaUrl)+'" style="max-width:200px;border-radius:8px;display:block">'
         + (msg.texto ? '<div style="font-size:12px;margin-top:4px;color:#374151">'+msg.texto+'</div>' : '')
         + '</div>'
-      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">📷 Foto — clique para ver</div>';
+      : '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">📷 Foto — clique para ver</div>';
   } else if (msg.tipo === 'video') {
-      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎥 Vídeo — clique para ver</div>';
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎥 Vídeo — clique para ver</div>';
   } else if (msg.tipo === 'audio') {
-      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎤 Áudio — clique para ouvir</div>';
+    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎤 Áudio — clique para ouvir</div>';
   } else if (msg.tipo === 'document') {
-    conteudo = '<a href="'+msg.mediaUrl+'" target="_blank" style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#2563eb;display:block;text-decoration:none">\ud83d\udcc4 Documento \u2014 clique para baixar</a>';
+    conteudo = '<a href="'+msg.mediaUrl+'" target="_blank" style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#2563eb;display:block;text-decoration:none">📄 Documento — clique para baixar</a>';
   } else if (msg.tipo === 'sticker') {
-    conteudo = msg.mediaUrl ? '<img src="'+msg.mediaUrl+'" style="width:80px">' : '\ud83c\udfad Sticker';
+    conteudo = msg.mediaUrl ? '<img src="'+msg.mediaUrl+'" style="width:80px">' : '🎭 Sticker';
   }
 
   return '<div style="display:flex;justify-content:'+align+';margin-bottom:2px">'
@@ -3137,9 +3637,9 @@ async function identificarCliente(phone) {
   }).then(r=>r.json());
   if (r.ok) {
     if (r.shopify.ehCliente) {
-      alert('Cliente identificado: '+r.shopify.nome+' - '+r.shopify.totalPedidos+' pedidos');
+      alert('Cliente identificado: ' + r.shopify.nome + ' - ' + r.shopify.totalPedidos + ' pedidos');
     } else {
-      alert('N\u00e3o encontrado como cliente no Shopify.');
+      alert('Não encontrado como cliente no Shopify.');
     }
     abrirConversa(phone);
   }
@@ -3147,26 +3647,96 @@ async function identificarCliente(phone) {
 
 function carregarMidia(url, el) {
   if (!url) return;
-  el.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir m\u00eddia \u2192</a>';
+  el.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
+}
+
+async function limparLids() {
+  if (!confirm('Remover todos os contatos com número inválido (LID)?')) return;
+  var r = await fetch(API+'/api/inbox?action=limpar-lids&secret='+S, {method:'POST'}).then(r=>r.json());
+  if (r.ok) { alert('✅ ' + r.removidos + ' contatos inválidos removidos'); renderInbox(); }
+  else { alert('❌ Erro: ' + (r.erro||'falha')); }
 }
 
 function _attachInbox() {
-  // Clicar em contato
-  ct().addEventListener('click', function(e) {
-    var item = e.target.closest('.inbox-item');
-    if (item) abrirConversa(item.getAttribute('data-phone'));
+  // Mostrar botão delete no hover
+  ct().addEventListener('mouseover', function(e) {
+    var wrapper = e.target.closest('[style*="position:relative"]');
+    if (wrapper) {
+      var btn = wrapper.querySelector('.inbox-del-btn');
+      if (btn) btn.style.opacity = '1';
+    }
   });
-  // Filtros
+  ct().addEventListener('mouseout', function(e) {
+    var wrapper = e.target.closest('[style*="position:relative"]');
+    if (wrapper) {
+      var btn = wrapper.querySelector('.inbox-del-btn');
+      if (btn) btn.style.opacity = '0';
+    }
+  });
   ct().addEventListener('click', function(e) {
-    var btn = e.target.closest('.inbox-filtro');
-    if (!btn) return;
-    document.querySelectorAll('.inbox-filtro').forEach(function(b){
-      b.style.background='#fff'; b.style.color='#6b7280'; b.style.borderColor='#e8eaf0';
-    });
-    btn.style.background='#1a1a2e'; btn.style.color='#fff';
-    var lista = document.getElementById('inbox-lista');
-    var busca = (document.getElementById('inbox-busca')||{}).value||'';
-    if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, btn.getAttribute('data-f'), busca);
+    // Deletar conversa
+    var delBtn = e.target.closest('.inbox-del-btn');
+    if (delBtn) {
+      e.stopPropagation();
+      var phone = delBtn.getAttribute('data-phone');
+      var nome = (_inboxContatos.find(function(c){return c.phone===phone;})||{}).nome || phone;
+      if (!confirm('Apagar conversa com ' + nome + '?')) return;
+      fetch(API+'/api/inbox?action=deletar-conversa&secret='+S, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({phone})
+      }).then(function(r){return r.json();}).then(function(d){
+        if (d.ok) {
+          _inboxContatos = _inboxContatos.filter(function(c){return c.phone!==phone;});
+          var lista = document.getElementById('inbox-lista');
+          if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, 'Todos', '');
+          if (_inboxContatoAtivo === phone) {
+            _inboxContatoAtivo = null;
+            var area = document.getElementById('inbox-conversa');
+            if (area) area.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px">Selecione uma conversa</div>';
+          }
+        }
+      });
+      return;
+    }
+    // Contato
+    var item = e.target.closest('.inbox-item');
+    if (item) { abrirConversa(item.getAttribute('data-phone')); return; }
+    // Filtro
+    var filtroBtn = e.target.closest('.inbox-filtro');
+    if (filtroBtn) {
+      document.querySelectorAll('.inbox-filtro').forEach(function(b){b.style.background='#fff';b.style.color='#6b7280';});
+      filtroBtn.style.background='#1a1a2e'; filtroBtn.style.color='#fff';
+      var lista = document.getElementById('inbox-lista');
+      var busca = (document.getElementById('inbox-busca')||{}).value||'';
+      if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, filtroBtn.getAttribute('data-f'), busca);
+      return;
+    }
+    // Identificar cliente
+    var idBtn = e.target.closest('[data-action="identificar"]');
+    if (idBtn) { identificarCliente(idBtn.getAttribute('data-phone')); return; }
+    // Enviar reply
+    var sendBtn = e.target.closest('[data-action="enviar-reply"]');
+    if (sendBtn) { enviarResposta(sendBtn.getAttribute('data-phone')); return; }
+    // Abrir foto
+    var fotoDiv = e.target.closest('[data-action="abrir-foto"]');
+    if (fotoDiv) { abrirFoto(fotoDiv.getAttribute('data-url')); return; }
+    // Carregar mídia lazy
+    var midiaDiv = e.target.closest('[data-action="carregar-midia"]');
+    if (midiaDiv) {
+      var url = midiaDiv.getAttribute('data-url');
+      midiaDiv.outerHTML = '<a href="'+url+'" target="_blank" style="color:#2563eb;font-size:12px">Abrir mídia →</a>';
+      return;
+    }
+  });
+  // Select etiqueta change via event delegation
+  ct().addEventListener('change', function(e) {
+    var sel = e.target.closest('#inbox-etiqueta');
+    if (sel) trocarEtiqueta(sel.getAttribute('data-phone'), sel.value);
+  });
+  // Textarea auto-resize
+  ct().addEventListener('input', function(e) {
+    var ta = e.target.closest('[data-action="auto-resize"]');
+    if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
   });
   // Busca
   var busca = document.getElementById('inbox-busca');
@@ -3176,423 +3746,10 @@ function _attachInbox() {
     if (lista) lista.innerHTML = _renderContatosLista(_inboxContatos, filtroAtivo, this.value);
   });
 }
-// ===== ABA NOVO PEDIDO =====
-// 1. Adicionar no objeto TITLES:
-//    novopedido: 'Novo Pedido'
-//
-// 2. Adicionar no nav://
-// 3. Adicionar no objeto fns do renderAba:
-//    novopedido: renderNovoPedido
-//
-// 4. Colar o código abaixo no <script> antes de "// INICIAR"
-
-var _npProdutos = [];
-var _npCarrinho = [];
-var _npFrete = null;
-
-async function renderNovoPedido() {
-  loading();
-
-  // Carregar catalogo de produtos
-  try {
-    if (!_npProdutos.length) {
-      var r = await fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(r=>r.json());
-      _npProdutos = r.produtos || [];
-    }
-  } catch(e) {}
-
-  var html = '';
-  html += '<div style="max-width:900px">';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">';
-
-  // COLUNA ESQUERDA: formulario
-  html += '<div>';
-
-  // Cliente
-  html += '<div class="form-card">';
-  html += '<div class="form-title">👤 Dados do Cliente</div>';
-  html += '<div class="field"><label>Nome completo *</label><input id="np-nome" placeholder="Ex: João Silva"></div>';
-  html += '<div class="row-2">';
-  html += '<div class="field"><label>Telefone *</label><input id="np-tel" placeholder="11999999999" type="tel"></div>';
-  html += '<div class="field"><label>Email</label><input id="np-email" placeholder="joao@email.com" type="email"></div>';
-  html += '</div>';
-  html += '<div class="field"><label>CPF (para etiqueta ME)</label><input id="np-cpf" placeholder="000.000.000-00"></div>';
-  html += '</div>';
-
-  // Endereço
-  html += '<div class="form-card">';
-  html += '<div class="form-title">📍 Endereço de Entrega</div>';
-  html += '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">';
-  html += '<div class="field" style="flex:1;margin-bottom:0"><label>CEP *</label><input id="np-cep" placeholder="00000-000" maxlength="9" oninput="this.value=this.value.replace(/\D/g,\'\').replace(/^(\d{5})(\d)/,\'$1-$2\')"></div>';
-  html += '<button class="btn btn-ghost btn-sm" id="btn-buscar-cep" style="margin-bottom:1px">Buscar</button>';
-  html += '</div>';
-  html += '<div class="row-2">';
-  html += '<div class="field"><label>Rua *</label><input id="np-rua" placeholder="Rua das Flores"></div>';
-  html += '<div class="field"><label>Número *</label><input id="np-num" placeholder="123"></div>';
-  html += '</div>';
-  html += '<div class="row-2">';
-  html += '<div class="field"><label>Complemento</label><input id="np-comp" placeholder="Apto 42"></div>';
-  html += '<div class="field"><label>Bairro *</label><input id="np-bairro" placeholder="Centro"></div>';
-  html += '</div>';
-  html += '<div class="row-2">';
-  html += '<div class="field"><label>Cidade *</label><input id="np-cidade" placeholder="São Paulo"></div>';
-  html += '<div class="field"><label>Estado *</label><input id="np-uf" placeholder="SP" maxlength="2" style="text-transform:uppercase"></div>';
-  html += '</div>';
-  html += '</div>';
-
-  // Pagamento
-  html += '<div class="form-card">';
-  html += '<div class="form-title">💳 Pagamento</div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
-  [['pix','PIX'],['credito','Cartão Crédito'],['debito','Cartão Débito'],['dinheiro','Dinheiro']].forEach(function(op){
-    html += '<label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border-radius:10px;border:1.5px solid #e8eaf0;cursor:pointer;font-size:12px;font-weight:600;text-align:center;transition:all .15s" id="npay-lbl-'+op[0]+'">';
-    html += '<input type="radio" name="np-pagamento" value="'+op[0]+'" style="display:none">';
-    html += '<span style="font-size:20px">'+(op[0]==='pix'?'🟢':op[0]==='credito'?'💳':op[0]==='debito'?'💵':'💰')+'</span>';
-    html += op[1]+'</label>';
-  });
-  html += '</div>';
-  html += '</div>';
-
-  // Observação
-  html += '<div class="form-card">';
-  html += '<div class="field"><label>Observação (opcional)</label><textarea id="np-obs" rows="2" placeholder="Ex: Embalar como presente"></textarea></div>';
-  html += '</div>';
-
-  html += '</div>'; // fim coluna esquerda
-
-  // COLUNA DIREITA: produtos + frete + resumo
-  html += '<div>';
-
-  // Busca de produtos
-  html += '<div class="form-card">';
-  html += '<div class="form-title">📦 Produtos</div>';
-  html += '<div style="position:relative">';
-  html += '<input id="np-busca-prod" placeholder="Buscar produto..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit">';
-  html += '<div id="np-sugestoes" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #e8eaf0;border-radius:8px;max-height:220px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>';
-  html += '</div>';
-  // Carrinho
-  html += '<div id="np-carrinho" style="margin-top:12px"></div>';
-  html += '</div>';
-
-  // Frete
-  html += '<div class="form-card" id="np-frete-card" style="display:none">';
-  html += '<div class="form-title">🚚 Calcular Frete</div>';
-  html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">';
-  html += '<span id="np-frete-info" style="font-size:13px;color:#6b7280">Preencha o CEP para calcular</span>';
-  html += '<button class="btn btn-ghost btn-sm" id="btn-calc-frete">Calcular</button>';
-  html += '</div>';
-  html += '<div id="np-fretes-opcoes"></div>';
-  html += '</div>';
-
-  // Resumo + confirmar
-  html += '<div class="form-card" id="np-resumo-card" style="display:none">';
-  html += '<div class="form-title">✅ Resumo do Pedido</div>';
-  html += '<div id="np-resumo-body"></div>';
-  html += '<div style="margin-top:16px"><button class="btn btn-primary" id="btn-criar-pedido" style="width:100%;padding:14px;font-size:15px">🛒 Criar Pedido + Gerar Etiqueta ME</button></div>';
-  html += '<div id="np-resultado" style="margin-top:12px;font-size:13px"></div>';
-  html += '</div>';
-
-  html += '</div>'; // fim coluna direita
-  html += '</div>'; // fim grid
-  html += '</div>'; // fim max-width
-
-  ct().innerHTML = html;
-  _attachNovoPedido();
-}
-
-function _attachNovoPedido() {
-  // Busca de CEP
-  var btnCep = get('btn-buscar-cep');
-  if (btnCep) btnCep.addEventListener('click', async function() {
-    var cep = val('np-cep').replace(/\D/g,'');
-    if (cep.length !== 8) return alert('CEP invalido');
-    btnCep.textContent = 'Buscando...'; btnCep.disabled = true;
-    try {
-      var r = await fetch(API+'/api/admin?secret='+S+'&action=buscar-cep&cep='+cep).then(r=>r.json());
-      if (r.erro) { alert('CEP nao encontrado'); }
-      else {
-        if (get('np-rua') && !val('np-rua')) get('np-rua').value = r.logradouro || '';
-        if (get('np-bairro')) get('np-bairro').value = r.bairro || '';
-        if (get('np-cidade')) get('np-cidade').value = r.cidade || '';
-        if (get('np-uf')) get('np-uf').value = r.estado || '';
-        if (get('np-frete-info')) get('np-frete-info').textContent = 'CEP: ' + val('np-cep');
-        var fc = get('np-frete-card'); if (fc) fc.style.display = 'block';
-      }
-    } catch(e) { alert('Erro: '+e.message); }
-    btnCep.textContent = 'Buscar'; btnCep.disabled = false;
-  });
-
-  // Pagamento: highlight selecionado
-  ct().addEventListener('change', function(e) {
-    if (e.target.name === 'np-pagamento') {
-      document.querySelectorAll('[id^="npay-lbl-"]').forEach(function(l) {
-        l.style.border = '1.5px solid #e8eaf0';
-        l.style.background = '#fff';
-      });
-      var lbl = get('npay-lbl-'+e.target.value);
-      if (lbl) { lbl.style.border = '1.5px solid #25d366'; lbl.style.background = '#f0fdf4'; }
-      _npAtualizarResumo();
-    }
-  });
-
-  // Busca de produto
-  var busca = get('np-busca-prod');
-  if (busca) busca.addEventListener('input', function() {
-    var q = this.value.toLowerCase().trim();
-    var sug = get('np-sugestoes');
-    if (!q || !sug) { if (sug) sug.style.display = 'none'; return; }
-    var matches = _npProdutos.filter(function(p) {
-      return (p.titulo||p.nome||'').toLowerCase().includes(q);
-    }).slice(0, 8);
-    if (!matches.length) { sug.style.display = 'none'; return; }
-    sug.innerHTML = matches.map(function(p) {
-      return '<div class="np-sug-item" data-pid="'+p.id+'" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:13px">'
-        + (p.imagem ? '<img src="'+p.imagem+'" style="width:32px;height:32px;object-fit:cover;border-radius:5px;flex-shrink:0">' : '<div style="width:32px;height:32px;background:#f3f4f6;border-radius:5px;flex-shrink:0"></div>')
-        + '<div><div style="font-weight:600">'+( p.titulo||p.nome||'')+'</div><div style="font-size:11px;color:#9ca3af">R$ '+parseFloat(p.preco||0).toFixed(2).replace('.',',')+'</div></div>'
-        + '</div>';
-    }).join('');
-    sug.style.display = 'block';
-  });
-
-  // Clicar na sugestão
-  ct().addEventListener('click', function(e) {
-    var item = e.target.closest('.np-sug-item');
-    if (item) {
-      var pid = item.getAttribute('data-pid');
-      var prod = _npProdutos.find(function(p){ return String(p.id) === String(pid); });
-      if (!prod) return;
-      var sug = get('np-sugestoes'); if (sug) sug.style.display = 'none';
-      var busca = get('np-busca-prod'); if (busca) busca.value = '';
-      _npAdicionarProduto(prod);
-      return;
-    }
-    // Botões de quantidade e remover
-    var btnMinus = e.target.closest('[data-action="np-minus"]');
-    if (btnMinus) { _npAlterarQtd(btnMinus.getAttribute('data-pid'), -1); return; }
-    var btnPlus = e.target.closest('[data-action="np-plus"]');
-    if (btnPlus) { _npAlterarQtd(btnPlus.getAttribute('data-pid'), +1); return; }
-    var btnRemove = e.target.closest('[data-action="np-remove"]');
-    if (btnRemove) { _npRemoverProduto(btnRemove.getAttribute('data-pid')); return; }
-
-    // Calcular frete
-    var btnFrete = e.target.closest('#btn-calc-frete');
-    if (btnFrete) { _npCalcularFrete(); return; }
-
-    // Selecionar opção de frete
-    var freteOp = e.target.closest('[data-frete]');
-    if (freteOp) {
-      document.querySelectorAll('[data-frete]').forEach(function(f) {
-        f.style.border = '1.5px solid #e8eaf0'; f.style.background = '#fff';
-      });
-      freteOp.style.border = '1.5px solid #25d366'; freteOp.style.background = '#f0fdf4';
-      _npFrete = JSON.parse(decodeURIComponent(freteOp.getAttribute('data-frete')));
-      _npAtualizarResumo();
-      return;
-    }
-
-    // Criar pedido
-    var btnCriar = e.target.closest('#btn-criar-pedido');
-    if (btnCriar) { _npCriarPedido(); return; }
-  });
-
-  // Fechar sugestões ao clicar fora
-  document.addEventListener('click', function handler(e) {
-    var sug = get('np-sugestoes');
-    if (sug && !sug.contains(e.target) && e.target !== get('np-busca-prod')) {
-      sug.style.display = 'none';
-    }
-  });
-}
-
-function _npAdicionarProduto(prod) {
-  var existente = _npCarrinho.find(function(p) { return String(p.id) === String(prod.id); });
-  if (existente) { existente.quantidade++; }
-  else { _npCarrinho.push({ id: prod.id, nome: prod.titulo||prod.nome||'', variante: '', preco: Math.round(parseFloat(prod.preco||0)*100), quantidade: 1, imagem: prod.imagem||'' }); }
-  _npRenderCarrinho();
-}
-
-function _npAlterarQtd(pid, delta) {
-  var idx = _npCarrinho.findIndex(function(p){ return String(p.id) === String(pid); });
-  if (idx < 0) return;
-  _npCarrinho[idx].quantidade = Math.max(1, (_npCarrinho[idx].quantidade||1) + delta);
-  _npRenderCarrinho();
-}
-
-function _npRemoverProduto(pid) {
-  _npCarrinho = _npCarrinho.filter(function(p){ return String(p.id) !== String(pid); });
-  _npRenderCarrinho();
-}
-
-function _npRenderCarrinho() {
-  var el = get('np-carrinho');
-  if (!el) return;
-  if (!_npCarrinho.length) {
-    el.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Nenhum produto adicionado</div>';
-    var fc = get('np-frete-card'); if (fc) fc.style.display = 'none';
-    var rc = get('np-resumo-card'); if (rc) rc.style.display = 'none';
-    return;
-  }
-  var html = '';
-  _npCarrinho.forEach(function(p) {
-    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6">';
-    html += (p.imagem ? '<img src="'+p.imagem+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">' : '<div style="width:36px;height:36px;background:#f3f4f6;border-radius:6px;flex-shrink:0"></div>');
-    html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div>';
-    html += '<div style="font-size:11px;color:#9ca3af">R$ '+( p.preco/100).toFixed(2).replace('.',',')+'</div></div>';
-    html += '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">';
-    html += '<button data-action="np-minus" data-pid="'+p.id+'" style="width:24px;height:24px;border-radius:6px;border:1px solid #e8eaf0;background:#f9fafb;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">-</button>';
-    html += '<span style="font-size:13px;font-weight:600;min-width:20px;text-align:center">'+p.quantidade+'</span>';
-    html += '<button data-action="np-plus" data-pid="'+p.id+'" style="width:24px;height:24px;border-radius:6px;border:1px solid #e8eaf0;background:#f9fafb;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">+</button>';
-    html += '</div>';
-    html += '<div style="font-size:12px;font-weight:700;color:#111;flex-shrink:0;min-width:60px;text-align:right">R$ '+(p.preco*p.quantidade/100).toFixed(2).replace('.',',')+'</div>';
-    html += '<button data-action="np-remove" data-pid="'+p.id+'" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;flex-shrink:0">×</button>';
-    html += '</div>';
-  });
-  el.innerHTML = html;
-  var fc = get('np-frete-card'); if (fc) fc.style.display = 'block';
-  _npAtualizarResumo();
-}
-
-async function _npCalcularFrete() {
-  var cep = val('np-cep').replace(/\D/g,'');
-  if (cep.length !== 8) { alert('Preencha o CEP primeiro'); return; }
-  if (!_npCarrinho.length) { alert('Adicione pelo menos um produto'); return; }
-  var btn = get('btn-calc-frete');
-  btn.textContent = 'Calculando...'; btn.disabled = true;
-  try {
-    var r = await fetch(API+'/api/admin?secret='+S+'&action=calcular-frete', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ cep, produtos: _npCarrinho })
-    }).then(r=>r.json());
-    var el = get('np-fretes-opcoes');
-    if (!r.opcoes || !r.opcoes.length) {
-      el.innerHTML = '<div style="color:#ef4444;font-size:13px">Nenhuma opcao de frete disponivel</div>';
-    } else {
-      _npFrete = null;
-      el.innerHTML = r.opcoes.map(function(f) {
-        return '<div data-frete="'+encodeURIComponent(JSON.stringify(f))+'" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:8px;cursor:pointer;margin-bottom:6px;transition:all .15s">'
-          + '<div><div style="font-size:13px;font-weight:600">'+f.empresa+' '+f.nome+'</div><div style="font-size:11px;color:#9ca3af">'+f.prazo+' dias uteis</div></div>'
-          + '<div style="font-size:14px;font-weight:700;color:#111">R$ '+f.preco.toFixed(2).replace('.',',')+'</div>'
-          + '</div>';
-      }).join('');
-    }
-  } catch(e) { alert('Erro ao calcular frete: '+e.message); }
-  btn.textContent = 'Calcular'; btn.disabled = false;
-}
-
-function _npAtualizarResumo() {
-  var rc = get('np-resumo-card');
-  if (!rc) return;
-  if (!_npCarrinho.length || !_npFrete) { rc.style.display = 'none'; return; }
-  var pagamento = '';
-  var radios = document.querySelectorAll('input[name="np-pagamento"]');
-  radios.forEach(function(r) { if (r.checked) pagamento = r.value; });
-  if (!pagamento) { rc.style.display = 'none'; return; }
-  rc.style.display = 'block';
-  var subtotal = _npCarrinho.reduce(function(s,p){ return s + p.preco * p.quantidade; }, 0) / 100;
-  var total = subtotal + (_npFrete ? _npFrete.preco : 0);
-  var pagLabels = {pix:'PIX',credito:'Cartao Credito',debito:'Cartao Debito',dinheiro:'Dinheiro'};
-  var rb = get('np-resumo-body');
-  if (rb) {
-    var html = '';
-    _npCarrinho.forEach(function(p) {
-      html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>'+p.nome+' x'+p.quantidade+'</span><span>R$ '+(p.preco*p.quantidade/100).toFixed(2).replace('.',',')+'</span></div>';
-    });
-    html += '<div style="border-top:1px solid #e8eaf0;margin:8px 0;padding-top:8px">';
-    html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Subtotal</span><span>R$ '+subtotal.toFixed(2).replace('.',',')+'</span></div>';
-    html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Frete ('+(_npFrete.nome)+')</span><span>R$ '+(_npFrete.preco).toFixed(2).replace('.',',')+'</span></div>';
-    html += '<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin-top:8px"><span>Total</span><span style="color:#16a34a">R$ '+total.toFixed(2).replace('.',',')+'</span></div>';
-    html += '<div style="font-size:12px;color:#6b7280;margin-top:4px">Pagamento: '+(pagLabels[pagamento]||pagamento)+'</div>';
-    html += '</div>';
-    rb.innerHTML = html;
-  }
-}
-
-async function _npCriarPedido() {
-  var nome = val('np-nome').trim();
-  var tel = val('np-tel').replace(/\D/g,'');
-  var cep = val('np-cep').replace(/\D/g,'');
-  var rua = val('np-rua').trim();
-  var num = val('np-num').trim();
-  var bairro = val('np-bairro').trim();
-  var cidade = val('np-cidade').trim();
-  var uf = val('np-uf').trim().toUpperCase();
-  var pagamento = '';
-  document.querySelectorAll('input[name="np-pagamento"]').forEach(function(r) { if (r.checked) pagamento = r.value; });
-
-  if (!nome) return alert('Informe o nome do cliente');
-  if (tel.length < 10) return alert('Informe o telefone do cliente');
-  if (cep.length !== 8) return alert('CEP invalido');
-  if (!rua || !num || !bairro || !cidade || !uf) return alert('Preencha o endereco completo');
-  if (!_npCarrinho.length) return alert('Adicione pelo menos um produto');
-  if (!_npFrete) return alert('Selecione uma opcao de frete');
-  if (!pagamento) return alert('Selecione o metodo de pagamento');
-
-  var btn = get('btn-criar-pedido');
-  btn.disabled = true; btn.textContent = 'Criando pedido...';
-  var resultado = get('np-resultado');
-  if (resultado) resultado.textContent = '';
-
-  try {
-    var body = {
-      cliente: {
-        nome: nome,
-        telefone: '55' + tel,
-        email: val('np-email').trim(),
-        cpf: val('np-cpf').trim()
-      },
-      endereco: {
-        cep: cep,
-        rua: rua,
-        numero: num,
-        complemento: val('np-comp').trim(),
-        bairro: bairro,
-        cidade: cidade,
-        estado: uf
-      },
-      produtos: _npCarrinho,
-      frete: _npFrete,
-      pagamento: pagamento,
-      observacao: val('np-obs').trim()
-    };
-
-    var r = await fetch(API+'/api/admin?secret='+S+'&action=criar-pedido-manual', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    }).then(r=>r.json());
-
-    if (r.ok) {
-      if (resultado) {
-        resultado.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px">'
-          + '<div style="font-size:15px;font-weight:700;color:#16a34a;margin-bottom:6px">Pedido criado com sucesso!</div>'
-          + '<div style="font-size:13px">Pedido Shopify: <strong>#'+r.shopify_order+'</strong></div>'
-          + (r.me_etiqueta ? '<div style="font-size:13px;margin-top:4px">Etiqueta ME: <strong>'+r.me_etiqueta+'</strong> gerada no carrinho</div>' : '<div style="font-size:13px;color:#f59e0b;margin-top:4px">Etiqueta ME: '+(r.me_erro||'nao gerada — verifique o ME')+'</div>')
-          + '</div>';
-      }
-      // Limpar formulario
-      _npCarrinho = [];
-      _npFrete = null;
-      setTimeout(function() {
-        ['np-nome','np-tel','np-email','np-cpf','np-cep','np-rua','np-num','np-comp','np-bairro','np-cidade','np-uf','np-obs'].forEach(function(id) {
-          var el = get(id); if (el) el.value = '';
-        });
-        _npRenderCarrinho();
-        document.querySelectorAll('input[name="np-pagamento"]').forEach(function(r) { r.checked = false; });
-        document.querySelectorAll('[id^="npay-lbl-"]').forEach(function(l) { l.style.border='1.5px solid #e8eaf0'; l.style.background='#fff'; });
-      }, 3000);
-    } else {
-      if (resultado) resultado.innerHTML = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;font-size:13px;color:#dc2626">Erro: '+(r.erro||'Falha ao criar pedido')+'</div>';
-    }
-  } catch(e) {
-    if (resultado) resultado.innerHTML = '<div style="color:#ef4444;font-size:13px">Erro: '+e.message+'</div>';
-  }
-  btn.disabled = false; btn.textContent = 'Criar Pedido + Gerar Etiqueta ME';
-}
 
 // INICIAR
 renderAba('home');
 </script>
 </body>
 </html>`);
-    html += '<button data-action="enviar-reply" data-phone="'+phone+'" style="width:40px;height:40px;border-radius:50%;background:#25d366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
+}
