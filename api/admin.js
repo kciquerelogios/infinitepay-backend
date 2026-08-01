@@ -858,11 +858,156 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         id: String(p.id),
         titulo: p.title,
         imagem: p.image ? p.image.src : '',
-        preco: p.variants && p.variants[0] ? p.variants[0].price : '0'
+        preco: p.variants && p.variants[0] ? p.variants[0].price : '0',
+        variantes: (p.variants || []).map(v => ({
+          id: String(v.id),
+          titulo: v.title,
+          preco: v.price,
+          disponivel: v.available !== false
+        }))
       }));
       return res.status(200).json({ produtos, total: produtos.length });
     } catch(e) {
       return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ===== CRIAR PEDIDO MANUAL (venda fechada no WhatsApp) =====
+  if (req.query.action === 'criar-pedido-manual' && req.method === 'POST') {
+    try {
+      const { cliente, itens, frete, pagamento, peso, observacao } = req.body || {};
+      if (!cliente || !cliente.nome || !cliente.telefone || !cliente.cep || !cliente.rua || !cliente.numero || !cliente.cidade || !cliente.estado) {
+        return res.status(400).json({ ok: false, erro: 'Preencha os dados do cliente e o endereço completo' });
+      }
+      if (!itens || !itens.length) {
+        return res.status(400).json({ ok: false, erro: 'Adicione pelo menos um produto' });
+      }
+      if (!frete || frete.preco === undefined || frete.preco === null) {
+        return res.status(400).json({ ok: false, erro: 'Selecione a forma de envio' });
+      }
+
+      const lineItems = itens.map(i => {
+        const li = {
+          title: i.nome + (i.variante && i.variante !== 'Default Title' ? ' - Cor: ' + i.variante : ''),
+          quantity: i.quantidade || 1,
+          price: parseFloat(i.preco).toFixed(2),
+          requires_shipping: true
+        };
+        if (i.variantId) li.variant_id = parseInt(i.variantId);
+        return li;
+      });
+
+      const subtotal = itens.reduce((s, i) => s + parseFloat(i.preco) * (i.quantidade || 1), 0);
+      const freteValor = parseFloat(frete.preco || 0);
+      const total = subtotal + freteValor;
+
+      const partesNome = (cliente.nome || '').trim().split(/\s+/);
+      const primeiroNome = partesNome[0] || 'Cliente';
+      const sobrenome = partesNome.length > 1 ? partesNome.slice(1).join(' ') : primeiroNome;
+      const metodoLabel = ['pix', 'credit_card', 'debit_card'].includes(pagamento) ? pagamento : 'outro';
+
+      const orderData = {
+        order: {
+          line_items: lineItems,
+          financial_status: 'paid',
+          fulfillment_status: null,
+          currency: 'BRL',
+          note: `Pedido manual (WhatsApp) | Método: ${metodoLabel} | Telefone: ${cliente.telefone} | Origem: whatsapp-manual${observacao ? ' | Obs: ' + observacao : ''}`,
+          tags: 'WhatsApp,Manual',
+          shipping_address: {
+            first_name: primeiroNome,
+            last_name: sobrenome,
+            address1: `${cliente.rua}, ${cliente.numero}`,
+            address2: cliente.complemento || '',
+            zip: cliente.cep.replace(/\D/g, ''),
+            city: cliente.cidade,
+            province: cliente.estado,
+            country: 'BR',
+            phone: cliente.telefone || ''
+          },
+          shipping_lines: [{ title: frete.nome, price: freteValor.toFixed(2), code: frete.id === 1 ? 'PAC' : 'SEDEX' }],
+          transactions: [{ kind: 'sale', status: 'success', amount: total.toFixed(2), gateway: 'Manual - WhatsApp' }]
+        }
+      };
+      orderData.order.billing_address = orderData.order.shipping_address;
+
+      if (cliente.email) {
+        try {
+          const cResp = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(cliente.email)}`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+          const cData = await cResp.json();
+          orderData.order.customer = (cData.customers && cData.customers.length)
+            ? { id: cData.customers[0].id }
+            : { first_name: primeiroNome, last_name: sobrenome, email: cliente.email };
+        } catch (e) {
+          orderData.order.customer = { first_name: primeiroNome, last_name: sobrenome, email: cliente.email };
+        }
+      } else {
+        orderData.order.customer = { first_name: primeiroNome, last_name: sobrenome };
+      }
+
+      const shopifyResp = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+        body: JSON.stringify(orderData)
+      });
+      const shopifyData = await shopifyResp.json();
+      if (!shopifyData.order) {
+        return res.status(400).json({ ok: false, erro: 'Erro ao criar pedido no Shopify', detalhe: shopifyData.errors });
+      }
+
+      // Adicionar etiqueta no carrinho do Melhor Envio, igual a uma compra real no site
+      let melhorEnvioResult = null;
+      if (ME_TOKEN) {
+        try {
+          const cepLimpo = cliente.cep.replace(/\D/g, '');
+          const serviceId = frete.id === 1 ? 1 : 2;
+          const pesoKg = parseFloat(peso) > 0 ? parseFloat(peso) : 0.5;
+          const meBody = {
+            service: serviceId,
+            agency: null,
+            from: {
+              name: 'Kcique Relógios', phone: '11000000000', email: 'kciqueadm@gmail.com',
+              document: process.env.MELHORENVIO_CPF, company_document: '66609452000183', state_register: null,
+              address: 'Rua São Francisco', complement: 'Ap 804', number: '98', district: 'Se',
+              city: 'São Paulo', country_id: 'BR', postal_code: '01005020', note: ''
+            },
+            to: {
+              name: cliente.nome, phone: cliente.telefone.replace(/\D/g, ''), email: cliente.email || '',
+              document: cliente.cpf ? cliente.cpf.replace(/\D/g, '') : '',
+              address: cliente.rua, complement: cliente.complemento || '', number: cliente.numero,
+              district: cliente.bairro || '', city: cliente.cidade, country_id: 'BR', postal_code: cepLimpo, note: ''
+            },
+            products: [{ name: lineItems[0].title, quantity: 1, unitary_value: Math.max(1, subtotal).toFixed(2), weight: pesoKg }],
+            volumes: [{ height: 10, width: 12, length: 18, weight: pesoKg }],
+            tag: shopifyData.order.id.toString(),
+            platform: 'Shopify',
+            invoice: { key: null },
+            options: { insurance_value: subtotal.toFixed(2), receipt: false, own_hand: false, collect: false, reverse: false, non_commercial: false }
+          };
+          const meResp = await fetch('https://melhorenvio.com.br/api/v2/me/cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ME_TOKEN}`, 'Accept': 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' },
+            body: JSON.stringify(meBody)
+          });
+          melhorEnvioResult = await meResp.json();
+        } catch (e) {
+          melhorEnvioResult = { erro: e.message };
+        }
+      }
+
+      // Invalidar caches para o pedido aparecer na hora
+      Promise.all([
+        fetch(`${KV_URL}/del/cache-pedidos-json`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } }),
+        fetch(`${KV_URL}/del/cache-dashboard-home`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } })
+      ]).catch(() => {});
+
+      return res.status(200).json({
+        ok: true,
+        pedido: { id: shopifyData.order.id, numero: shopifyData.order.order_number },
+        melhorEnvio: melhorEnvioResult && melhorEnvioResult.id ? { ok: true, id: melhorEnvioResult.id } : { ok: false, detalhe: melhorEnvioResult }
+      });
+    } catch (e) {
+      return res.status(500).json({ ok: false, erro: e.message });
     }
   }
 
@@ -1997,6 +2142,7 @@ tr:hover td{background:#fafafa}
     <button class="nav-item" data-aba="carrinhos"><span class="nav-icon">🛒</span><span class="nav-label">Carrinhos</span></button>
     <button class="nav-item" data-aba="ofertas"><span class="nav-icon">📣</span><span class="nav-label">Ofertas</span></button>
     <button class="nav-item" data-aba="pedidos"><span class="nav-icon">📦</span><span class="nav-label">Pedidos</span></button>
+    <button class="nav-item" data-aba="pedido-manual"><span class="nav-icon">🧾</span><span class="nav-label">Criar Pedido</span></button>
     <button class="nav-item" data-aba="cupons"><span class="nav-icon">🎟</span><span class="nav-label">Cupons</span></button>
     <button class="nav-item" data-aba="grupos"><span class="nav-icon">📲</span><span class="nav-label">Grupos VIP</span></button>
     <button class="nav-item" data-aba="bundle"><span class="nav-icon">🎁</span><span class="nav-label">Bundle</span></button>
@@ -2021,7 +2167,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
+const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos','pedido-manual':'🧾 Criar Pedido (venda WhatsApp)',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -2052,7 +2198,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
+  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, 'pedido-manual':renderPedidoManual, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -2687,6 +2833,230 @@ async function enviarFornecedorPed(btn, i) {
   btn.disabled=true; btn.textContent='Enviando...';
   await fetch(API+'/api/admin?secret='+S+'&action=enviar-fornecedor&clienteNome='+encodeURIComponent(p.cliente)+'&tracking='+(p.tracking||'')+'&imgUrl='+encodeURIComponent(p.imagem||'')+'&meOrderId='+(p.meOrderId||''));
   btn.textContent='✅ Enviado';
+}
+
+// ===== CRIAR PEDIDO MANUAL (venda fechada no WhatsApp) =====
+var _pmItens = [], _pmFrete = null, _pmFreteOpcoes = [];
+function renderPedidoManual(){
+  loading();
+  var html = '';
+  html += '<div class="form-card"><div class="form-title">🧾 Dados do Cliente</div>';
+  html += '<div class="row-2"><div class="field"><label>Nome completo</label><input id="pm-nome" placeholder="Nome do cliente"></div>';
+  html += '<div class="field"><label>Telefone (WhatsApp)</label><input id="pm-tel" placeholder="(11) 91234-5678"></div></div>';
+  html += '<div class="row-2"><div class="field"><label>Email (opcional)</label><input id="pm-email" type="email" placeholder="cliente@email.com"></div>';
+  html += '<div class="field"><label>CPF (opcional)</label><input id="pm-cpf" placeholder="000.000.000-00"></div></div>';
+  html += '</div>';
+
+  html += '<div class="form-card"><div class="form-title">📍 Endereço de Entrega</div>';
+  html += '<div class="row-3"><div class="field"><label>CEP</label><input id="pm-cep" placeholder="00000-000"></div>';
+  html += '<div class="field"><label>Número</label><input id="pm-numero" placeholder="123"></div>';
+  html += '<div class="field"><label>Complemento</label><input id="pm-compl" placeholder="Apto, bloco..."></div></div>';
+  html += '<div class="field"><label>Rua</label><input id="pm-rua" placeholder="Rua / Avenida"></div>';
+  html += '<div class="row-3"><div class="field"><label>Bairro</label><input id="pm-bairro" placeholder="Bairro"></div>';
+  html += '<div class="field"><label>Cidade</label><input id="pm-cidade" placeholder="Cidade"></div>';
+  html += '<div class="field"><label>Estado (UF)</label><input id="pm-estado" maxlength="2" placeholder="SP" oninput="this.value=this.value.toUpperCase()"></div></div>';
+  html += '<span id="pm-cep-msg" style="font-size:12px;color:#9ca3af"></span>';
+  html += '</div>';
+
+  html += '<div class="form-card"><div class="form-title">📦 Produtos</div>';
+  html += '<button type="button" id="pm-toggle-prods" class="btn btn-ghost btn-sm">▶ Adicionar produto</button>';
+  html += '<div id="pm-prod-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;max-height:260px;overflow-y:auto;margin-top:10px;padding:2px"></div>';
+  html += '<div id="pm-carrinho" style="margin-top:16px"></div>';
+  html += '</div>';
+
+  html += '<div class="form-card"><div class="form-title">🚚 Frete</div>';
+  html += '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">';
+  html += '<button type="button" id="pm-calc-frete" class="btn btn-ghost btn-sm">📮 Calcular frete pelo CEP</button>';
+  html += '<span id="pm-frete-msg" style="font-size:12px;color:#9ca3af"></span></div>';
+  html += '<div id="pm-frete-opcoes"></div>';
+  html += '</div>';
+
+  html += '<div class="form-card"><div class="form-title">💳 Pagamento e Envio</div>';
+  html += '<div class="row-3"><div class="field"><label>Forma de pagamento</label><select id="pm-pagamento"><option value="pix">PIX</option><option value="credit_card">Cartão de Crédito</option><option value="debit_card">Cartão de Débito</option><option value="outro">Outro</option></select></div>';
+  html += '<div class="field"><label>Peso do pacote (kg)</label><input id="pm-peso" type="number" step="0.1" value="0.5"></div>';
+  html += '<div class="field"><label>Total do pedido</label><div id="pm-total" style="padding:9px 0;font-size:18px;font-weight:700;color:#16a34a">R$ 0,00</div></div></div>';
+  html += '<div class="field"><label>Observação (opcional)</label><textarea id="pm-obs" placeholder="Ex: combinado no WhatsApp, entregar após 18h..."></textarea></div>';
+  html += '<div style="display:flex;align-items:center;gap:12px"><button class="btn btn-primary" id="pm-criar">✅ Criar Pedido e Gerar Etiqueta</button><span id="pm-msg" style="font-size:13px"></span></div>';
+  html += '</div>';
+
+  ct().innerHTML = html;
+  _pmItens = []; _pmFrete = null; _pmFreteOpcoes = [];
+  _attachPedidoManual();
+  _renderPmCarrinho();
+}
+function _attachPedidoManual(){
+  var btp = get('pm-toggle-prods');
+  var _pmLoaded = false;
+  if (btp) btp.addEventListener('click', function(){
+    var g = get('pm-prod-grid'); if (!g) return;
+    var open = g.style.display !== 'none';
+    if (open) { g.style.display = 'none'; btp.textContent = '▶ Adicionar produto'; return; }
+    g.style.display = 'grid';
+    btp.textContent = '▼ Fechar seletor';
+    if (_pmLoaded) return;
+    _pmLoaded = true;
+    var prom = _produtos.length ? Promise.resolve({produtos:_produtos}) : fetch(API+'/api/admin?secret='+S+'&action=produtos-lista').then(function(r){return r.json();}).catch(function(){return {produtos:[]};});
+    prom.then(function(pp){
+      if (pp.produtos) _produtos = pp.produtos;
+      var h = '';
+      _produtos.forEach(function(p, idx){
+        var nome = p.titulo || p.nome || '';
+        var preco = parseFloat(p.preco) || 0;
+        h += '<div class="pm-prod-card" data-pidx="'+idx+'" style="border:1.5px solid #e8eaf0;border-radius:8px;padding:8px;cursor:pointer;text-align:center" title="'+nome.replace(/"/g,'')+'">';
+        h += (p.imagem ? '<img src="'+p.imagem+'" style="width:100%;height:70px;object-fit:cover;border-radius:6px;margin-bottom:6px">' : '<div style="width:100%;height:70px;background:#f3f4f6;border-radius:6px;margin-bottom:6px"></div>');
+        h += '<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</div>';
+        h += '<div style="font-size:11px;color:#16a34a;font-weight:700">R$ '+preco.toFixed(2).replace('.',',')+'</div>';
+        h += '</div>';
+      });
+      g.innerHTML = h || '<div style="padding:12px;color:#9ca3af;font-size:13px">Nenhum produto encontrado</div>';
+    });
+  });
+
+  var g = get('pm-prod-grid');
+  if (g) g.addEventListener('click', function(e){
+    var card = e.target.closest('.pm-prod-card'); if (!card) return;
+    var p = _produtos[parseInt(card.getAttribute('data-pidx'))]; if (!p) return;
+    var variantes = (p.variantes||[]).filter(function(v){return v.titulo && v.titulo !== 'Default Title';});
+    var variante = '', variantId = (p.variantes||[])[0] ? p.variantes[0].id : '', preco = parseFloat(p.preco)||0;
+    if (variantes.length) {
+      var opcoes = variantes.map(function(v,i){return (i+1)+') '+v.titulo+' — R$ '+parseFloat(v.preco).toFixed(2).replace('.',',');}).join('\n');
+      var escolha = prompt('Escolha a variante de "'+(p.titulo||'')+'":\n'+opcoes);
+      var i = parseInt(escolha) - 1;
+      if (isNaN(i) || !variantes[i]) return;
+      variante = variantes[i].titulo;
+      variantId = variantes[i].id;
+      preco = parseFloat(variantes[i].preco) || preco;
+    }
+    _pmItens.push({ produtoId: p.id, variantId: variantId, nome: p.titulo, variante: variante, preco: preco, quantidade: 1 });
+    _renderPmCarrinho();
+  });
+
+  var cepEl = get('pm-cep');
+  if (cepEl) cepEl.addEventListener('blur', function(){
+    var v = cepEl.value.replace(/\D/g,'');
+    var msg = get('pm-cep-msg');
+    if (v.length !== 8) return;
+    if (msg) msg.textContent = 'Buscando endereço...';
+    fetch('https://viacep.com.br/ws/'+v+'/json/').then(function(r){return r.json();}).then(function(d){
+      if (d.erro) { if (msg) msg.textContent = '⚠️ CEP não encontrado'; return; }
+      if (get('pm-rua')) get('pm-rua').value = d.logradouro || '';
+      if (get('pm-bairro')) get('pm-bairro').value = d.bairro || '';
+      if (get('pm-cidade')) get('pm-cidade').value = d.localidade || '';
+      if (get('pm-estado')) get('pm-estado').value = d.uf || '';
+      if (msg) msg.textContent = '✅ Endereço preenchido automaticamente';
+    }).catch(function(){ if (msg) msg.textContent = ''; });
+  });
+
+  var bf = get('pm-calc-frete');
+  if (bf) bf.addEventListener('click', function(){
+    var v = val('pm-cep').replace(/\D/g,'');
+    var msg = get('pm-frete-msg');
+    if (v.length !== 8) { if (msg) msg.textContent = '⚠️ Informe um CEP válido'; return; }
+    if (msg) msg.textContent = 'Calculando...';
+    bf.disabled = true;
+    fetch(API+'/api/frete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cep_destino:v}) })
+      .then(function(r){return r.json();})
+      .then(function(d){
+        bf.disabled = false;
+        if (!d.opcoes || !d.opcoes.length) { if (msg) msg.textContent = '⚠️ '+(d.erro||'Frete indisponível para este CEP'); return; }
+        if (msg) msg.textContent = '';
+        _pmFreteOpcoes = d.opcoes;
+        var h = '';
+        d.opcoes.forEach(function(o, i){
+          h += '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:8px;margin-bottom:6px;cursor:pointer">';
+          h += '<input type="radio" name="pm-frete-radio" value="'+i+'" style="accent-color:#111">';
+          h += '<span style="flex:1;font-size:13px"><strong>'+o.nome+'</strong> — '+o.prazo+' dias úteis</span>';
+          h += '<span style="font-weight:700">R$ '+o.preco.toFixed(2).replace('.',',')+'</span></label>';
+        });
+        var fo = get('pm-frete-opcoes'); if (fo) fo.innerHTML = h;
+      }).catch(function(e){ bf.disabled = false; if (msg) msg.textContent = '❌ '+e.message; });
+  });
+
+  var fo = get('pm-frete-opcoes');
+  if (fo) fo.addEventListener('change', function(e){
+    if (e.target.name !== 'pm-frete-radio') return;
+    _pmFrete = _pmFreteOpcoes[parseInt(e.target.value)];
+    _atualizarPmTotal();
+  });
+
+  var bc = get('pm-criar');
+  if (bc) bc.addEventListener('click', _criarPedidoManual);
+}
+function _renderPmCarrinho(){
+  var c = get('pm-carrinho'); if (!c) return;
+  if (!_pmItens.length) { c.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px">Nenhum produto adicionado</div>'; _atualizarPmTotal(); return; }
+  var h = '<table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Subtotal</th><th></th></tr></thead><tbody>';
+  _pmItens.forEach(function(it, i){
+    h += '<tr><td>'+it.nome+(it.variante?' <span class="chip">'+it.variante+'</span>':'')+'</td>';
+    h += '<td><input type="number" min="1" value="'+it.quantidade+'" data-qidx="'+i+'" style="width:56px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px"></td>';
+    h += '<td>R$ '+it.preco.toFixed(2).replace('.',',')+'</td>';
+    h += '<td>R$ '+(it.preco*it.quantidade).toFixed(2).replace('.',',')+'</td>';
+    h += '<td><button class="btn-del" data-ridx="'+i+'">🗑</button></td></tr>';
+  });
+  h += '</tbody></table>';
+  c.innerHTML = h;
+  c.querySelectorAll('[data-qidx]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var i = parseInt(inp.getAttribute('data-qidx'));
+      var q = parseInt(inp.value) || 1;
+      _pmItens[i].quantidade = q;
+      _renderPmCarrinho();
+    });
+  });
+  c.querySelectorAll('[data-ridx]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      _pmItens.splice(parseInt(btn.getAttribute('data-ridx')), 1);
+      _renderPmCarrinho();
+    });
+  });
+  _atualizarPmTotal();
+}
+function _atualizarPmTotal(){
+  var subtotal = _pmItens.reduce(function(s,i){return s+i.preco*i.quantidade;}, 0);
+  var frete = _pmFrete ? _pmFrete.preco : 0;
+  var t = get('pm-total'); if (t) t.textContent = fmt(subtotal+frete);
+}
+async function _criarPedidoManual(){
+  var msg = get('pm-msg');
+  var nome = val('pm-nome').trim(), tel = val('pm-tel').trim();
+  var cep = val('pm-cep').replace(/\D/g,''), rua = val('pm-rua').trim(), numero = val('pm-numero').trim();
+  var bairro = val('pm-bairro').trim(), cidade = val('pm-cidade').trim(), estado = val('pm-estado').trim();
+  if (!nome || !tel) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha nome e telefone do cliente'; } return; }
+  if (cep.length !== 8 || !rua || !numero || !cidade || !estado) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha o endereço completo'; } return; }
+  if (!_pmItens.length) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Adicione ao menos um produto'; } return; }
+  if (!_pmFrete) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Calcule e selecione o frete'; } return; }
+
+  var btn = get('pm-criar'); btn.disabled = true; btn.textContent = 'Criando pedido...';
+  if (msg) { msg.style.color = '#6b7280'; msg.textContent = ''; }
+
+  var payload = {
+    cliente: { nome: nome, telefone: tel, email: val('pm-email').trim(), cpf: val('pm-cpf').trim(), cep: cep, rua: rua, numero: numero, complemento: val('pm-compl').trim(), bairro: bairro, cidade: cidade, estado: estado },
+    itens: _pmItens,
+    frete: _pmFrete,
+    pagamento: val('pm-pagamento'),
+    peso: val('pm-peso'),
+    observacao: val('pm-obs').trim()
+  };
+
+  try {
+    var d = await fetch(API+'/api/admin?secret='+S+'&action=criar-pedido-manual', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(function(r){return r.json();});
+    if (d.ok) {
+      var meOk = d.melhorEnvio && d.melhorEnvio.ok;
+      ct().innerHTML = '<div class="vazio" style="background:#f0fdf4;border-color:#bbf7d0">'
+        + '<div style="font-size:40px;margin-bottom:10px">✅</div>'
+        + '<div style="font-size:18px;font-weight:700;color:#16a34a">Pedido #'+d.pedido.numero+' criado!</div>'
+        + '<div style="font-size:13px;color:#6b7280;margin-top:6px">'+(meOk ? 'Etiqueta adicionada ao carrinho do Melhor Envio ✅' : '⚠️ Pedido criado, mas houve um problema ao adicionar no Melhor Envio — adicione manualmente.')+'</div>'
+        + '<button class="btn btn-primary" id="pm-novo" style="margin-top:16px">➕ Criar outro pedido</button>'
+        + '</div>';
+      var bn = get('pm-novo'); if (bn) bn.addEventListener('click', function(){ renderAba('pedido-manual'); });
+    } else {
+      btn.disabled = false; btn.textContent = '✅ Criar Pedido e Gerar Etiqueta';
+      if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ '+(d.erro||'Erro ao criar pedido'); }
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '✅ Criar Pedido e Gerar Etiqueta';
+    if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ '+e.message; }
+  }
 }
 
 // ===== CUPONS =====
