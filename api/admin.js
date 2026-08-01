@@ -2919,8 +2919,8 @@ function _attachPedidoManual(){
     var variantes = (p.variantes||[]).filter(function(v){return v.titulo && v.titulo !== 'Default Title';});
     var variante = '', variantId = (p.variantes||[])[0] ? p.variantes[0].id : '', preco = parseFloat(p.preco)||0;
     if (variantes.length) {
-      var opcoes = variantes.map(function(v,i){return (i+1)+') '+v.titulo+' — R$ '+parseFloat(v.preco).toFixed(2).replace('.',',');}).join('\n');
-      var escolha = prompt('Escolha a variante de "'+(p.titulo||'')+'":\n'+opcoes);
+      var opcoes = variantes.map(function(v,i){return (i+1)+') '+v.titulo+' — R$ '+parseFloat(v.preco).toFixed(2).replace('.',',');}).join('\\n');
+      var escolha = prompt('Escolha a variante de "'+(p.titulo||'')+'":\\n'+opcoes);
       var i = parseInt(escolha) - 1;
       if (isNaN(i) || !variantes[i]) return;
       variante = variantes[i].titulo;
@@ -2933,7 +2933,7 @@ function _attachPedidoManual(){
 
   var cepEl = get('pm-cep');
   if (cepEl) cepEl.addEventListener('blur', function(){
-    var v = cepEl.value.replace(/\D/g,'');
+    var v = cepEl.value.replace(/\\D/g,'');
     var msg = get('pm-cep-msg');
     if (v.length !== 8) return;
     if (msg) msg.textContent = 'Buscando endereço...';
@@ -2949,7 +2949,7 @@ function _attachPedidoManual(){
 
   var bf = get('pm-calc-frete');
   if (bf) bf.addEventListener('click', function(){
-    var v = val('pm-cep').replace(/\D/g,'');
+    var v = val('pm-cep').replace(/\\D/g,'');
     var msg = get('pm-frete-msg');
     if (v.length !== 8) { if (msg) msg.textContent = '⚠️ Informe um CEP válido'; return; }
     if (msg) msg.textContent = 'Calculando...';
@@ -3019,7 +3019,7 @@ function _atualizarPmTotal(){
 async function _criarPedidoManual(){
   var msg = get('pm-msg');
   var nome = val('pm-nome').trim(), tel = val('pm-tel').trim();
-  var cep = val('pm-cep').replace(/\D/g,''), rua = val('pm-rua').trim(), numero = val('pm-numero').trim();
+  var cep = val('pm-cep').replace(/\\D/g,''), rua = val('pm-rua').trim(), numero = val('pm-numero').trim();
   var bairro = val('pm-bairro').trim(), cidade = val('pm-cidade').trim(), estado = val('pm-estado').trim();
   if (!nome || !tel) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha nome e telefone do cliente'; } return; }
   if (cep.length !== 8 || !rua || !numero || !cidade || !estado) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha o endereço completo'; } return; }
