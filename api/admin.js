@@ -2769,64 +2769,14 @@ async function renderAtendimento() {
     html += '<div class="stat-card"><div class="stat-label">\ud83d\udd04 Em Atendimento</div><div class="stat-value" style="color:#f59e0b">'+tickets.filter(function(t){return t.status==='em_atendimento';}).length+'</div></div>';
     html += '<div class="stat-card"><div class="stat-label">\u2705 Resolvidos</div><div class="stat-value" style="color:#16a34a">'+tickets.filter(function(t){return t.status==='resolvido';}).length+'</div></div>';
     html += '</div>';
-    // Filtros
-    html += '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
-    html += '<button class="btn btn-ghost btn-sm ativo-filtro" data-f="todos" onclick="filtrarTickets(this,'todos')">Todos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="aberto" onclick="filtrarTickets(this,'aberto')">\ud83d\udd34 Abertos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento" onclick="filtrarTickets(this,'em_atendimento')">\ud83d\udd04 Em Atendimento</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="problema" onclick="filtrarTickets(this,'problema')">\u26a0\ufe0f Problemas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="troca" onclick="filtrarTickets(this,'troca')">\ud83d\udd01 Trocas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido" onclick="filtrarTickets(this,'resolvido')">\u2705 Resolvidos</button>';
-    html += '</div>';
-    if (!tickets.length) {
-      html += '<div class="vazio">Nenhum ticket de atendimento ainda</div>';
-      ct().innerHTML = html;
-      return;
-    }
-    // Lista de tickets
-    html += '<div id="tickets-lista">';
-    html += _renderTicketsList(tickets, 'todos');
-    html += '</div>';
-    window._todosTickets = tickets;
-    ct().innerHTML = html;
-  } catch(e) { errMsg('Erro: '+e.message); }
-}
-function _renderTicketsList(tickets, filtro) {
-  var lista = filtro === 'todos' ? tickets : tickets.filter(function(t) {
-    if (filtro === 'problema') return t.tipo === 'problema';
-    if (filtro === 'troca') return t.tipo === 'troca';
-    return t.status === filtro;
-  });
-  if (!lista.length) return '<div class="vazio">Nenhum ticket nesta categoria</div>';
-  var corStatus = {aberto:'#ef4444', em_atendimento:'#f59e0b', resolvido:'#16a34a'};
-  var labelStatus = {aberto:'\ud83d\udd34 Aberto', em_atendimento:'\ud83d\udd04 Em Atendimento', resolvido:'\u2705 Resolvido'};
-  var corTipo = {problema:'#ef4444', troca:'#2563eb'};
-  var labelTipo = {problema:'\u26a0\ufe0f Problema', troca:'\ud83d\udd01 Troca'};
-async function renderAtendimento() {
-  loading();
-  try {
-    var [ticketsR, statsR] = await Promise.all([
-      fetch(API+'/api/bot?action=listar-tickets&secret='+S).then(r=>r.json()).catch(()=>({tickets:[]})),
-      fetch(API+'/api/bot?action=stats&secret='+S).then(r=>r.json()).catch(()=>({ativos:0,problemas:0,trocas:0}))
-    ]);
-    var tickets = ticketsR.tickets || [];
-    var stats = statsR;
-    var html = '';
-    // Stats
-    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">';
-    html += '<div class="stat-card"><div class="stat-label">\ud83c\udfa7 Total Tickets</div><div class="stat-value">'+tickets.length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\ud83d\udd34 Abertos</div><div class="stat-value" style="color:#ef4444">'+tickets.filter(function(t){return t.status==='aberto';}).length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\ud83d\udd04 Em Atendimento</div><div class="stat-value" style="color:#f59e0b">'+tickets.filter(function(t){return t.status==='em_atendimento';}).length+'</div></div>';
-    html += '<div class="stat-card"><div class="stat-label">\u2705 Resolvidos</div><div class="stat-value" style="color:#16a34a">'+tickets.filter(function(t){return t.status==='resolvido';}).length+'</div></div>';
-    html += '</div>';
-    // Filtros
-    html += '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
-    html += '<button class="btn btn-ghost btn-sm ativo-filtro" data-f="todos" onclick="filtrarTickets(this,'todos')">Todos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="aberto" onclick="filtrarTickets(this,'aberto')">\ud83d\udd34 Abertos</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento" onclick="filtrarTickets(this,'em_atendimento')">\ud83d\udd04 Em Atendimento</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="problema" onclick="filtrarTickets(this,'problema')">\u26a0\ufe0f Problemas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="troca" onclick="filtrarTickets(this,'troca')">\ud83d\udd01 Trocas</button>';
-    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido" onclick="filtrarTickets(this,'resolvido')">\u2705 Resolvidos</button>';
+        // Filtros
+    html += '<div id="ticket-filtros" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+    html += '<button class="btn btn-ghost btn-sm" style="background:#1a1a2e;color:#fff" data-f="todos">Todos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="aberto">🔴 Abertos</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento">🔄 Em Atendimento</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="problema">⚠️ Problemas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="troca">🔁 Trocas</button>';
+    html += '<button class="btn btn-ghost btn-sm" data-f="resolvido">✅ Resolvidos</button>';
     html += '</div>';
     if (!tickets.length) {
       html += '<div class="vazio">Nenhum ticket de atendimento ainda</div>';
@@ -2862,7 +2812,7 @@ function _renderTicketsList(tickets, filtro) {
     html += '<td style="max-width:200px;font-size:12px;color:#374151">'+(t.descricao||'\u2014').substring(0,80)+(t.descricao&&t.descricao.length>80?'...':'')+'</td>';
     html += '<td>';
     midias.forEach(function(m) {
-      if (m.tipo==='image') html += '<img src="'+m.url+'" onclick="abrirFoto(''+m.url+'')" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
+      if (m.tipo==='image') html += '<img src="'+m.url+'" data-foto="'+m.url+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
       else if (m.tipo==='video') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">\ud83c\udfa5 v\u00eddeo</a> ';
       else if (m.tipo==='document') html += '<a href="'+m.url+'" target="_blank" style="font-size:11px;color:#2563eb">\ud83d\udcc4 doc</a> ';
     });
@@ -2872,8 +2822,8 @@ function _renderTicketsList(tickets, filtro) {
     html += '<td style="font-size:11px;color:#9ca3af;white-space:nowrap">'+fmtDate(t.criado_em)+'</td>';
     html += '<td style="white-space:nowrap">';
     if (t.status!=='resolvido') {
-      html += '<button onclick="atualizarTicket(''+t.id+'','em_atendimento')" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
-      html += '<button onclick="atualizarTicket(''+t.id+'','resolvido')" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
+      html += '<button data-tid="'+t.id+'" data-tact="em_atendimento" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
+      html += '<button data-tid="'+t.id+'" data-tact="resolvido" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
     }
     if (t.telefone) {
       var wppMsg = encodeURIComponent('Ol\u00e1 '+( t.nome||'').split(' ')[0]+'! Aqui \u00e9 da Kcique Rel\u00f3gios. Estamos analisando seu atendimento e j\u00e1 entramos em contato em breve! \u231a');
@@ -3123,15 +3073,15 @@ function _renderMensagem(msg) {
     conteudo = '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">'+(msg.texto||'')+'</div>';
   } else if (msg.tipo === 'image') {
     conteudo = msg.mediaThumbnail || msg.mediaUrl
-      ? '<div style="cursor:pointer" onclick="abrirFoto(\''+msg.mediaUrl+'\')">'
+      if (m.tipo==='image') html += '<img src="'+m.url+'" data-foto="'+m.url+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:pointer;margin-right:3px">';
         + '<img src="'+(msg.mediaThumbnail||msg.mediaUrl)+'" style="max-width:200px;border-radius:8px;display:block">'
         + (msg.texto ? '<div style="font-size:12px;margin-top:4px;color:#374151">'+msg.texto+'</div>' : '')
         + '</div>'
-      : '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(\''+msg.mediaUrl+'\',this)">\ud83d\udcf7 Foto \u2014 clique para ver</div>';
+      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">📷 Foto — clique para ver</div>';
   } else if (msg.tipo === 'video') {
-    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(\''+msg.mediaUrl+'\',this)">\ud83c\udfa5 V\u00eddeo \u2014 clique para ver</div>';
+      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎥 Vídeo — clique para ver</div>';
   } else if (msg.tipo === 'audio') {
-    conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" onclick="carregarMidia(\''+msg.mediaUrl+'\',this)">\ud83c\udfa4 \u00c1udio \u2014 clique para ouvir</div>';
+      conteudo = '<div style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#6b7280;cursor:pointer" data-action="carregar-midia" data-url="'+msg.mediaUrl+'">🎤 Áudio — clique para ouvir</div>';
   } else if (msg.tipo === 'document') {
     conteudo = '<a href="'+msg.mediaUrl+'" target="_blank" style="padding:8px;background:#f3f4f6;border-radius:8px;font-size:12px;color:#2563eb;display:block;text-decoration:none">\ud83d\udcc4 Documento \u2014 clique para baixar</a>';
   } else if (msg.tipo === 'sticker') {
@@ -3187,8 +3137,7 @@ async function identificarCliente(phone) {
   }).then(r=>r.json());
   if (r.ok) {
     if (r.shopify.ehCliente) {
-      alert('\u2705 Cliente identificado: '+r.shopify.nome+'
-'+r.shopify.totalPedidos+' pedidos \u00b7 R$ '+r.shopify.totalGasto.toFixed(2));
+      alert('Cliente identificado: '+r.shopify.nome+' - '+r.shopify.totalPedidos+' pedidos');
     } else {
       alert('N\u00e3o encontrado como cliente no Shopify.');
     }
