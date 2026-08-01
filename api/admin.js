@@ -3001,7 +3001,7 @@ async function abrirConversa(phone) {
     html += '</div>';
     // Painel direito: etiqueta + identificar
     html += '<div style="display:flex;align-items:center;gap:8px">';
-    html += '<select id="inbox-etiqueta" onchange="trocarEtiqueta(\''+phone+'\',this.value)" style="padding:5px 8px;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;outline:none;color:#374151">';
+    html += '<select id="inbox-etiqueta" data-phone="'+phone+'" style="padding:5px 8px;border:1px solid #e8eaf0;border-radius:8px;font-size:12px;outline:none;color:#374151">';
     ['','cliente','possivel_cliente','vip','fornecedor','bloqueado'].forEach(function(e2){
       html += '<option value="'+e2+'" '+(contato.etiqueta===e2?'selected':'')+'>'+(!e2?'Sem etiqueta':_etiquetaCor(e2).label)+'</option>';
     });
