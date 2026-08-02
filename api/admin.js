@@ -1,3 +1,16 @@
+async function buscarLinkConviteZapi(groupId, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN) {
+  try {
+    const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-invitation-link/${groupId}`, {
+      headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+    });
+    const d = await r.json();
+    const link = d.invitationLink || d.link || d.url || d.inviteLink || null;
+    return (link && link.startsWith('http')) ? link : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   const { secret } = req.query;
 
@@ -134,24 +147,34 @@ export default async function handler(req, res) {
     const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
     const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
     const GRUPOS_LINKS = [
-      {nome:'#1',link:'https://chat.whatsapp.com/FyN2AqbnmSRA3LSGOyGA4A?s=cl&p=a&ilr=1'},
-      {nome:'#2',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
-      {nome:'#3',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
-      {nome:'#4',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
-      {nome:'#5',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
-      {nome:'#6',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
-      {nome:'#7',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
-      {nome:'#8',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
-      {nome:'#9',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
-      {nome:'#10',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
-      {nome:'#11',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
-      {nome:'#12',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
-      {nome:'#13',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
-      {nome:'#14',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
-      {nome:'#15',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
-      {nome:'#16',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
-      {nome:'#17',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
+      {nome:'#1',id:'120363407575718083-group',link:'https://chat.whatsapp.com/FyN2AqbnmSRA3LSGOyGA4A?s=cl&p=a&ilr=1'},
+      {nome:'#2',id:'120363407700341013-group',link:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
+      {nome:'#3',id:'120363407514192649-group',link:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
+      {nome:'#4',id:'120363406939167357-group',link:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
+      {nome:'#5',id:'120363425311709688-group',link:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
+      {nome:'#6',id:'120363407634566182-group',link:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
+      {nome:'#7',id:'120363426601689014-group',link:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+      {nome:'#8',id:'120363407550597963-group',link:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
+      {nome:'#9',id:'120363424221379294-group',link:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
+      {nome:'#10',id:'120363425206908330-group',link:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
+      {nome:'#11',id:'120363409632620470-group',link:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
+      {nome:'#12',id:'120363426115032457-group',link:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
+      {nome:'#13',id:'120363426651817338-group',link:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
+      {nome:'#14',id:'120363406708968616-group',link:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
+      {nome:'#15',id:'120363425674177408-group',link:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
+      {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
+      {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
     ];
+    // Busca o link de convite na hora via Z-API; se falhar, usa o link fixo salvo como respaldo
+    const resolverLink = async (nome, linkFixo) => {
+      const info = GRUPOS_LINKS.find(x => x.nome === nome);
+      if (!info) return linkFixo || GRUPOS_LINKS[0].link;
+      if (ZAPI_INSTANCE && ZAPI_TOKEN) {
+        const link = await buscarLinkConviteZapi(info.id, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
+        if (link) return link;
+      }
+      return info.link;
+    };
     try {
       const LIMITE = 1000;
 
@@ -189,23 +212,12 @@ export default async function handler(req, res) {
       for (const g of grupos) {
         if (g.membros < LIMITE) { ativo = g; break; }
       }
-      const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
-      return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
+      const link = await resolverLink(ativo.nome);
+      return res.status(200).json({ grupo: ativo.nome, link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
     } catch(e) {
       // Sem snapshot — buscar ao vivo no Z-API
       try {
-        const GRUPOS_IDS = [
-          {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
-          {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
-          {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
-          {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
-          {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
-          {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
-          {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
-          {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
-          {nome:'#17',id:'120363406426269657-group'},
-        ];
-        const membrosArr = await Promise.all(GRUPOS_IDS.map(async g => {
+        const membrosArr = await Promise.all(GRUPOS_LINKS.map(async g => {
           try {
             const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
             const d = await r.json();
@@ -217,8 +229,8 @@ export default async function handler(req, res) {
           if (g.membros < 1000 && g.membros < menorMembros) { menorMembros = g.membros; ativo = g; }
         }
         if (!ativo) ativo = membrosArr[membrosArr.length - 1];
-        const linkInfo = GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0];
-        return res.status(200).json({ grupo: ativo.nome, link: linkInfo.link, membros: ativo.membros, vagas: 1000 - ativo.membros, fonte: 'live' });
+        const link = await resolverLink(ativo.nome);
+        return res.status(200).json({ grupo: ativo.nome, link, membros: ativo.membros, vagas: 1000 - ativo.membros, fonte: 'live' });
       } catch(e2) {
         return res.status(200).json({ grupo: '#1', link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000, fonte: 'fallback' });
       }
