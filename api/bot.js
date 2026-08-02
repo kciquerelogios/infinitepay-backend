@@ -225,6 +225,31 @@ async function chamarClaude(mensagens, systemPrompt) {
   return d.content?.[0]?.text || '';
 }
 
+// -- Carrinho abandonado (recuperação com IA) --
+// Um lead some do leads-set assim que o pedido é pago (ver webhook.js), então se ele
+// ainda existir aqui é porque a compra não foi concluída — sinal confiável pra IA
+// tentar ajudar a fechar a venda em vez de só dar suporte pós-compra.
+async function buscarLeadPorTelefone(phone) {
+  try {
+    const numsBusca = phone.replace(/\D/g, '');
+    const semDDI = numsBusca.replace(/^55/, '');
+    const r = await fetch(`${KV_URL}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SMEMBERS', 'leads-set']])
+    });
+    const d = await r.json();
+    const ids = (Array.isArray(d) && d[0] && d[0].result) ? d[0].result : [];
+    for (const id of ids) {
+      const lead = await kvGet(id);
+      if (!lead || !lead.telefone) continue;
+      const numsLead = lead.telefone.replace(/\D/g, '').replace(/^55/, '');
+      if (numsLead && numsLead === semDDI) return lead;
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
 // -- Montar contexto do cliente --
 async function resumoHistorico(historico) {
   if (historico.length < 10) return null;
@@ -276,11 +301,12 @@ async function processarMensagem(phone, texto, midia) {
   const TTL = 60 * 60; // 1 hora para contexto (pedidos mudam)
   // Histórico é permanente — sem TTL
 
-  // Carregar histórico, contexto e catálogo em paralelo
-  const [historicoRaw, contextoSalvo, catalogo] = await Promise.all([
+  // Carregar histórico, contexto, catálogo e carrinho abandonado (se houver) em paralelo
+  const [historicoRaw, contextoSalvo, catalogo, leadCarrinho] = await Promise.all([
     kvGet(histKey),
     kvGet(ctxKey),
-    buscarCatalogo()
+    buscarCatalogo(),
+    buscarLeadPorTelefone(phone)
   ]);
   const historico = historicoRaw || [];
   let contexto    = contextoSalvo;
@@ -383,6 +409,23 @@ Pedido #${p.numero} | ${p.produtos}
   // Resumo do histórico anterior (se houver)
   const resumo = await resumoHistorico(historico);
 
+  // Contexto de carrinho abandonado — só existe se o lead ainda não pagou
+  const carrinhoTexto = leadCarrinho ? (() => {
+    const produtos = (leadCarrinho.carrinho || [])
+      .map(i => `${i.nome}${i.cor && i.cor !== 'Default Title' ? ' - ' + i.cor : ''} (x${i.quantidade || 1})`)
+      .join(', ') || 'não informado';
+    const valor = (leadCarrinho.carrinho || []).reduce((s, i) => s + (i.preco || 0) * (i.quantidade || 1), 0) / 100;
+    const situacao = {
+      cep_produto: 'ainda está decidindo, nem começou a preencher dados',
+      identificacao: 'começou a se identificar mas parou',
+      calculou_frete: 'já calculou o frete',
+      endereco: 'já preencheu o endereço',
+      frete_selecionado: 'já escolheu a forma de envio',
+      pagamento_pendente: 'chegou até a tela de pagamento mas não concluiu'
+    }[leadCarrinho.estagio] || 'não finalizou a compra';
+    return `\n=== CARRINHO ABANDONADO (AINDA NÃO PAGOU) ===\nProduto(s): ${produtos}\nValor total: R$ ${valor.toFixed(2).replace('.', ',')}\nSituação: ${situacao}\nLink para finalizar: https://kcique.com.br/pages/checkout\n\nESTE CLIENTE TEM PRIORIDADE DE CONVERSÃO: ele começou a comprar mas não terminou. Se ele demonstrar interesse ou tirar dúvida relacionada, ajude-o a finalizar — tire dúvidas sobre produto/frete/pagamento, contorne objeções com gentileza, e quando ele topar, mande o link de checkout acima. NUNCA invente cupom, desconto ou frete grátis que não tenha sido mencionado por ele.\n=== FIM CARRINHO ===\n`;
+  })() : '';
+
   const systemPrompt = `Você e a assistente virtual de suporte da Kcique Relogios, uma loja online de relogios.
 
 INSTRUCAO CRITICA: Os dados abaixo sao a UNICA fonte de verdade. NUNCA diga que nao consegue acessar pedidos por email ou telefone. NUNCA invente limitacoes do sistema. Se os dados abaixo mostram pedidos, voce TEM esses dados e DEVE usa-los para responder.
@@ -403,6 +446,7 @@ Nao foram encontrados pedidos vinculados a este telefone.
 
 ACAO OBRIGATORIA: Peca o email do cliente. Quando ele informar, o sistema vai buscar automaticamente e voce tera os dados na proxima mensagem. Nao abra ticket antes de tentar pelo email.`
 }
+${carrinhoTexto}
 
 ${catalogo ? `CATÁLOGO DE PRODUTOS DISPONÍVEIS:
 ${catalogo}
