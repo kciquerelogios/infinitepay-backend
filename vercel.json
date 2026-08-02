@@ -9,7 +9,7 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/ofertas?action=verificar",
+      "path": "/api/ofertas?action=verificar&secret=kcique2026",
       "schedule": "* * * * *"
     }
   ]
