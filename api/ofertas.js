@@ -350,18 +350,27 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
       {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
       {nome:'#17',id:'120363406426269657-group'},
     ];
-    // Buscar membros com retry (2 tentativas) para evitar 0 falso
+    // Buscar membros com retry (2 tentativas) para evitar 0 falso.
+    // Importante: d.participants ausente (ex: resposta de erro da Z-API, sessão caída) é
+    // diferente de um array vazio de verdade. Antes, ambos caíam em `membros: 0`, o que
+    // fazia o snapshot do dia ser sobrescrito com zeros reais quando a Z-API falhava sem
+    // lançar exceção (resposta 200 com corpo de erro, por exemplo).
     const fetchGrupo = async (g, tentativa = 1) => {
       try {
         const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
           headers: { 'client-token': ZAPI_CLIENT_TOKEN }
         });
         const d = await r.json();
-        const membros = d.participants ? d.participants.length : null;
-        if (membros === null || membros === 0) {
+        const respostaValida = Array.isArray(d.participants);
+        const membros = respostaValida ? d.participants.length : null;
+        if (!respostaValida || membros === 0) {
           if (tentativa < 2) {
             await new Promise(res => setTimeout(res, 2000));
             return fetchGrupo(g, tentativa + 1);
+          }
+          if (!respostaValida) {
+            console.error(`Resposta inválida da Z-API para ${g.nome}:`, JSON.stringify(d).substring(0,150));
+            return { nome: g.nome, membros: -1 }; // -1 = falha real, não zero real
           }
         }
         return { nome: g.nome, membros: membros || 0 };
@@ -400,6 +409,15 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
       return g;
     });
     const total = membrosFinais.filter(g => g.membros > 0).reduce((s, g) => s + g.membros, 0);
+
+    // Rede de segurança: se a maioria dos grupos falhou (Z-API fora do ar, sessão caída etc.),
+    // não sobrescreve o snapshot do dia com números ruins — mantém o que já estava salvo.
+    const gruposFalharam = membrosFinais.filter(g => g.falhou).length;
+    if (gruposFalharam > GRUPOS_VIP_SNAP.length / 2) {
+      console.error(`Snapshot abortado: ${gruposFalharam}/${GRUPOS_VIP_SNAP.length} grupos falharam na Z-API. Mantendo snapshot anterior.`);
+      return;
+    }
+
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
