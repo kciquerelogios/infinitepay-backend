@@ -1,16 +1,3 @@
-async function buscarLinkConviteZapi(groupId, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN) {
-  try {
-    const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-invitation-link/${groupId}`, {
-      headers: { 'client-token': ZAPI_CLIENT_TOKEN }
-    });
-    const d = await r.json();
-    const link = d.invitationLink || d.link || d.url || d.inviteLink || null;
-    return (link && link.startsWith('http')) ? link : null;
-  } catch (e) {
-    return null;
-  }
-}
-
 export default async function handler(req, res) {
   const { secret } = req.query;
 
@@ -165,16 +152,9 @@ export default async function handler(req, res) {
       {nome:'#16',id:'120363428180805162-group',link:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
       {nome:'#17',id:'120363406426269657-group',link:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
     ];
-    // Busca o link de convite na hora via Z-API; se falhar, usa o link fixo salvo como respaldo
-    const resolverLink = async (nome, linkFixo) => {
-      const info = GRUPOS_LINKS.find(x => x.nome === nome);
-      if (!info) return linkFixo || GRUPOS_LINKS[0].link;
-      if (ZAPI_INSTANCE && ZAPI_TOKEN) {
-        const link = await buscarLinkConviteZapi(info.id, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
-        if (link) return link;
-      }
-      return info.link;
-    };
+    // Link só é lido do que já está salvo (snapshot ou lista fixa) — nunca consultado na
+    // Z-API durante o clique do visitante. A busca ao vivo do link acontece 1x/dia dentro
+    // de salvarSnapshotGrupos (ofertas.js), não aqui.
     try {
       const LIMITE = 1000;
 
@@ -212,28 +192,12 @@ export default async function handler(req, res) {
       for (const g of grupos) {
         if (g.membros < LIMITE) { ativo = g; break; }
       }
-      const link = await resolverLink(ativo.nome);
-      return res.status(200).json({ grupo: ativo.nome, link, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
+      const linkFixo = (GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0]).link;
+      return res.status(200).json({ grupo: ativo.nome, link: ativo.link || linkFixo, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
     } catch(e) {
-      // Sem snapshot — buscar ao vivo no Z-API
-      try {
-        const membrosArr = await Promise.all(GRUPOS_LINKS.map(async g => {
-          try {
-            const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } });
-            const d = await r.json();
-            return { nome: g.nome, membros: d.participants ? d.participants.length : 0 };
-          } catch(e) { return { nome: g.nome, membros: 0 }; }
-        }));
-        let ativo = null; let menorMembros = Infinity;
-        for (const g of membrosArr) {
-          if (g.membros < 1000 && g.membros < menorMembros) { menorMembros = g.membros; ativo = g; }
-        }
-        if (!ativo) ativo = membrosArr[membrosArr.length - 1];
-        const link = await resolverLink(ativo.nome);
-        return res.status(200).json({ grupo: ativo.nome, link, membros: ativo.membros, vagas: 1000 - ativo.membros, fonte: 'live' });
-      } catch(e2) {
-        return res.status(200).json({ grupo: '#1', link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000, fonte: 'fallback' });
-      }
+      // Sem snapshot algum (não deveria acontecer com o cron rodando) — usa a lista fixa,
+      // sem consultar a Z-API ao vivo (evita rajada de chamadas em horário de pico).
+      return res.status(200).json({ grupo: GRUPOS_LINKS[0].nome, link: GRUPOS_LINKS[0].link, membros: 0, vagas: 1000, fonte: 'fallback-sem-snapshot' });
     }
   }
 
@@ -1367,8 +1331,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       if (!grupos) {
         return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: null, historico: [], totalMembros: 0, aviso: 'Snapshot não disponível. Aguarde o cron rodar.' });
       }
-      // Adicionar links aos grupos do snapshot
-      grupos = grupos.map(g => ({ ...g, link: (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
+      // Link: usa o que já veio salvo no snapshot (capturado 1x/dia via Z-API); só cai
+      // pro link fixo se o snapshot não tiver essa informação (snapshots antigos, por ex).
+      grupos = grupos.map(g => ({ ...g, link: g.link || (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
 
       // Verificar se há grupo definido manualmente
       const manualR = await fetch(`${KV_URL}/get/grupo-ativo-manual`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
