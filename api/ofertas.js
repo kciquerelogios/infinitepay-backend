@@ -574,7 +574,10 @@ export default async function handler(req, res) {
     try {
       const disparadas = await verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN);
       try {
-        await verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
+        // Rastreio usa a instância do bot de atendimento (transacional/1:1), separada
+        // da instância principal (ZAPI_INSTANCE) que faz broadcast em grupo e recuperação
+        // de carrinho — assim uma queda por envio em massa não derruba o aviso de rastreio.
+        await verificarRastreios(KV_URL, KV_TOKEN, process.env.ZAPI_BOT_INSTANCE, process.env.ZAPI_BOT_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
       } catch(e) { console.error('Erro rastreios:', e.message); }
       try {
         // Salvar snapshot uma vez por dia — verifica se já existe hoje
