@@ -264,9 +264,13 @@ export default async function handler(req, res) {
         var addr = o.shipping_address;
         var tel = (addr&&addr.phone)||(o.billing_address&&o.billing_address.phone)||(o.customer&&o.customer.phone)||'';
         var email = (o.customer&&o.customer.email)||o.email||'';
-        // Encontrar meOrderId pelo email do cliente
+        // Encontrar meOrderId pela tag (= id do pedido no Shopify, único por pedido).
+        // Antes casava pelo email do cliente, o que misturava etiquetas entre pedidos
+        // do mesmo cliente (ou entre pedidos manuais sem email preenchido).
         var meOrder = meOrders.find(function(mo){
-          return ((mo.to&&mo.to.email)||'').toLowerCase() === email.toLowerCase();
+          return String(mo.tag||'') === String(o.id);
+        }) || meOrders.find(function(mo){
+          return ((mo.to&&mo.to.email)||'').toLowerCase() === email.toLowerCase() && email;
         });
         return {
           id: o.id, numero: o.order_number,
