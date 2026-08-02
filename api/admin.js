@@ -486,6 +486,150 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return res.status(200).json(result);
   }
 
+  // ===== JSON: RELATÓRIOS (filtro de data) =====
+  if (req.query.action === 'relatorios-json') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    try {
+      const dataInicio = req.query.dataInicio || new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const dataFim = req.query.dataFim || dataInicio;
+      const inicioISO = dataInicio + 'T00:00:00-03:00';
+      const fimISO = dataFim + 'T23:59:59-03:00';
+
+      // Pedidos pagos no período (com paginação)
+      let orders = [];
+      { let pageInfo = null, pages = 0;
+        while (pages < 20) {
+          const url = pageInfo
+            ? `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?limit=250&page_info=${pageInfo}`
+            : `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&financial_status=paid&limit=250&created_at_min=${inicioISO}&created_at_max=${fimISO}`;
+          const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+          const d = await r.json().catch(() => ({ orders: [] }));
+          orders = orders.concat(d.orders || []);
+          const link = r.headers.get('link') || '';
+          const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+          pageInfo = m ? m[1] : null;
+          pages++;
+          if (!pageInfo) break;
+        }
+      }
+
+      // Clientes novos no período
+      let customers = [];
+      { let pageInfo = null, pages = 0;
+        while (pages < 10) {
+          const url = pageInfo
+            ? `https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?limit=250&page_info=${pageInfo}`
+            : `https://${SHOPIFY_STORE}/admin/api/2026-04/customers.json?limit=250&created_at_min=${inicioISO}&created_at_max=${fimISO}`;
+          const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+          const d = await r.json().catch(() => ({ customers: [] }));
+          customers = customers.concat(d.customers || []);
+          const link = r.headers.get('link') || '';
+          const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+          pageInfo = m ? m[1] : null;
+          pages++;
+          if (!pageInfo) break;
+        }
+      }
+
+      const totalVendas = orders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+      const totalPedidos = orders.length;
+      const ticketMedio = totalPedidos > 0 ? totalVendas / totalPedidos : 0;
+      const totalFrete = orders.reduce((s, o) => s + parseFloat(o.total_shipping_price_set?.shop_money?.amount || 0), 0);
+      const ticketMedioFrete = totalPedidos > 0 ? totalFrete / totalPedidos : 0;
+
+      // Relógios vendidos + produtos mais vendidos (ignora linha de frete)
+      let relogiosVendidos = 0;
+      const prodContagem = {};
+      orders.forEach(o => {
+        (o.line_items || []).forEach(item => {
+          if ((item.title || '').toLowerCase().startsWith('frete')) return;
+          relogiosVendidos += item.quantity || 0;
+          if (!prodContagem[item.title]) prodContagem[item.title] = { count: 0, valor: 0 };
+          prodContagem[item.title].count += item.quantity || 0;
+          prodContagem[item.title].valor += parseFloat(item.price || 0) * (item.quantity || 0);
+        });
+      });
+      const produtosMaisVendidos = Object.entries(prodContagem)
+        .map(([nome, d]) => ({ nome, ...d }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 15);
+
+      // Forma de pagamento
+      const pagamentos = {};
+      orders.forEach(o => {
+        const nota = o.note || '';
+        const metodo = nota.match(/Método: ([^|]+)/)?.[1]?.trim() || 'outro';
+        const label = metodo === 'pix' ? 'PIX' : metodo === 'credit_card' ? 'Cartão' : metodo === 'debit_card' ? 'Débito' : 'Outro';
+        if (!pagamentos[label]) pagamentos[label] = { count: 0, valor: 0 };
+        pagamentos[label].count++;
+        pagamentos[label].valor += parseFloat(o.total_price || 0);
+      });
+      const pagamentosArr = Object.entries(pagamentos).map(([nome, d]) => ({ nome, ...d })).sort((a, b) => b.valor - a.valor);
+
+      // Origem: venda manual (WhatsApp) vs site/checkout
+      const origens = { 'WhatsApp': { count: 0, valor: 0 }, 'Site': { count: 0, valor: 0 } };
+      orders.forEach(o => {
+        const isWhats = (o.tags || '').includes('WhatsApp') || (o.note || '').includes('Origem: whatsapp-manual');
+        const key = isWhats ? 'WhatsApp' : 'Site';
+        origens[key].count++;
+        origens[key].valor += parseFloat(o.total_price || 0);
+      });
+
+      // Leads no grupo VIP: soma das entradas diárias (snapshot a snapshot) no período
+      let leadsGrupo = 0;
+      let leadsGrupoIndisponivel = false;
+      const diasRange = [];
+      {
+        const dIni = new Date(dataInicio + 'T12:00:00-03:00');
+        const dFim = new Date(dataFim + 'T12:00:00-03:00');
+        for (let d = new Date(dIni); d <= dFim; d.setDate(d.getDate() + 1)) diasRange.push(d.toISOString().split('T')[0]);
+      }
+      if (diasRange.length > 62) {
+        leadsGrupoIndisponivel = true;
+      } else {
+        const snapCache = {};
+        const getSnap = async (ds) => {
+          if (snapCache[ds] !== undefined) return snapCache[ds];
+          const r = await fetch(`${KV_URL}/get/vip-snapshot-${ds}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          const j = await r.json();
+          let snap = j.result;
+          while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch (e) { break; } }
+          snapCache[ds] = (snap && Array.isArray(snap.grupos)) ? snap : null;
+          return snapCache[ds];
+        };
+        for (const ds of diasRange) {
+          const ant = new Date(ds + 'T12:00:00-03:00'); ant.setDate(ant.getDate() - 1);
+          const dsAnt = ant.toISOString().split('T')[0];
+          const [snapHoje, snapOntem] = await Promise.all([getSnap(ds), getSnap(dsAnt)]);
+          if (!snapHoje || !snapOntem) continue;
+          snapHoje.grupos.forEach(g => {
+            if (g.falhou || g.membros <= 0) return;
+            const a = snapOntem.grupos.find(x => x.nome === g.nome);
+            if (!a || a.falhou || a.membros <= 0) return;
+            const diff = g.membros - a.membros;
+            if (diff > 0 && diff <= 1000) leadsGrupo += diff;
+          });
+        }
+      }
+
+      return res.status(200).json({
+        periodo: { dataInicio, dataFim },
+        vendas: totalVendas,
+        pedidos: totalPedidos,
+        relogiosVendidos,
+        clientesNovos: customers.length,
+        leadsGrupo: leadsGrupoIndisponivel ? null : leadsGrupo,
+        ticketMedio,
+        ticketMedioFrete,
+        pagamentos: pagamentosArr,
+        origens: Object.entries(origens).map(([nome, d]) => ({ nome, ...d })),
+        produtosMaisVendidos,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ===== JSON: PEDIDOS =====
   if (req.query.action === 'pedidos-json') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -2188,6 +2332,7 @@ tr:hover td{background:#fafafa}
   <div class="logo">⌚ <span>Kcique Admin</span></div>
   <nav class="nav" id="nav">
     <button class="nav-item active" data-aba="home"><span class="nav-icon">📊</span><span class="nav-label">Visão Geral</span></button>
+    <button class="nav-item" data-aba="relatorios"><span class="nav-icon">📑</span><span class="nav-label">Relatórios</span></button>
     <button class="nav-item" data-aba="carrinhos"><span class="nav-icon">🛒</span><span class="nav-label">Carrinhos</span></button>
     <button class="nav-item" data-aba="ofertas"><span class="nav-icon">📣</span><span class="nav-label">Ofertas</span></button>
     <button class="nav-item" data-aba="pedidos"><span class="nav-icon">📦</span><span class="nav-label">Pedidos</span></button>
@@ -2216,7 +2361,7 @@ tr:hover td{background:#fafafa}
 <script>
 const S = '${secret}';
 const API = '';
-const TITLES = {home:'📊 Visão Geral',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos','pedido-manual':'🧾 Criar Pedido (venda WhatsApp)',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
+const TITLES = {home:'📊 Visão Geral',relatorios:'📑 Relatórios',carrinhos:'🛒 Carrinhos',ofertas:'📣 Ofertas WhatsApp',pedidos:'📦 Pedidos','pedido-manual':'🧾 Criar Pedido (venda WhatsApp)',cupons:'🎟 Cupons',grupos:'📲 Grupos VIP',bundle:'🎁 Bundle',recuperacao:'💬 Recuperação de Carrinhos',atendimento:'🎧 Atendimento',inbox:'📱 Inbox — Conversas'};
 const GRUPOS_NOMES = ['#1','#2','#3','#4','#5','#6','#7','#8','#9','#10','#11','#12','#13','#14','#15','#16','#17'];
 const fmt = v => 'R$ '+(v||0).toFixed(2).replace('.',',');
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
@@ -2247,7 +2392,7 @@ document.getElementById('btn-refresh').addEventListener('click', function() {
 });
 
 function renderAba(aba, force) {
-  var fns = {home:renderHome, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, 'pedido-manual':renderPedidoManual, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
+  var fns = {home:renderHome, relatorios:renderRelatorios, carrinhos:renderCarrinhos, ofertas:renderOfertas, pedidos:renderPedidos, 'pedido-manual':renderPedidoManual, cupons:renderCupons, grupos:renderGrupos, bundle:renderBundle, recuperacao:renderRecuperacao, roleta:renderRoleta, atendimento:renderAtendimento,inbox:renderInbox};
   if (fns[aba]) fns[aba](force);
 }
 
@@ -2477,6 +2622,117 @@ function renderHomeHtml(d) {
       if (total) total.textContent = p.totalDia;
     }).catch(function(){});
   }, 30000);
+}
+
+// ===== RELATÓRIOS =====
+function _relHojeStr(offsetDias) {
+  var d = new Date(Date.now() - 3*60*60*1000 + (offsetDias||0)*86400000);
+  return d.toISOString().split('T')[0];
+}
+async function renderRelatorios() {
+  var di = get('rel-di') ? val('rel-di') : _relHojeStr(0);
+  var df = get('rel-df') ? val('rel-df') : _relHojeStr(0);
+  _renderRelatoriosShell(di, df);
+  await _buscarRelatorios(di, df);
+}
+function _renderRelatoriosShell(di, df) {
+  var html = '<div class="form-card">';
+  html += '<div class="form-title">📑 Relatórios</div>';
+  html += '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+  html += '<div class="field" style="margin-bottom:0"><label>De</label><input type="date" id="rel-di" value="'+di+'"></div>';
+  html += '<div class="field" style="margin-bottom:0"><label>Até</label><input type="date" id="rel-df" value="'+df+'"></div>';
+  html += '<button class="btn btn-primary" id="rel-buscar">Buscar</button>';
+  html += '<button class="btn btn-ghost btn-sm" id="rel-hoje">Hoje</button>';
+  html += '<button class="btn btn-ghost btn-sm" id="rel-7d">Últimos 7 dias</button>';
+  html += '<button class="btn btn-ghost btn-sm" id="rel-mes">Este mês</button>';
+  html += '</div></div>';
+  html += '<div id="rel-conteudo"></div>';
+  ct().innerHTML = html;
+  var bb = get('rel-buscar');
+  if (bb) bb.addEventListener('click', function(){ _buscarRelatorios(val('rel-di'), val('rel-df')); });
+  var bh = get('rel-hoje');
+  if (bh) bh.addEventListener('click', function(){ var h=_relHojeStr(0); get('rel-di').value=h; get('rel-df').value=h; _buscarRelatorios(h,h); });
+  var b7 = get('rel-7d');
+  if (b7) b7.addEventListener('click', function(){ var ini=_relHojeStr(-6), fim=_relHojeStr(0); get('rel-di').value=ini; get('rel-df').value=fim; _buscarRelatorios(ini,fim); });
+  var bm = get('rel-mes');
+  if (bm) bm.addEventListener('click', function(){ var hoje=new Date(Date.now()-3*60*60*1000); var ini=hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-01'; var fim=_relHojeStr(0); get('rel-di').value=ini; get('rel-df').value=fim; _buscarRelatorios(ini,fim); });
+}
+async function _buscarRelatorios(di, df) {
+  var cont = get('rel-conteudo');
+  if (cont) cont.innerHTML = '<div class="loading-box"><div class="spin"></div>Carregando...</div>';
+  try {
+    var d = await fetch(API+'/api/admin?secret='+S+'&action=relatorios-json&dataInicio='+di+'&dataFim='+df).then(function(r){return r.json();});
+    _renderRelatoriosConteudo(d);
+  } catch(e) {
+    if (cont) cont.innerHTML = '<div class="vazio">⚠️ Erro: '+e.message+'</div>';
+  }
+}
+function _renderRelatoriosConteudo(d) {
+  var cont = get('rel-conteudo');
+  if (!cont) return;
+  if (d.error) { cont.innerHTML = '<div class="vazio">⚠️ '+d.error+'</div>'; return; }
+  var html = '';
+
+  html += '<div class="stat-grid" style="margin-top:16px">';
+  html += '<div class="stat-card"><div class="stat-label">💰 Vendas</div><div class="stat-value">'+fmt(d.vendas||0)+'</div><div class="stat-sub">'+(d.pedidos||0)+' pedidos</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">⌚ Relógios vendidos</div><div class="stat-value">'+fmtN(d.relogiosVendidos||0)+'</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">🎯 Ticket médio</div><div class="stat-value">'+fmt(d.ticketMedio||0)+'</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">🚚 Ticket médio do frete</div><div class="stat-value">'+fmt(d.ticketMedioFrete||0)+'</div></div>';
+  html += '</div>';
+
+  html += '<div class="stat-grid" style="grid-template-columns:1fr 1fr">';
+  html += '<div class="stat-card"><div class="stat-label">🆕 Clientes novos</div><div class="stat-value">'+fmtN(d.clientesNovos||0)+'</div></div>';
+  html += '<div class="stat-card"><div class="stat-label">📲 Leads no grupo (entraram no período)</div><div class="stat-value">'+(d.leadsGrupo===null||d.leadsGrupo===undefined?'—':fmtN(d.leadsGrupo))+'</div>'+(d.leadsGrupo===null?'<div class="stat-sub">Período longo demais p/ calcular (máx. 62 dias)</div>':'')+'</div>';
+  html += '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+  // Pagamentos
+  html += '<div class="card" style="padding:18px">';
+  html += '<div class="section-title" style="margin-bottom:14px">💳 Por forma de pagamento</div>';
+  var pags = d.pagamentos||[];
+  if (!pags.length) { html += '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px">Sem dados</div>'; }
+  else {
+    var totalPag = pags.reduce(function(s,p){return s+p.valor;},0);
+    pags.forEach(function(p){
+      var pct = totalPag>0 ? Math.round(p.valor/totalPag*100) : 0;
+      var cor = p.nome==='PIX'?'#25d366':p.nome==='Cartão'?'#3b82f6':p.nome==='Débito'?'#8b5cf6':'#9ca3af';
+      html += '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">'+p.nome+'</span><span style="font-size:13px;color:#6b7280">'+p.count+' · '+fmt(p.valor)+' ('+pct+'%)</span></div>';
+      html += '<div style="background:#f3f4f6;border-radius:4px;height:6px"><div style="width:'+pct+'%;height:6px;border-radius:4px;background:'+cor+'"></div></div></div>';
+    });
+  }
+  html += '</div>';
+  // Origem
+  html += '<div class="card" style="padding:18px">';
+  html += '<div class="section-title" style="margin-bottom:14px">📍 Por origem</div>';
+  var orgs = d.origens||[];
+  var totalOrg = orgs.reduce(function(s,o){return s+o.valor;},0);
+  if (!totalOrg) { html += '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px">Sem dados</div>'; }
+  else {
+    orgs.forEach(function(o){
+      var pct = totalOrg>0 ? Math.round(o.valor/totalOrg*100) : 0;
+      var cor = o.nome==='WhatsApp'?'#25d366':'#3b82f6';
+      html += '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">'+(o.nome==='WhatsApp'?'💬 WhatsApp/Manual':'🛒 Site/Checkout')+'</span><span style="font-size:13px;color:#6b7280">'+o.count+' · '+fmt(o.valor)+' ('+pct+'%)</span></div>';
+      html += '<div style="background:#f3f4f6;border-radius:4px;height:6px"><div style="width:'+pct+'%;height:6px;border-radius:4px;background:'+cor+'"></div></div></div>';
+    });
+  }
+  html += '</div>';
+  html += '</div>';
+
+  // Produtos mais vendidos
+  html += '<div class="card">';
+  html += '<div style="padding:16px 18px;border-bottom:1px solid #f3f4f6"><span style="font-size:13px;font-weight:700">🏆 Produtos mais vendidos</span></div>';
+  var prods = d.produtosMaisVendidos||[];
+  if (!prods.length) { html += '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:13px">Sem vendas no período</div>'; }
+  else {
+    html += '<div class="tbl-wrap" style="border:none"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead><tbody>';
+    prods.forEach(function(p){
+      html += '<tr><td>'+p.nome+'</td><td>'+p.count+'</td><td>'+fmt(p.valor)+'</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+
+  cont.innerHTML = html;
 }
 
 // ===== CARRINHOS =====
