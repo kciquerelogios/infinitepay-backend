@@ -75,8 +75,11 @@ export default async function handler(req, res) {
       const ME_TOKEN = process.env.MELHORENVIO_TOKEN;
       const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
       const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
-      const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
-      const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+      // Rastreio usa a instância do bot de atendimento (transacional/1:1), separada
+      // da instância principal que faz broadcast em grupo e recuperação de carrinho —
+      // assim uma queda por causa do envio em massa não derruba o aviso de rastreio.
+      const ZAPI_INSTANCE = process.env.ZAPI_BOT_INSTANCE;
+      const ZAPI_TOKEN = process.env.ZAPI_BOT_TOKEN;
       const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
       // Buscar pedidos do Melhor Envio com tracking
