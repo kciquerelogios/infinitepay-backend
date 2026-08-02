@@ -460,7 +460,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { secret, action } = req.query;
-  if (secret !== process.env.REPROCESSAR_SECRET) {
+  // action=verificar pode ser chamado pelo cron nativo da Vercel, autenticado pelo
+  // cabeçalho que só a própria Vercel consegue enviar — sem precisar de segredo na URL
+  // (evita ter que guardar o segredo mestre num serviço de cron externo).
+  const isVercelCron = req.headers['x-vercel-cron'] === '1'
+    || (process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`);
+  const autorizadoParaVerificar = action === 'verificar' && isVercelCron;
+
+  if (secret !== process.env.REPROCESSAR_SECRET && !autorizadoParaVerificar) {
     if (action !== 'dashboard') return res.status(401).json({ error: 'Unauthorized' });
     return res.status(401).send(`<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h2>Acesso Restrito</h2><form onsubmit="window.location.href='/api/ofertas?action=dashboard&secret='+document.getElementById('s').value;return false" style="margin-top:20px"><input id="s" type="password" placeholder="Senha" style="padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"><button type="submit" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;margin-left:8px;font-size:15px;cursor:pointer">Entrar</button></form></div></body></html>`);
   }
