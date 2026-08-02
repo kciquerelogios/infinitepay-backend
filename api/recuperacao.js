@@ -161,12 +161,13 @@ export default async function handler(req, res) {
   const log = [];
 
   try {
-    // 1. Buscar config
+    // 1. Buscar config (recuperação sempre ativa — não existe mais chave geral de liga/desliga;
+    // cada regra por etapa continua controlando individualmente se dispara ou não)
     const config = await kvGet('recuperacao-config');
     log.push({ step: 'config', value: config });
 
-    if (!config || !config.ativo) {
-      return res.status(200).json({ ok: true, msg: 'Recuperação desativada', disparos: 0, log });
+    if (!config) {
+      return res.status(200).json({ ok: true, msg: 'Nenhuma configuração salva ainda', disparos: 0, log });
     }
 
     // 2. Buscar IDs dos leads
