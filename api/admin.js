@@ -3672,6 +3672,7 @@ async function renderRecuperacao() {
     html += '<button class="btn btn-ghost" id="btn-testar-rec">▶ Disparar agora</button>';
     html += '<span id="rec-msg" style="font-size:13px"></span>';
     html += '</div>';
+    html += '<div id="rec-detalhes" style="margin-top:10px"></div>';
 
     ct().innerHTML = html;
 
@@ -3709,8 +3710,34 @@ async function renderRecuperacao() {
       var btn=this; btn.disabled=true; btn.textContent='Disparando...';
       var r = await fetch(API+'/api/recuperacao?secret='+S, {method:'POST'}).then(function(r){return r.json();}).catch(function(){return {ok:false};});
       var msg = document.getElementById('rec-msg');
-      if (r.ok) { msg.textContent='✅ '+r.disparos+' mensagens enviadas'; msg.style.color='#16a34a'; }
-      else { msg.textContent='❌ Erro ao disparar'; msg.style.color='#ef4444'; }
+      var det = document.getElementById('rec-detalhes');
+      if (r.ok) {
+        msg.textContent = '✅ ' + r.disparos + ' mensagens enviadas';
+        msg.style.color = '#16a34a';
+        var h = '';
+        if (r.disparos === 0 && (!r.pulados || !r.pulados.length) && (!r.erros || !r.erros.length)) {
+          h = '<div style="font-size:12px;color:#9ca3af;margin-top:6px">Nenhum lead elegível encontrado (sem carrinho abandonado no momento, ou "Recuperação desativada"/"Nenhum lead" — veja o motivo geral acima, se houver).</div>';
+        }
+        if (r.pulados && r.pulados.length) {
+          h += '<div style="font-size:12px;color:#92400e;margin-top:6px;font-weight:600">Pulados (' + r.pulados.length + '):</div>';
+          h += '<div style="max-height:180px;overflow-y:auto;margin-top:4px">';
+          r.pulados.forEach(function(p){
+            h += '<div style="font-size:11px;color:#6b7280;padding:3px 0;border-bottom:1px solid #f3f4f6">' + (p.email||'—') + ' — ' + (p.motivo||'') + '</div>';
+          });
+          h += '</div>';
+        }
+        if (r.erros && r.erros.length) {
+          h += '<div style="font-size:12px;color:#dc2626;margin-top:6px;font-weight:600">Erros (' + r.erros.length + '):</div>';
+          r.erros.forEach(function(e){
+            h += '<div style="font-size:11px;color:#dc2626;padding:3px 0">' + (e.email||'—') + ' — ' + (e.erro||'') + '</div>';
+          });
+        }
+        det.innerHTML = h;
+      } else {
+        msg.textContent = '❌ Erro ao disparar';
+        msg.style.color = '#ef4444';
+        det.innerHTML = '';
+      }
       btn.disabled=false; btn.textContent='▶ Disparar agora';
     });
 
