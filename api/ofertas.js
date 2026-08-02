@@ -340,16 +340,35 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
 async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN) {
   try {
     const GRUPOS_VIP_SNAP = [
-      {nome:'#1',id:'120363407575718083-group'},{nome:'#2',id:'120363407700341013-group'},
-      {nome:'#3',id:'120363407514192649-group'},{nome:'#4',id:'120363406939167357-group'},
-      {nome:'#5',id:'120363425311709688-group'},{nome:'#6',id:'120363407634566182-group'},
-      {nome:'#7',id:'120363426601689014-group'},{nome:'#8',id:'120363407550597963-group'},
-      {nome:'#9',id:'120363424221379294-group'},{nome:'#10',id:'120363425206908330-group'},
-      {nome:'#11',id:'120363409632620470-group'},{nome:'#12',id:'120363426115032457-group'},
-      {nome:'#13',id:'120363426651817338-group'},{nome:'#14',id:'120363406708968616-group'},
-      {nome:'#15',id:'120363425674177408-group'},{nome:'#16',id:'120363428180805162-group'},
-      {nome:'#17',id:'120363406426269657-group'},
+      {nome:'#1',id:'120363407575718083-group',linkFixo:'https://chat.whatsapp.com/FyN2AqbnmSRA3LSGOyGA4A?s=cl&p=a&ilr=1'},
+      {nome:'#2',id:'120363407700341013-group',linkFixo:'https://chat.whatsapp.com/GtwnsNKOBhBFphx80IbGRi'},
+      {nome:'#3',id:'120363407514192649-group',linkFixo:'https://chat.whatsapp.com/Gp0z5rooPJn4xJ9vMuu5mq'},
+      {nome:'#4',id:'120363406939167357-group',linkFixo:'https://chat.whatsapp.com/CwNI8EJ4YYE3l87dnkPsfF'},
+      {nome:'#5',id:'120363425311709688-group',linkFixo:'https://chat.whatsapp.com/Gdm2fldetx4CgQTlXIU4Hr'},
+      {nome:'#6',id:'120363407634566182-group',linkFixo:'https://chat.whatsapp.com/FqcXp5lj5Iv6fln8aOls41'},
+      {nome:'#7',id:'120363426601689014-group',linkFixo:'https://chat.whatsapp.com/IsQ8zsma0e83xULh9GoSf2'},
+      {nome:'#8',id:'120363407550597963-group',linkFixo:'https://chat.whatsapp.com/DfaAcQXJdBqH8NiEJoRxmH'},
+      {nome:'#9',id:'120363424221379294-group',linkFixo:'https://chat.whatsapp.com/H86IAANo3wC5vJLpGLruN5'},
+      {nome:'#10',id:'120363425206908330-group',linkFixo:'https://chat.whatsapp.com/EKL8Pi3nSDFEnfFysWd6vV'},
+      {nome:'#11',id:'120363409632620470-group',linkFixo:'https://chat.whatsapp.com/LUekubqMZ1fFBzNc6nr1eh'},
+      {nome:'#12',id:'120363426115032457-group',linkFixo:'https://chat.whatsapp.com/DiCkqI5M1rc9fD4Uo0Uhpb'},
+      {nome:'#13',id:'120363426651817338-group',linkFixo:'https://chat.whatsapp.com/JcmJFfNeCTxFCqhNaTK3UL?s=cl&p=a&ilr=1'},
+      {nome:'#14',id:'120363406708968616-group',linkFixo:'https://chat.whatsapp.com/EZqlQfswqOvCSJgWmP8TpZ'},
+      {nome:'#15',id:'120363425674177408-group',linkFixo:'https://chat.whatsapp.com/KWGkIwonwYVClO5y44DJPh?s=cl&p=a&ilr=1'},
+      {nome:'#16',id:'120363428180805162-group',linkFixo:'https://chat.whatsapp.com/EsAXwsLfNQ4BIKHWF20Gxh?s=cl&p=a&ilr=1'},
+      {nome:'#17',id:'120363406426269657-group',linkFixo:'https://chat.whatsapp.com/Ln7miz76B0BH8EjvaN57YC'},
     ];
+    // Busca o link de convite atual (uma vez por snapshot, não a cada clique de visitante)
+    const buscarLinkConvite = async (id) => {
+      try {
+        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-invitation-link/${id}`, {
+          headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+        });
+        const d = await r.json();
+        const link = d.invitationLink || d.link || d.url || d.inviteLink || null;
+        return (link && link.startsWith('http')) ? link : null;
+      } catch (e) { return null; }
+    };
     // Buscar membros com retry (2 tentativas) para evitar 0 falso.
     // Importante: d.participants ausente (ex: resposta de erro da Z-API, sessão caída) é
     // diferente de um array vazio de verdade. Antes, ambos caíam em `membros: 0`, o que
@@ -357,9 +376,11 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
     // lançar exceção (resposta 200 com corpo de erro, por exemplo).
     const fetchGrupo = async (g, tentativa = 1) => {
       try {
-        const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, {
-          headers: { 'client-token': ZAPI_CLIENT_TOKEN }
-        });
+        const [r, linkAoVivo] = await Promise.all([
+          fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-metadata/${g.id}`, { headers: { 'client-token': ZAPI_CLIENT_TOKEN } }),
+          buscarLinkConvite(g.id)
+        ]);
+        const link = linkAoVivo || g.linkFixo;
         const d = await r.json();
         const respostaValida = Array.isArray(d.participants);
         const membros = respostaValida ? d.participants.length : null;
@@ -370,17 +391,17 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
           }
           if (!respostaValida) {
             console.error(`Resposta inválida da Z-API para ${g.nome}:`, JSON.stringify(d).substring(0,150));
-            return { nome: g.nome, membros: -1 }; // -1 = falha real, não zero real
+            return { nome: g.nome, membros: -1, link }; // -1 = falha real, não zero real
           }
         }
-        return { nome: g.nome, membros: membros || 0 };
+        return { nome: g.nome, membros: membros || 0, link };
       } catch(e) {
         if (tentativa < 2) {
           await new Promise(res => setTimeout(res, 2000));
           return fetchGrupo(g, tentativa + 1);
         }
         console.error(`Erro ao buscar ${g.nome}:`, e.message);
-        return { nome: g.nome, membros: -1 }; // -1 = falha real, não zero real
+        return { nome: g.nome, membros: -1, link: g.linkFixo }; // -1 = falha real, não zero real
       }
     };
 
@@ -404,7 +425,7 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
     const membrosFinais = membros.map(g => {
       if (g.membros === -1) {
         const ant = gruposAnt.find(a => a.nome === g.nome);
-        return { nome: g.nome, membros: ant ? ant.membros : 0, falhou: true };
+        return { nome: g.nome, membros: ant ? ant.membros : 0, link: (ant && ant.link) || g.link, falhou: true };
       }
       return g;
     });
