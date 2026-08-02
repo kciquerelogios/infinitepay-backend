@@ -660,6 +660,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
     return res.status(200).json({ ok: true, nome, link });
   }
 
+  // ===== REMOVER TRAVA MANUAL: volta a escolher o grupo ativo automaticamente por vaga =====
+  if (req.query.action === 'limpar-grupo-manual' && req.method === 'POST') {
+    await fetch(`${KV_URL}/del/grupo-ativo-manual`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    return res.status(200).json({ ok: true });
+  }
+
   // ===== ACTION: ENVIAR PARA FORNECEDOR =====
   if (req.query.action === 'enviar-fornecedor') {
     const { clienteNome, tracking, imgUrl } = req.query;
@@ -1214,7 +1220,8 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       let manualGrupo = manualJ.result;
       while (typeof manualGrupo === 'string') { try { manualGrupo = JSON.parse(manualGrupo); } catch(e) { break; } }
       let grupoAtivo;
-      if (manualGrupo && manualGrupo.link) {
+      const travadoManual = !!(manualGrupo && manualGrupo.link);
+      if (travadoManual) {
         const gSnap = grupos.find(g => g.nome === manualGrupo.nome);
         grupoAtivo = gSnap ? { ...gSnap, link: manualGrupo.link } : { nome: manualGrupo.nome, link: manualGrupo.link, membros: 0 };
       } else {
@@ -1292,7 +1299,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         ? `Números por grupo são do snapshot de ${grupoDataUsada} — o de hoje ainda não foi gerado.`
         : null;
 
-      return res.status(200).json({ grupos, grupoAtivo, entradasHoje, historico, totalMembros: totalAtual, aviso });
+      return res.status(200).json({ grupos, grupoAtivo, entradasHoje, historico, totalMembros: totalAtual, aviso, travadoManual });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
@@ -1390,6 +1397,20 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
   }
 
   // ===== ACTION: DEBUG MELHOR ENVIO =====
+  // ===== DEBUG: testar busca do link de convite por ID do grupo (Z-API) =====
+  if (req.query.action === 'debug-invite-link') {
+    const groupId = req.query.id || '120363407575718083-group'; // padrão: grupo #1
+    try {
+      const r = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/group-invitation-link/${groupId}`, {
+        headers: { 'client-token': ZAPI_CLIENT_TOKEN }
+      });
+      const d = await r.json();
+      return res.status(200).json({ status: r.status, groupId, resposta: d });
+    } catch (e) {
+      return res.status(500).json({ erro: e.message });
+    }
+  }
+
   if (req.query.action === 'me-debug') {
     const ME_TOKEN2 = process.env.MELHORENVIO_TOKEN;
     try {
@@ -3243,7 +3264,8 @@ async function renderGrupos(){
   try{
     var d=await fetch(API+'/api/admin?secret='+S+'&action=grupos-vip-dashboard').then(r=>r.json());
     var grupos=d.grupos||[],ga=d.grupoAtivo||{},LIMITE=1000;
-    var html='<div class="form-card"><div class="form-title">🟢 Grupo Ativo: <strong>'+ga.nome+'</strong></div>';
+    var html='<div class="form-card"><div class="form-title">🟢 Grupo Ativo: <strong>'+ga.nome+'</strong>'+(d.travadoManual?' <span class="badge" style="background:#fef3c7;color:#92400e">🔒 travado manualmente</span>':' <span class="badge" style="background:#dcfce7;color:#16a34a">🔄 automático (por vaga)</span>')+'</div>';
+    if(d.travadoManual)html+='<div style="font-size:12px;color:#92400e;background:#fef9c3;border-radius:8px;padding:8px 12px;margin-bottom:10px">⚠️ O grupo ativo foi fixado manualmente e não muda sozinho mesmo se lotar. <button id="btn-destravar-grupo" style="background:none;border:none;color:#92400e;text-decoration:underline;cursor:pointer;font-weight:700;padding:0">Voltar para automático</button></div>';
     html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;color:#6b7280">';
     html += '<span>'+fmtN(ga.membros||0)+' membros no grupo ativo</span>';
     html += '<span style="color:#d1d5db">·</span>';
@@ -3286,6 +3308,11 @@ async function renderGrupos(){
     });
     var bcl=get('btn-copiar-link');
     if(bcl)bcl.addEventListener('click',function(){navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){alert('Link copiado!');});});
+    var bdg=get('btn-destravar-grupo');
+    if(bdg)bdg.addEventListener('click',function(){
+      if(!confirm('Voltar a escolher o grupo ativo automaticamente (pelo primeiro com vaga)?'))return;
+      fetch(API+'/api/admin?secret='+S+'&action=limpar-grupo-manual',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.json();}).then(function(d){if(d.ok){alert('✅ Voltou pro automático!');renderGrupos();}});
+    });
     var bac=get('btn-atualizar-contagem');
     if(bac)bac.addEventListener('click',function(){
       bac.disabled=true;bac.textContent='Atualizando...';
