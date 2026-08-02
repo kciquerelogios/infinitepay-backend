@@ -3624,18 +3624,11 @@ async function renderRecuperacao() {
 
     var html = '';
 
-    // Status global
-    var ativo = c.ativo !== false;
+    // Recuperação sempre ativa — cada regra abaixo controla individualmente se dispara
     html += '<div class="form-card" style="margin-bottom:16px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between">';
-    html += '<div><div class="form-title">💬 Recuperação Automática de Carrinhos</div>';
-    html += '<div style="font-size:13px;color:#6b7280">Mensagens automáticas via WhatsApp para recuperar carrinhos abandonados</div></div>';
-    html += '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">';
-    html += '<span style="font-size:13px;font-weight:600">'+(ativo?'Ativo':'Inativo')+'</span>';
-    html += '<div style="position:relative;width:44px;height:24px"><input type="checkbox" id="rec-ativo" '+(ativo?'checked':'')+'style="opacity:0;position:absolute;width:100%;height:100%;margin:0;cursor:pointer;z-index:2">';
-    html += '<div id="rec-ativo-bg" style="position:absolute;inset:0;border-radius:12px;background:'+(ativo?'#25d366':'#d1d5db')+';transition:background .2s"></div>';
-    html += '<div id="rec-ativo-dot" style="position:absolute;top:3px;left:'+(ativo?'23':'3')+'px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></label>';
-    html += '</div></div>';
+    html += '<div class="form-title">💬 Recuperação Automática de Carrinhos</div>';
+    html += '<div style="font-size:13px;color:#6b7280">Mensagens automáticas via WhatsApp (escritas por IA) para recuperar carrinhos abandonados — sempre ativa; ative/desative por etapa abaixo</div>';
+    html += '</div>';
 
     // Variáveis disponíveis
     html += '<div style="margin-bottom:16px;padding:12px 16px;background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;font-size:12px;color:#0369a1">';
@@ -3676,18 +3669,10 @@ async function renderRecuperacao() {
 
     ct().innerHTML = html;
 
-    // Toggle global
-    var recAtivoBg = document.getElementById('rec-ativo-bg');
-    var recAtivoDot = document.getElementById('rec-ativo-dot');
-    document.getElementById('rec-ativo').addEventListener('change', function() {
-      recAtivoBg.style.background = this.checked ? '#25d366' : '#d1d5db';
-      recAtivoDot.style.left = this.checked ? '23px' : '3px';
-    });
-
     // Salvar
     document.getElementById('btn-salvar-rec').addEventListener('click', async function() {
       var btn = this; btn.disabled=true; btn.textContent='Salvando...';
-      var novaConfig = { ativo: document.getElementById('rec-ativo').checked };
+      var novaConfig = { ativo: true };
       regras.forEach(function(regra) {
         novaConfig[regra.key] = {
           ativo: ct().querySelector('.rec-regra-ativo[data-regra="'+regra.key+'"]').checked,
