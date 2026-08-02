@@ -50,6 +50,15 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
 
+  const debug = !!req.query.debug;
+  const info = { etapas: [] };
+  const finalizar = (link, motivo) => {
+    info.motivo = motivo;
+    info.linkFinal = link;
+    if (debug) return res.status(200).json(info);
+    return res.redirect(302, link);
+  };
+
   const KV_URL = process.env.KV_REST_API_URL;
   const KV_TOKEN = process.env.KV_REST_API_TOKEN;
   const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE;
@@ -57,19 +66,21 @@ export default async function handler(req, res) {
   const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
   try {
-    if (!KV_URL || !KV_TOKEN) return res.redirect(302, FALLBACK);
+    if (!KV_URL || !KV_TOKEN) return finalizar(FALLBACK, 'sem KV configurado');
 
     // 1) Trava manual
     const manualR = await fetch(`${KV_URL}/get/grupo-ativo-manual`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     const manualJ = await manualR.json();
     let manual = manualJ.result;
     while (typeof manual === 'string') { try { manual = JSON.parse(manual); } catch (e) { break; } }
+    info.etapas.push({ etapa: 'trava-manual', valor: manual || null });
     if (manual && manual.link) {
-      return res.redirect(302, manual.link);
+      return finalizar(manual.link, 'trava manual ativa (grupo ' + manual.nome + ')');
     }
 
     // 2) Snapshot do dia — primeiro grupo (#1..#17, em ordem) com vaga
     let grupoAtivoNome = null;
+    let snapshotUsado = null;
     for (let i = 0; i <= 2; i++) {
       const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
       d.setDate(d.getDate() - i);
@@ -84,9 +95,11 @@ export default async function handler(req, res) {
           if ((g.membros || 0) < LIMITE) { ativo = g; break; }
         }
         grupoAtivoNome = ativo.nome;
+        snapshotUsado = { data: ds, grupos: snap.grupos };
         break;
       }
     }
+    info.etapas.push({ etapa: 'snapshot', usado: snapshotUsado, grupoEscolhido: grupoAtivoNome });
 
     // 3) Sem snapshot: busca ao vivo na Z-API (mais lento, só usado como fallback)
     if (!grupoAtivoNome && ZAPI_INSTANCE && ZAPI_TOKEN) {
@@ -103,20 +116,27 @@ export default async function handler(req, res) {
           if (g.membros < LIMITE) { ativo = g; break; }
         }
         grupoAtivoNome = ativo.nome;
-      } catch (e) {}
+        info.etapas.push({ etapa: 'busca-ao-vivo', membros: membrosArr, grupoEscolhido: grupoAtivoNome });
+      } catch (e) {
+        info.etapas.push({ etapa: 'busca-ao-vivo', erro: e.message });
+      }
     }
 
     const grupoInfo = GRUPOS.find(g => g.nome === grupoAtivoNome) || GRUPOS[0];
+    info.grupoInfo = grupoInfo;
 
     // Link de convite buscado na hora via Z-API; se falhar, usa o link fixo como respaldo
     let link = null;
     if (ZAPI_INSTANCE && ZAPI_TOKEN) {
       link = await buscarLinkConvite(grupoInfo.id, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
     }
-    return res.redirect(302, link || grupoInfo.link || FALLBACK);
+    info.linkZapi = link;
+    info.linkFixoRespaldo = grupoInfo.link;
+    return finalizar(link || grupoInfo.link || FALLBACK, link ? 'link buscado ao vivo na Z-API' : 'Z-API falhou, usando link fixo salvo');
   } catch (e) {
+    info.erroGeral = e.message;
     console.error('grupo.js erro:', e.message);
   }
 
-  return res.redirect(302, FALLBACK);
+  return finalizar(FALLBACK, 'erro geral, usando fallback fixo');
 }
