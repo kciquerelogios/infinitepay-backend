@@ -1191,6 +1191,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const hoje = new Date();
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
       let grupos = null;
+      let grupoDataUsada = null;
       for (let i = 0; i <= 2; i++) {
         const d = new Date(hojeBR); d.setDate(d.getDate() - i);
         const ds = d.toISOString().split('T')[0];
@@ -1198,11 +1199,11 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         const j = await r.json();
         let snap = j.result;
         while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
-        if (snap && snap.grupos) { grupos = snap.grupos; break; }
+        if (snap && snap.grupos) { grupos = snap.grupos; grupoDataUsada = ds; break; }
       }
       // Se não tem snapshot, retornar erro amigável
       if (!grupos) {
-        return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: 0, historico: [], totalMembros: 0, aviso: 'Snapshot não disponível. Aguarde o cron rodar.' });
+        return res.status(200).json({ grupos: GRUPOS_LINKS.map(g=>({...g,membros:0})), grupoAtivo: GRUPOS_LINKS[0], entradasHoje: null, historico: [], totalMembros: 0, aviso: 'Snapshot não disponível. Aguarde o cron rodar.' });
       }
       // Adicionar links aos grupos do snapshot
       grupos = grupos.map(g => ({ ...g, link: (GRUPOS_LINKS.find(l=>l.nome===g.nome)||{}).link||'' }));
@@ -1226,13 +1227,12 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const hojeStr = hojeBR.toISOString().split('T')[0];
       const totalAtual = grupos.reduce((s,g) => s+g.membros, 0);
 
-      // Salvar snapshot de hoje
+      // Buscar o snapshot de HOJE especificamente (pode ainda não existir, se o cron não rodou hoje)
       const chaveHoje = `vip-snapshot-${hojeStr}`;
       const snapHojeResp = await fetch(`${KV_URL}/get/${chaveHoje}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
       const snapHojeData = await snapHojeResp.json();
-      const snapHoje = snapHojeData.result ? JSON.parse(snapHojeData.result) : null;
-
-      // Snapshot salvo pelo cron (ofertas.js)
+      let snapHoje = snapHojeData.result;
+      while (typeof snapHoje === 'string') { try { snapHoje = JSON.parse(snapHoje); } catch(e) { break; } }
 
       // Calcular entradas de hoje comparando com snapshot de ontem
       const ontemStr = new Date(hojeBR.getTime() - 86400000).toISOString().split('T')[0];
@@ -1264,10 +1264,10 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         return entradas;
       };
 
-      const entradasHoje = calcEntradas(
-        { grupos, total: totalAtual },
-        snapOntem
-      ) || 0;
+      // Só calcula "entradas hoje" com um snapshot de hoje de verdade — comparar o fallback
+      // (que pode ser de ontem/anteontem) com o snapshot de ontem daria sempre 0, mesmo
+      // havendo entradas reais, por comparar o mesmo dia consigo mesmo.
+      const entradasHoje = snapHoje ? calcEntradas(snapHoje, snapOntem) : null;
 
       // Histórico dos últimos 7 dias
       const historico = [];
@@ -1284,11 +1284,15 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         let snap0 = r0.result || null;
         while (typeof snap1 === 'string') { try { snap1 = JSON.parse(snap1); } catch(e) { break; } }
         while (typeof snap0 === 'string') { try { snap0 = JSON.parse(snap0); } catch(e) { break; } }
-        const entradas = i === 0 ? entradasHoje : (calcEntradas(snap1, snap0) || 0);
+        const entradas = i === 0 ? (entradasHoje || 0) : (calcEntradas(snap1, snap0) || 0);
         historico.push({ data: ds1, entradas });
       }
 
-      return res.status(200).json({ grupos, grupoAtivo, entradasHoje, historico, totalMembros: totalAtual });
+      const aviso = grupoDataUsada !== hojeStr
+        ? `Números por grupo são do snapshot de ${grupoDataUsada} — o de hoje ainda não foi gerado.`
+        : null;
+
+      return res.status(200).json({ grupos, grupoAtivo, entradasHoje, historico, totalMembros: totalAtual, aviso });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
@@ -3245,12 +3249,13 @@ async function renderGrupos(){
     html += '<span style="color:#d1d5db">·</span>';
     html += '<span><strong style="color:#111">'+fmtN(d.totalMembros||0)+'</strong> total em 17 grupos</span>';
     html += '<span style="color:#d1d5db">·</span>';
-    html += '<span>📈 Entradas hoje: <strong style="color:#16a34a">'+d.entradasHoje+'</strong></span>';
+    html += '<span>📈 Entradas hoje: <strong style="color:#16a34a">'+(d.entradasHoje===null||d.entradasHoje===undefined?'—':d.entradasHoje)+'</strong></span>';
     html += '</div>';
     html+='<div style="display:flex;gap:8px;margin-bottom:6px">';
     html+='<input id="inp-link" value="'+(ga.link||'')+'" style="flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none" placeholder="Novo link do grupo">';
     html+='<button class="btn btn-ghost btn-sm" id="btn-salvar-link">Salvar link</button>';
     html+='<button class="btn btn-ghost btn-sm" id="btn-copiar-link">📋 Copiar /api/grupo</button>';
+    html+='<button class="btn btn-ghost btn-sm" id="btn-atualizar-contagem">🔄 Atualizar contagem agora</button>';
     html+='</div>';
     if(d.historico&&d.historico.length){
       html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">';
@@ -3281,6 +3286,13 @@ async function renderGrupos(){
     });
     var bcl=get('btn-copiar-link');
     if(bcl)bcl.addEventListener('click',function(){navigator.clipboard.writeText('https://infinitepay-backend.vercel.app/api/grupo').then(function(){alert('Link copiado!');});});
+    var bac=get('btn-atualizar-contagem');
+    if(bac)bac.addEventListener('click',function(){
+      bac.disabled=true;bac.textContent='Atualizando...';
+      fetch(API+'/api/ofertas?secret='+S+'&action=snapshot-grupos').then(function(r){return r.json();}).then(function(d){
+        if(d.ok){renderGrupos();}else{bac.disabled=false;bac.textContent='🔄 Atualizar contagem agora';alert('❌ '+(d.error||'Erro ao atualizar'));}
+      }).catch(function(e){bac.disabled=false;bac.textContent='🔄 Atualizar contagem agora';alert('❌ '+e.message);});
+    });
     ct().addEventListener('click',function(e){
       var b=e.target.closest('[data-gnom]');if(!b)return;
       var nome=b.getAttribute('data-gnom'),link=decodeURIComponent(b.getAttribute('data-glink'));
