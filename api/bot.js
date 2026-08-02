@@ -204,6 +204,20 @@ async function criarTicket(dados) {
   return ticket;
 }
 
+// -- Cupom de recuperação de carrinho (código real, nunca inventado pela IA) --
+async function criarCupomCliente(codigo, tipo, valor) {
+  try {
+    const validade = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // válido 3 dias
+    const r = await fetch('https://infinitepay-backend.vercel.app/api/cupons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'salvar', secret: SECRET, codigo, tipo, valor, limiteUsos: 1, validade })
+    });
+    const d = await r.json();
+    return d.ok ? d.cupom : null;
+  } catch(e) { console.error('BOT erro ao criar cupom:', e.message); return null; }
+}
+
 // -- Claude AI --
 async function chamarClaude(mensagens, systemPrompt) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -423,7 +437,30 @@ Pedido #${p.numero} | ${p.produtos}
       frete_selecionado: 'já escolheu a forma de envio',
       pagamento_pendente: 'chegou até a tela de pagamento mas não concluiu'
     }[leadCarrinho.estagio] || 'não finalizou a compra';
-    return `\n=== CARRINHO ABANDONADO (AINDA NÃO PAGOU) ===\nProduto(s): ${produtos}\nValor total: R$ ${valor.toFixed(2).replace('.', ',')}\nSituação: ${situacao}\nLink para finalizar: https://kcique.com.br/pages/checkout\n\nESTE CLIENTE TEM PRIORIDADE DE CONVERSÃO: ele começou a comprar mas não terminou. Se ele demonstrar interesse ou tirar dúvida relacionada, ajude-o a finalizar — tire dúvidas sobre produto/frete/pagamento, contorne objeções com gentileza, e quando ele topar, mande o link de checkout acima. NUNCA invente cupom, desconto ou frete grátis que não tenha sido mencionado por ele.\n=== FIM CARRINHO ===\n`;
+    const pareceuNoFrete = ['calculou_frete', 'frete_selecionado'].includes(leadCarrinho.estagio);
+
+    let estadoCupom;
+    if (!leadCarrinho.cupom_criado) {
+      estadoCupom = 'ainda não recebeu nenhum cupom.';
+    } else if (leadCarrinho.cupom_valor >= 15 || leadCarrinho.cupom_tipo === 'frete_gratis') {
+      estadoCupom = `já recebeu o cupom *${leadCarrinho.cupom_criado}* — esse é o limite, NÃO crie outro cupom pra este cliente.`;
+    } else {
+      estadoCupom = `já recebeu o cupom *${leadCarrinho.cupom_criado}* (10%). Só escale pra 15% se ele disser claramente que não é suficiente.`;
+    }
+
+    return `\n=== CARRINHO ABANDONADO (AINDA NÃO PAGOU) ===
+Produto(s): ${produtos}
+Valor total: R$ ${valor.toFixed(2).replace('.', ',')}
+Situação: ${situacao}
+Link para finalizar: https://kcique.com.br/pages/checkout
+Cupom: este cliente ${estadoCupom}
+
+ESTE CLIENTE TEM PRIORIDADE DE CONVERSÃO: ele começou a comprar mas não terminou. Seja proativa e mais vendedora — se ele demonstrar interesse, tirar dúvida ou parecer indeciso, ofereça ajuda pra fechar, incluindo perguntar se um cupom de desconto ajudaria.
+
+REGRAS DE CUPOM (só valem pra este cliente com carrinho abandonado):
+- O primeiro cupom é sempre 10% de desconto. Só ofereça a versão maior (15%) se ele já tiver o de 10% e disser que não é suficiente.
+${pareceuNoFrete ? '- Como ele parou justamente na etapa do frete, prefira oferecer FRETE GRÁTIS em vez de desconto percentual.\n' : ''}- Você NUNCA sabe o código real de antemão — não escreva nenhum código de cupom no texto da sua resposta. Para gerar um cupom de verdade, termine sua resposta com uma linha separada EXATA: CRIAR_CUPOM|percentual|10 (primeira oferta), CRIAR_CUPOM|percentual|15 (escalar) ou CRIAR_CUPOM|frete_gratis|0 (frete grátis). O sistema cria o cupom de verdade e inclui o código certo na mensagem antes de enviar.
+=== FIM CARRINHO ===\n`;
   })() : '';
 
   const systemPrompt = `Você e a assistente virtual de suporte da Kcique Relogios, uma loja online de relogios.
@@ -479,6 +516,50 @@ ${resumo}
     abrirTicket = tipo;
     // Remover a linha do ticket da resposta
     respostaFinal = linhas.filter(l => !l.includes('ABRIR_TICKET')).join('\n').trim();
+  }
+
+  // Verificar se Claude quer criar um cupom de recuperação (código real, gerado aqui —
+  // nunca escrito pela IA). Limites aplicados no código, não só na instrução do prompt:
+  // primeiro cupom sempre 10% (ou frete grátis), escalada única pra 15%, depois disso trava.
+  if (leadCarrinho && respostaFinal.includes('CRIAR_CUPOM')) {
+    const linhas2 = respostaFinal.split('\n');
+    const linhaCupom = linhas2.find(l => l.includes('CRIAR_CUPOM'));
+    respostaFinal = linhas2.filter(l => !l.includes('CRIAR_CUPOM')).join('\n').trim();
+
+    const partes = (linhaCupom || '').split('|').map(s => s.trim());
+    const tipoPedido = partes[1] === 'frete_gratis' ? 'frete_gratis' : 'percentual';
+
+    const jaTemCupom = !!leadCarrinho.cupom_criado;
+    const jaNoLimite = jaTemCupom && (leadCarrinho.cupom_valor >= 15 || leadCarrinho.cupom_tipo === 'frete_gratis');
+    const podeEscalar = jaTemCupom && !jaNoLimite && leadCarrinho.cupom_tipo === 'percentual';
+    const podeCriar = !jaTemCupom || (tipoPedido === 'percentual' && podeEscalar);
+
+    if (podeCriar) {
+      const primeiroNome = (leadCarrinho.nome || 'CLIENTE').split(' ')[0].toUpperCase().replace(/[^A-Z]/g, '') || 'CLIENTE';
+      let codigo, tipoFinal, valorFinal;
+      if (tipoPedido === 'frete_gratis') {
+        codigo = `${primeiroNome}FRETEGRATIS`;
+        tipoFinal = 'frete_gratis';
+        valorFinal = 0;
+      } else {
+        valorFinal = jaTemCupom ? 15 : 10; // primeira vez sempre 10%, escalada sempre 15%
+        codigo = `${primeiroNome}${valorFinal}`;
+        tipoFinal = 'percentual';
+      }
+
+      const cupomCriado = await criarCupomCliente(codigo, tipoFinal, valorFinal);
+      if (cupomCriado) {
+        leadCarrinho.cupom_criado = codigo;
+        leadCarrinho.cupom_valor = valorFinal;
+        leadCarrinho.cupom_tipo = tipoFinal;
+        await kvSet(leadCarrinho.id, leadCarrinho);
+        const mensagemCupom = tipoFinal === 'frete_gratis'
+          ? `\n\n🎁 Consegui liberar *frete grátis* pra você! Use o cupom *${codigo}* no checkout.`
+          : `\n\n🎁 Consegui um cupom especial pra você: *${codigo}* (${valorFinal}% OFF). É só aplicar no checkout!`;
+        respostaFinal = (respostaFinal + mensagemCupom).trim();
+        console.log(`BOT cupom criado: ${codigo} para ${phone}`);
+      }
+    }
   }
 
   // Adicionar resposta ao histórico
