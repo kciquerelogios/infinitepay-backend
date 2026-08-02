@@ -3715,8 +3715,10 @@ async function renderRecuperacao() {
         msg.textContent = '✅ ' + r.disparos + ' mensagens enviadas';
         msg.style.color = '#16a34a';
         var h = '';
-        if (r.disparos === 0 && (!r.pulados || !r.pulados.length) && (!r.erros || !r.erros.length)) {
-          h = '<div style="font-size:12px;color:#9ca3af;margin-top:6px">Nenhum lead elegível encontrado (sem carrinho abandonado no momento, ou "Recuperação desativada"/"Nenhum lead" — veja o motivo geral acima, se houver).</div>';
+        if (r.msg) {
+          h = '<div style="font-size:12px;color:#92400e;margin-top:6px;font-weight:600">' + r.msg + '</div>';
+        } else if (r.disparos === 0 && (!r.pulados || !r.pulados.length) && (!r.erros || !r.erros.length)) {
+          h = '<div style="font-size:12px;color:#9ca3af;margin-top:6px">Nenhum lead elegível encontrado no momento.</div>';
         }
         if (r.pulados && r.pulados.length) {
           h += '<div style="font-size:12px;color:#92400e;margin-top:6px;font-weight:600">Pulados (' + r.pulados.length + '):</div>';
