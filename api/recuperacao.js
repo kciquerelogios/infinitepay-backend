@@ -3,8 +3,11 @@
 
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
-const ZAPI_BASE = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+// Recuperação usa a instância do bot de atendimento (transacional/1:1, conversa de
+// verdade), separada da instância principal que faz broadcast em grupo.
+const ZAPI_BASE = `https://api.z-api.io/instances/${process.env.ZAPI_BOT_INSTANCE}/token/${process.env.ZAPI_BOT_TOKEN}`;
 const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
 // ── KV helpers ────────────────────────────────────────────────
 async function kvGet(key) {
@@ -57,7 +60,7 @@ async function enviarWhatsApp(telefone, mensagem) {
       body: JSON.stringify({ phone, message: mensagem })
     });
     const d = await r.json();
-    return { ok: true, data: d };
+    return { ok: true, data: d, phone };
   } catch(e) {
     return { ok: false, erro: e.message };
   }
@@ -72,6 +75,78 @@ function formatarMensagem(template, lead) {
     .replace(/\{email\}/g, lead.email || '')
     .replace(/\{produtos\}/g, produtos)
     .replace(/\{link\}/g, link);
+}
+
+// ── Mensagem gerada por IA (Claude) ─────────────────────────────
+async function chamarClaude(mensagens, systemPrompt) {
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, system: systemPrompt, messages: mensagens })
+    });
+    const d = await r.json();
+    if (d.error) { console.error('Claude erro (recuperacao):', JSON.stringify(d.error)); return ''; }
+    return d.content?.[0]?.text || '';
+  } catch(e) {
+    console.error('Claude erro (recuperacao):', e.message);
+    return '';
+  }
+}
+
+async function gerarMensagemIA(lead, regra, regraKey) {
+  if (!ANTHROPIC_KEY) return formatarMensagem(regra.mensagem, lead);
+
+  const nome = (lead.nome || 'cliente').split(' ')[0];
+  const produtos = (lead.carrinho || []).map(i => i.nome + (i.cor && i.cor !== 'Default Title' ? ' - ' + i.cor : '')).filter(Boolean).join(', ') || 'os produtos que você separou';
+  const valorTotal = (lead.carrinho || []).reduce((s, i) => s + (i.preco || 0) * (i.quantidade || 1), 0) / 100;
+  const link = 'https://kcique.com.br/pages/checkout';
+
+  const situacao = {
+    regra_identificacao: 'O cliente começou a comprar mas ainda nem preencheu os dados de entrega — provavelmente só olhou o produto.',
+    regra_frete: 'O cliente já calculou o frete pro endereço dele mas não finalizou o pagamento.',
+    regra_pagamento: 'O cliente chegou até a tela de pagamento (já preencheu tudo) mas não concluiu a compra.'
+  }[regraKey] || '';
+
+  const systemPrompt = `Você é a assistente da Kcique Relógios (loja online de relógios). Escreva UMA mensagem curta de WhatsApp (2-4 frases, tom caloroso e natural, sem parecer "copy" de vendas agressiva) para reengajar um cliente que abandonou o carrinho.
+
+DADOS REAIS — use exatamente estes, não invente nada além disso:
+- Nome: ${nome}
+- Produto(s) no carrinho: ${produtos}
+- Valor total: R$ ${valorTotal.toFixed(2).replace('.', ',')}
+- Situação: ${situacao}
+- Link para finalizar a compra: ${link}
+
+ESTILO DE REFERÊNCIA configurado pelo lojista (use como guia de tom/comprimento, não copie literalmente): "${regra.mensagem || ''}"
+
+REGRAS OBRIGATÓRIAS:
+1. Nunca invente cupom, desconto ou frete grátis — só mencione se já estiver explícito no texto de referência acima.
+2. Sempre inclua o link de checkout.
+3. Use *negrito* do WhatsApp com moderação, no máximo 2 emojis.
+4. Responda APENAS com o texto da mensagem, sem explicações nem aspas.`;
+
+  const texto = await chamarClaude([{ role: 'user', content: 'Gere a mensagem.' }], systemPrompt);
+  return texto.trim() || formatarMensagem(regra.mensagem, lead);
+}
+
+// ── Continuidade: registra a mensagem no mesmo histórico que o bot.js usa,
+// pra que, se o lead responder, a IA de atendimento já tenha o contexto do
+// carrinho e continue a conversa naturalmente (ver buscarLeadPorTelefone em bot.js) ──
+async function salvarNoHistoricoBot(phoneNormalizado, mensagem) {
+  try {
+    const histKey = `bot:hist:${phoneNormalizado}`;
+    const r = await fetch(`${KV_URL}/get/${histKey}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const d = await r.json();
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    const historico = Array.isArray(v) ? v : [];
+    historico.push({ role: 'assistant', content: mensagem });
+    await fetch(`${KV_URL}/set/${histKey}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(historico.slice(-100))
+    });
+  } catch(e) { console.error('Erro ao salvar historico bot (recuperacao):', e.message); }
 }
 
 // ── Handler ───────────────────────────────────────────────────
@@ -146,8 +221,8 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // Enviar
-      const mensagem = formatarMensagem(regra.mensagem, lead);
+      // Enviar — mensagem escrita pela IA a partir dos dados reais do carrinho
+      const mensagem = await gerarMensagemIA(lead, regra, regraKey);
       const resultado = await enviarWhatsApp(lead.telefone, mensagem);
 
       if (resultado.ok) {
@@ -155,6 +230,8 @@ export default async function handler(req, res) {
         lead.recuperacao_enviada_em = new Date().toISOString();
         lead.recuperacao_regra = regraKey;
         await kvSet(lead.id, lead);
+        // Registra no histórico do bot pra continuar a conversa com contexto se o lead responder
+        await salvarNoHistoricoBot(resultado.phone, mensagem);
         disparos.push({ email: lead.email, estagio, telefone: lead.telefone });
       } else {
         erros.push({ email: lead.email, erro: resultado.erro });
