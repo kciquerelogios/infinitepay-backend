@@ -73,11 +73,18 @@ export default async function handler(req, res) {
       let snap = j.result;
       while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch (e) { break; } }
       if (snap && Array.isArray(snap.grupos)) {
-        let ativo = snap.grupos[snap.grupos.length - 1];
-        for (const g of snap.grupos) {
-          if ((g.membros || 0) < LIMITE) { ativo = g; break; }
+        // Prioriza o índice "só pra frente" calculado no snapshot (nunca volta pra um
+        // grupo anterior mesmo que esvazie). Só cai no cálculo antigo se o snapshot for
+        // de antes dessa mudança (sem o campo grupoAtivoRatchet).
+        let ativo = snap.grupoAtivoRatchet
+          ? (snap.grupos.find(g => g.nome === snap.grupoAtivoRatchet) || snap.grupos[snap.grupos.length - 1])
+          : snap.grupos[snap.grupos.length - 1];
+        if (!snap.grupoAtivoRatchet) {
+          for (const g of snap.grupos) {
+            if ((g.membros || 0) < LIMITE) { ativo = g; break; }
+          }
         }
-        info.etapas.push({ etapa: 'snapshot', data: ds, grupoEscolhido: ativo.nome, membrosGrupoEscolhido: ativo.membros, todosOsGrupos: snap.grupos.map(g => ({ nome: g.nome, membros: g.membros, falhou: !!g.falhou })) });
+        info.etapas.push({ etapa: 'snapshot', data: ds, grupoEscolhido: ativo.nome, membrosGrupoEscolhido: ativo.membros, ratchet: snap.grupoAtivoRatchet || null, todosOsGrupos: snap.grupos.map(g => ({ nome: g.nome, membros: g.membros, falhou: !!g.falhou })) });
         const linkFixo = (GRUPOS.find(g => g.nome === ativo.nome) || GRUPOS[0]).link;
         return finalizar(ativo.link || linkFixo, 'lido do snapshot de ' + ds);
       }
