@@ -197,6 +197,26 @@ async function verificarEDisparar(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN) {
   return disparadas;
 }
 
+// Registra a mensagem no mesmo histórico que o bot.js usa, pra que, se o cliente
+// responder ao aviso de rastreio, a IA saiba que acabou de mandar isso e continue a
+// conversa com contexto, em vez de tratar como se fosse o início de um atendimento novo.
+async function salvarNoHistoricoBot(KV_URL, KV_TOKEN, phoneNormalizado, mensagem) {
+  try {
+    const histKey = `bot:hist:${phoneNormalizado}`;
+    const r = await fetch(`${KV_URL}/get/${histKey}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const d = await r.json();
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    const historico = Array.isArray(v) ? v : [];
+    historico.push({ role: 'assistant', content: mensagem });
+    await fetch(`${KV_URL}/set/${histKey}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(historico.slice(-100))
+    });
+  } catch(e) { console.error('Erro ao salvar historico bot (ofertas/rastreios):', e.message); }
+}
+
 async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN, ME_TOKEN, SHOPIFY_STORE, SHOPIFY_TOKEN) {
   const pages = await Promise.all([1,2,3,4,5].map(page =>
     fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + page, {
@@ -260,6 +280,7 @@ async function verificarRastreios(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, Z
           body: JSON.stringify({ phone: telefone, message: mensagem })
         });
         console.log('WhatsApp enviado para:', telefone, '| Tracking:', tracking);
+        await salvarNoHistoricoBot(KV_URL, KV_TOKEN, telefone, mensagem);
       } catch(e) { console.error('Erro WhatsApp:', e.message); }
 
       await fetch(`${KV_URL}/set/${chave}/1/EX/2592000`, {
