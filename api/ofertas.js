@@ -439,6 +439,25 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
       return;
     }
 
+    // "Só anda pra frente": uma vez que o grupo ativo avança (encheu e passou pro
+    // próximo), nunca mais volta pra um grupo anterior, mesmo que ele esvazie depois.
+    // O índice fica salvo à parte (não reseta com o snapshot diário).
+    const LIMITE_RATCHET = 1000;
+    let ratchetIndex = 0;
+    try {
+      const ratchetResp = await fetch(`${KV_URL}/get/grupo-ratchet-index`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r => r.json()).catch(() => ({}));
+      ratchetIndex = parseInt(ratchetResp.result) || 0;
+    } catch(e) {}
+    while (ratchetIndex < membrosFinais.length - 1 && (membrosFinais[ratchetIndex].membros || 0) >= LIMITE_RATCHET) {
+      ratchetIndex++;
+    }
+    await fetch(`${KV_URL}/set/grupo-ratchet-index`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: String(ratchetIndex) })
+    });
+    const grupoAtivoRatchet = (membrosFinais[ratchetIndex] || membrosFinais[membrosFinais.length - 1]).nome;
+
     const hoje = new Date();
     const hojeBR = new Date(hoje.getTime() - 3 * 60 * 60 * 1000);
     const hojeStr = hojeBR.toISOString().split('T')[0];
@@ -446,7 +465,7 @@ async function salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN,
     await fetch(`${KV_URL}/set/${chave}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ total, grupos: membrosFinais, ts: new Date().toISOString() })
+      body: JSON.stringify({ total, grupos: membrosFinais, ts: new Date().toISOString(), grupoAtivoRatchet })
     });
     await fetch(`${KV_URL}/expire/${chave}/5184000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
     console.log('Snapshot grupos VIP salvo:', hojeStr, '| Total:', total);
