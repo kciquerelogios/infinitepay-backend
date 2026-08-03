@@ -638,8 +638,12 @@ export default async function handler(req, res) {
     if (req.query.action === 'listar-tickets') {
       try {
         const ids = await kvGet('tickets-lista') || [];
-        const tickets = await Promise.all(ids.map(id => kvGet(id)));
-        return res.status(200).json({ tickets: tickets.filter(Boolean) });
+        const tickets = (await Promise.all(ids.map(id => kvGet(id)))).filter(Boolean);
+        const comStatusBot = await Promise.all(tickets.map(async t => ({
+          ...t,
+          botDesativado: t.telefone ? !!(await kvGet(`bot:desativado:${t.telefone}`)) : false
+        })));
+        return res.status(200).json({ tickets: comStatusBot });
       } catch(e) { return res.status(500).json({ erro: e.message }); }
     }
 
@@ -684,6 +688,21 @@ export default async function handler(req, res) {
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
+  // Liga/desliga a resposta automática da IA pra um telefone específico — pra um
+  // humano assumir a conversa sem o bot responder por cima.
+  if (req.method === 'POST' && req.query.action === 'toggle-bot-numero') {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const { phone, desativado } = req.body || {};
+      if (!phone) return res.status(400).json({ erro: 'phone obrigatório' });
+      const chave = `bot:desativado:${phone}`;
+      if (desativado) await kvSet(chave, true);
+      else await kvDel(chave);
+      return res.status(200).json({ ok: true, desativado: !!desativado });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
   // -- Webhook Z-API --
   if (req.method === 'POST') {
     try {
@@ -706,6 +725,14 @@ export default async function handler(req, res) {
       else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || '' };
       else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
       else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || '' };
+
+      // Se um humano desativou a IA pra este número (assumindo a conversa manualmente),
+      // não responde automaticamente — só ignora e deixa a mensagem passar direto.
+      const botDesativado = await kvGet(`bot:desativado:${phone}`);
+      if (botDesativado) {
+        console.log(`BOT ignorando ${phone} — IA desativada manualmente`);
+        return res.status(200).json({ ok: true, ignorado: true });
+      }
 
       // Processar com IA
       try {
