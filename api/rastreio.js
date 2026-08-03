@@ -1,3 +1,23 @@
+// Registra a mensagem no mesmo histórico que o bot.js usa, pra que, se o cliente
+// responder ao aviso de rastreio, a IA saiba que acabou de mandar isso e continue a
+// conversa com contexto, em vez de tratar como se fosse o início de um atendimento novo.
+async function salvarNoHistoricoBot(KV_URL, KV_TOKEN, phoneNormalizado, mensagem) {
+  try {
+    const histKey = `bot:hist:${phoneNormalizado}`;
+    const r = await fetch(`${KV_URL}/get/${histKey}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const d = await r.json();
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    const historico = Array.isArray(v) ? v : [];
+    historico.push({ role: 'assistant', content: mensagem });
+    await fetch(`${KV_URL}/set/${histKey}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(historico.slice(-100))
+    });
+  } catch(e) { console.error('Erro ao salvar historico bot (rastreio):', e.message); }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -90,6 +110,7 @@ export default async function handler(req, res) {
     );
     const zapiData = await zapiResp.json();
     console.log('WhatsApp enviado:', JSON.stringify(zapiData));
+    await salvarNoHistoricoBot(KV_URL, KV_TOKEN, telefone, mensagem);
 
     // Marcar no Redis que já enviou (TTL 30 dias)
     await fetch(`${KV_URL}/set/${chaveRastreio}/1/ex/2592000`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
