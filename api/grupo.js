@@ -77,7 +77,7 @@ export default async function handler(req, res) {
         for (const g of snap.grupos) {
           if ((g.membros || 0) < LIMITE) { ativo = g; break; }
         }
-        info.etapas.push({ etapa: 'snapshot', data: ds, grupoEscolhido: ativo.nome });
+        info.etapas.push({ etapa: 'snapshot', data: ds, grupoEscolhido: ativo.nome, membrosGrupoEscolhido: ativo.membros, todosOsGrupos: snap.grupos.map(g => ({ nome: g.nome, membros: g.membros, falhou: !!g.falhou })) });
         const linkFixo = (GRUPOS.find(g => g.nome === ativo.nome) || GRUPOS[0]).link;
         return finalizar(ativo.link || linkFixo, 'lido do snapshot de ' + ds);
       }
