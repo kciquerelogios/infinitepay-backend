@@ -1612,8 +1612,9 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         encontradoNoCarrinho: encontradoNoCarrinho || null,
         totalPurchases: allOrders.length,
         totalCarrinho: Array.isArray(carrinho) ? carrinho.length : 0,
-        amostraPurchases: allOrders.slice(0, 5).map(o => ({ id: o.id, tag: o.tag, status: o.status, tracking: o.tracking })),
-        amostraCarrinho: (Array.isArray(carrinho) ? carrinho.slice(0, 5) : []).map(o => ({ id: o.id, tag: o.tag, status: o.status }))
+        // Objeto CRU, sem filtrar campos — pra ver todos os nomes de campo disponíveis de verdade
+        amostraPurchasesCompleta: allOrders.slice(0, 2),
+        amostraCarrinhoCompleta: (Array.isArray(carrinho) ? carrinho.slice(0, 2) : [])
       });
     } catch(e) {
       return res.status(500).json({ error: e.message });
