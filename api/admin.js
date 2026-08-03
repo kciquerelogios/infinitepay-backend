@@ -173,6 +173,7 @@ export default async function handler(req, res) {
 
       // Tentar snapshot dos últimos 3 dias
       let grupos = null;
+      let ratchetNome = null;
       for (let i = 0; i <= 2; i++) {
         const d = new Date(hojeBR); d.setDate(d.getDate() - i);
         const ds = d.toISOString().split('T')[0];
@@ -180,17 +181,21 @@ export default async function handler(req, res) {
         const j = await r.json();
         let snap = j.result;
         while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
-        if (snap && snap.grupos && Array.isArray(snap.grupos)) { grupos = snap.grupos; break; }
+        if (snap && snap.grupos && Array.isArray(snap.grupos)) { grupos = snap.grupos; ratchetNome = snap.grupoAtivoRatchet || null; break; }
         // Compatibilidade: snapshot pode ser array direto
         if (snap && Array.isArray(snap)) { grupos = snap; break; }
       }
 
       if (!grupos) throw new Error('sem snapshot');
 
-      // Encontrar o PRIMEIRO grupo em ordem que ainda tem vagas
-      let ativo = grupos[grupos.length - 1];
-      for (const g of grupos) {
-        if (g.membros < LIMITE) { ativo = g; break; }
+      // Grupo ativo: usa o índice "só pra frente" salvo no snapshot (nunca volta pra um
+      // grupo anterior mesmo que esvazie). Só cai no cálculo antigo se o snapshot não tiver isso.
+      let ativo = ratchetNome ? grupos.find(g => g.nome === ratchetNome) : null;
+      if (!ativo) {
+        ativo = grupos[grupos.length - 1];
+        for (const g of grupos) {
+          if (g.membros < LIMITE) { ativo = g; break; }
+        }
       }
       const linkFixo = (GRUPOS_LINKS.find(x => x.nome === ativo.nome) || GRUPOS_LINKS[0]).link;
       return res.status(200).json({ grupo: ativo.nome, link: ativo.link || linkFixo, membros: ativo.membros, vagas: LIMITE - ativo.membros, fonte: 'snapshot' });
@@ -1318,6 +1323,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       const hojeBR = new Date(hoje.getTime() - 3*60*60*1000);
       let grupos = null;
       let grupoDataUsada = null;
+      let ratchetNome = null;
       for (let i = 0; i <= 2; i++) {
         const d = new Date(hojeBR); d.setDate(d.getDate() - i);
         const ds = d.toISOString().split('T')[0];
@@ -1325,7 +1331,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         const j = await r.json();
         let snap = j.result;
         while (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch(e) { break; } }
-        if (snap && snap.grupos) { grupos = snap.grupos; grupoDataUsada = ds; break; }
+        if (snap && snap.grupos) { grupos = snap.grupos; grupoDataUsada = ds; ratchetNome = snap.grupoAtivoRatchet || null; break; }
       }
       // Se não tem snapshot, retornar erro amigável
       if (!grupos) {
@@ -1346,9 +1352,14 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         const gSnap = grupos.find(g => g.nome === manualGrupo.nome);
         grupoAtivo = gSnap ? { ...gSnap, link: manualGrupo.link } : { nome: manualGrupo.nome, link: manualGrupo.link, membros: 0 };
       } else {
-        grupoAtivo = grupos[grupos.length - 1];
-        for (const g of grupos) {
-          if (g.membros < LIMITE) { grupoAtivo = g; break; }
+        // Usa o índice "só pra frente" salvo no snapshot (nunca volta pra um grupo
+        // anterior mesmo que esvazie); cai no cálculo antigo se o snapshot não tiver isso.
+        grupoAtivo = ratchetNome ? grupos.find(g => g.nome === ratchetNome) : null;
+        if (!grupoAtivo) {
+          grupoAtivo = grupos[grupos.length - 1];
+          for (const g of grupos) {
+            if (g.membros < LIMITE) { grupoAtivo = g; break; }
+          }
         }
       }
 
@@ -1566,6 +1577,44 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
         trackStatusMap[s] = (trackStatusMap[s] || 0) + 1;
       });
       return res.status(200).json({ status_orders: statusMap, released_total: releasedIds.length, track_status: trackStatusMap });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ===== DEBUG: verificar campo "tag" nas purchases do Melhor Envio =====
+  // (usado pra investigar por que um pedido não casa com a etiqueta no painel do fornecedor)
+  if (req.query.action === 'debug-tag-me') {
+    const ME_TOKEN3 = process.env.MELHORENVIO_TOKEN;
+    const pedidoId = req.query.pedidoId || '';
+    try {
+      const r1 = await fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN3}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+      const d1 = await r1.json();
+      const lastPage = d1.last_page || 1;
+      const allPages = await Promise.all(
+        Array.from({length: lastPage}, (_, i) =>
+          fetch('https://melhorenvio.com.br/api/v2/me/purchases?limit=100&page=' + (i+1), { headers: { Authorization: `Bearer ${ME_TOKEN3}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } }).then(r=>r.json()).catch(()=>({data:[]}))
+        )
+      );
+      const allOrders = allPages.flatMap(p => p.data || []).flatMap(pu => pu.orders || []);
+
+      // Carrinho (etiquetas ainda não compradas/pagas dentro do Melhor Envio)
+      const cartResp = await fetch('https://melhorenvio.com.br/api/v2/me/cart?limit=100', { headers: { Authorization: `Bearer ${ME_TOKEN3}`, Accept: 'application/json', 'User-Agent': 'Kcique/1.0 (kciqueadm@gmail.com)' } });
+      const cartData = await cartResp.json().catch(() => ({}));
+      const carrinho = (cartData.data || cartData || []);
+
+      const encontradoEmPurchases = pedidoId ? allOrders.find(o => String(o.tag || '') === String(pedidoId)) : null;
+      const encontradoNoCarrinho = pedidoId && Array.isArray(carrinho) ? carrinho.find(o => String(o.tag || '') === String(pedidoId)) : null;
+
+      return res.status(200).json({
+        pedidoIdBuscado: pedidoId || '(nenhum informado)',
+        encontradoEmPurchases: encontradoEmPurchases || null,
+        encontradoNoCarrinho: encontradoNoCarrinho || null,
+        totalPurchases: allOrders.length,
+        totalCarrinho: Array.isArray(carrinho) ? carrinho.length : 0,
+        amostraPurchases: allOrders.slice(0, 5).map(o => ({ id: o.id, tag: o.tag, status: o.status, tracking: o.tracking })),
+        amostraCarrinho: (Array.isArray(carrinho) ? carrinho.slice(0, 5) : []).map(o => ({ id: o.id, tag: o.tag, status: o.status }))
+      });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
