@@ -315,15 +315,21 @@ async function processarMensagem(phone, texto, midia) {
   const TTL = 60 * 60; // 1 hora para contexto (pedidos mudam)
   // Histórico é permanente — sem TTL
 
-  // Carregar histórico, contexto, catálogo e carrinho abandonado (se houver) em paralelo
-  const [historicoRaw, contextoSalvo, catalogo, leadCarrinho] = await Promise.all([
+  // Carregar histórico, contexto, catálogo, carrinho abandonado (se houver) e tickets em paralelo
+  const [historicoRaw, contextoSalvo, catalogo, leadCarrinho, ticketsIds] = await Promise.all([
     kvGet(histKey),
     kvGet(ctxKey),
     buscarCatalogo(),
-    buscarLeadPorTelefone(phone)
+    buscarLeadPorTelefone(phone),
+    kvGet('tickets-lista')
   ]);
   const historico = historicoRaw || [];
   let contexto    = contextoSalvo;
+
+  // Verificar se já existe um chamado aberto pra este telefone — evita duplicar ticket
+  // e repetir o resumo inteiro do problema a cada mensagem nova do cliente
+  const ticketsRecentes = await Promise.all((ticketsIds || []).slice(-50).map(id => kvGet(id)));
+  const ticketAberto = ticketsRecentes.filter(Boolean).find(t => t.telefone === phone && t.status !== 'resolvido');
 
   // Atualizar contexto: sempre se nao identificado, ou a cada 10 msgs
   if (!contexto || !contexto.identificado || historico.length % 10 === 0) {
@@ -460,6 +466,8 @@ ESTE CLIENTE TEM PRIORIDADE DE CONVERSÃO: ele começou a comprar mas não termi
 REGRAS DE CUPOM (só valem pra este cliente com carrinho abandonado):
 - O primeiro cupom é sempre 10% de desconto. Só ofereça a versão maior (15%) se ele já tiver o de 10% e disser que não é suficiente.
 ${pareceuNoFrete ? '- Como ele parou justamente na etapa do frete, prefira oferecer FRETE GRÁTIS em vez de desconto percentual.\n' : ''}- Você NUNCA sabe o código real de antemão — não escreva nenhum código de cupom no texto da sua resposta. Para gerar um cupom de verdade, termine sua resposta com uma linha separada EXATA: CRIAR_CUPOM|percentual|10 (primeira oferta), CRIAR_CUPOM|percentual|15 (escalar) ou CRIAR_CUPOM|frete_gratis|0 (frete grátis). O sistema cria o cupom de verdade e inclui o código certo na mensagem antes de enviar.
+
+IMPORTANTE — LEMBRETES AUTOMÁTICOS: como ele ainda não pagou, o sistema manda lembretes automáticos todo dia até ele comprar ou pedir pra parar. Se em QUALQUER momento da conversa o cliente disser claramente que não quer mais receber mensagens sobre esse carrinho (ex: "para de mandar mensagem", "não quero mais", "pode parar", "me tira dessa lista"), respeite isso imediatamente, peça desculpas com simpatia, e termine sua resposta com uma linha separada EXATA: OPTOUT_RECUPERACAO — isso desliga os lembretes automáticos pra sempre pra este cliente.
 === FIM CARRINHO ===\n`;
   })() : '';
 
@@ -491,11 +499,12 @@ ${catalogo}
 ` : ''}${resumo ? `HISTÓRICO DE ATENDIMENTOS ANTERIORES COM ESTE CLIENTE:
 ${resumo}
 
+${ticketAberto ? `\nJÁ EXISTE UM CHAMADO ABERTO pra este cliente (tipo: ${ticketAberto.tipo}, aberto em ${new Date(ticketAberto.criado_em).toLocaleDateString('pt-BR')}). NÃO repita o resumo do pedido/problema de novo — a equipe já tem essas informações. Se ele insistir ou disser que está esperando há muito tempo, apenas reconheça a espera com empatia e reforce que o time já está ciente e vai retornar em breve. NÃO sinalize abertura de ticket de novo.\n` : ''}
 ` : ''}REGRAS IMPORTANTES:
 1. Para rastreio: sempre forneça o código e o link dos Correios quando disponível
 2. Para prazo de entrega: o prazo depende do CEP do cliente e da modalidade (PAC ou SEDEX). Se não tiver a previsão exata do ME, informe que PAC leva em média 5-15 dias úteis e SEDEX 1-3 dias úteis após postagem
-3. Para problemas ou trocas: ouça o cliente, colete as informações necessárias e avise que vai abrir um ticket para um especialista analisar e entrar em contato. Política de troca/devolução: 7 dias corridos a partir do recebimento, sem necessidade de embalagem original
-4. Quando abrir ticket: responda com a palavra exata "ABRIR_TICKET" em uma linha separada no final da sua resposta, seguida de "|" e o tipo: "problema" ou "troca"
+3. Para problemas ou trocas (só se NÃO houver chamado já aberto, ver acima): ouça o cliente, colete as informações necessárias e avise que vai abrir um ticket para um especialista analisar e entrar em contato. Política de troca/devolução: 7 dias corridos a partir do recebimento, sem necessidade de embalagem original
+4. Quando abrir ticket (só a primeira vez, nunca se já existe um aberto): termine sua resposta com uma linha SEPARADA contendo SOMENTE isto, sem mais nada na linha: ABRIR_TICKET|problema ou ABRIR_TICKET|troca
 5. Quando nao identificar o cliente pelo telefone: SEMPRE peca o email. Nunca diga que nao consegue buscar por email — o sistema busca sim. Quando o cliente informar o email, o sistema identifica automaticamente
 6. Nunca invente informações de rastreio ou pedido
 7. Não temos loja física — somente loja online
@@ -505,17 +514,23 @@ ${resumo}
   // Chamar Claude
   const resposta = await chamarClaude(historico.slice(-30), systemPrompt); // últimas 30 msgs
 
-  // Verificar se Claude quer abrir ticket
+  // Verificar se Claude quer abrir ticket. Detecção tolerante a variações de formato
+  // (ex: o modelo às vezes escreve só "troca" sem o prefixo "ABRIR_TICKET|") pra nunca
+  // deixar esse marcador vazar como texto visível pro cliente.
   let respostaFinal = resposta;
   let abrirTicket = null;
 
-  if (resposta.includes('ABRIR_TICKET')) {
+  {
     const linhas = resposta.split('\n');
-    const linhaTicket = linhas.find(l => l.includes('ABRIR_TICKET'));
-    const tipo = linhaTicket?.split('|')[1]?.trim() || 'problema';
-    abrirTicket = tipo;
-    // Remover a linha do ticket da resposta
-    respostaFinal = linhas.filter(l => !l.includes('ABRIR_TICKET')).join('\n').trim();
+    const idxMarcador = linhas.findIndex(l => /^(ABRIR_TICKET\s*\|\s*)?(problema|troca)$/i.test(l.trim()));
+    if (idxMarcador !== -1 && !ticketAberto) {
+      const m = linhas[idxMarcador].trim().match(/(problema|troca)$/i);
+      abrirTicket = m ? m[1].toLowerCase() : 'problema';
+      respostaFinal = linhas.filter((_, i) => i !== idxMarcador).join('\n').trim();
+    } else if (idxMarcador !== -1) {
+      // Já existe ticket aberto — só remove a linha vazada, sem criar outro
+      respostaFinal = linhas.filter((_, i) => i !== idxMarcador).join('\n').trim();
+    }
   }
 
   // Verificar se Claude quer criar um cupom de recuperação (código real, gerado aqui —
@@ -560,6 +575,14 @@ ${resumo}
         console.log(`BOT cupom criado: ${codigo} para ${phone}`);
       }
     }
+  }
+
+  // Verificar se o cliente pediu pra parar de receber lembretes de carrinho abandonado
+  if (leadCarrinho && respostaFinal.includes('OPTOUT_RECUPERACAO')) {
+    respostaFinal = respostaFinal.split('\n').filter(l => !l.includes('OPTOUT_RECUPERACAO')).join('\n').trim();
+    leadCarrinho.recuperacao_optout = true;
+    await kvSet(leadCarrinho.id, leadCarrinho);
+    console.log(`BOT recuperacao_optout marcado para ${phone}`);
   }
 
   // Adicionar resposta ao histórico
