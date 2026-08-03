@@ -594,12 +594,17 @@ ${ticketAberto ? `\nJÁ EXISTE UM CHAMADO ABERTO pra este cliente (tipo: ${ticke
   // Abrir ticket se necessário
   if (abrirTicket) {
     const ultimoPedido = contexto.pedidos[0];
+    const mensagensCliente = historico.filter(m => m.role === 'user').map(m => m.content).slice(-6).join('\n');
+    const resumoProblema = await chamarClaude(
+      [{ role: 'user', content: `Resuma em UMA frase curta e objetiva (máx. 20 palavras) qual é o problema ou pedido de troca do cliente, com base nestas mensagens dele:\n\n${mensagensCliente}\n\nResponda APENAS com a frase-resumo, sem introdução nem aspas.` }],
+      'Você resume reclamações de clientes de forma clara e objetiva para um painel interno de atendimento.'
+    );
     await criarTicket({
       tipo: abrirTicket,
       telefone: phone,
       nome: contexto.nome || phone,
       pedido: ultimoPedido ? `#${ultimoPedido.numero}` : '—',
-      descricao: historico.filter(m => m.role === 'user').map(m => m.content).slice(-5).join(' | '),
+      descricao: resumoProblema.trim() || mensagensCliente.substring(0, 150),
       midias: midia ? [midia] : []
     });
     console.log(`BOT ticket aberto: ${abrirTicket} para ${phone}`);
@@ -662,6 +667,19 @@ export default async function handler(req, res) {
       ticket.status = status;
       ticket.atualizado_em = new Date().toISOString();
       await kvSet(id, ticket);
+      return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
+  if (req.method === 'POST' && req.query.action === 'deletar-ticket') {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ erro: 'id obrigatório' });
+      await kvDel(id);
+      const lista = (await kvGet('tickets-lista')) || [];
+      await kvSet('tickets-lista', lista.filter(tid => tid !== id));
       return res.status(200).json({ ok: true });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
