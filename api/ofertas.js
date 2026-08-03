@@ -460,12 +460,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { secret, action } = req.query;
-  // action=verificar pode ser chamado pelo cron nativo da Vercel, autenticado pelo
-  // cabeçalho que só a própria Vercel consegue enviar — sem precisar de segredo na URL
-  // (evita ter que guardar o segredo mestre num serviço de cron externo).
-  const isVercelCron = req.headers['x-vercel-cron'] === '1'
-    || (process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`);
-  const autorizadoParaVerificar = action === 'verificar' && isVercelCron;
+  // Tentativa de autenticar o cron nativo da Vercel sem segredo na URL, via cabeçalho
+  // Authorization: Bearer $CRON_SECRET (só funciona se a env var CRON_SECRET estiver
+  // configurada no projeto). Mantido como caminho extra, mas NÃO é a autenticação
+  // principal — na prática o vercel.json chama com ?secret=... na URL mesmo (ver
+  // check `secret !== process.env.REPROCESSAR_SECRET` abaixo, que é o que garante o acesso).
+  const autorizadoParaVerificar = action === 'verificar'
+    && process.env.CRON_SECRET
+    && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
 
   if (secret !== process.env.REPROCESSAR_SECRET && !autorizadoParaVerificar) {
     if (action !== 'dashboard') return res.status(401).json({ error: 'Unauthorized' });
@@ -587,12 +589,17 @@ export default async function handler(req, res) {
         await verificarRastreios(KV_URL, KV_TOKEN, process.env.ZAPI_BOT_INSTANCE, process.env.ZAPI_BOT_TOKEN, process.env.ZAPI_CLIENT_TOKEN, process.env.MELHORENVIO_TOKEN, process.env.SHOPIFY_STORE, process.env.SHOPIFY_TOKEN);
       } catch(e) { console.error('Erro rastreios:', e.message); }
       try {
-        // Salvar snapshot uma vez por dia — verifica se já existe hoje
+        // Atualizar snapshot dos grupos a cada 1h — verifica há quanto tempo foi a última
+        // atualização de hoje (não sobrescreve toda vez que o cron roda, que é a cada minuto)
         const agora = new Date();
         const agoraBR = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
         const hojeStr = agoraBR.toISOString().split('T')[0];
         const snapCheck = await fetch(`${KV_URL}/get/vip-snapshot-${hojeStr}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } }).then(r => r.json()).catch(() => ({}));
-        if (!snapCheck.result) {
+        let snapAtual = snapCheck.result;
+        while (typeof snapAtual === 'string') { try { snapAtual = JSON.parse(snapAtual); } catch(e) { break; } }
+        const ultimaAtualizacao = snapAtual && snapAtual.ts ? new Date(snapAtual.ts).getTime() : 0;
+        const precisaAtualizar = (Date.now() - ultimaAtualizacao) >= 60 * 60 * 1000; // 1h
+        if (precisaAtualizar) {
           await salvarSnapshotGrupos(KV_URL, KV_TOKEN, ZAPI_INSTANCE, ZAPI_TOKEN, process.env.ZAPI_CLIENT_TOKEN);
         }
       } catch(e) { console.error('Erro snapshot:', e.message); }
