@@ -260,18 +260,43 @@ export default async function handler(req, res) {
         });
       }
 
+      // O campo "tag" que enviamos ao criar a etiqueta NÃO é devolvido pela API do
+      // Melhor Envio nessas rotas (confirmado inspecionando a resposta crua — o que existe
+      // é "tags", um status interno deles tipo "printed", sem relação com o nosso id).
+      // E-mail também falha bastante: muitos destinatários vêm com email null.
+      // Por isso o casamento agora usa telefone (últimos 8 dígitos, tolera DDI/DDD
+      // diferentes) e CPF como chaves principais, com e-mail só como último recurso —
+      // e, havendo mais de um candidato, prefere o de data de criação mais próxima.
+      function last8(tel) { return (tel||'').replace(/\D/g,'').slice(-8); }
+      function melhorPorData(candidatos, refTime) {
+        if (!candidatos.length) return null;
+        if (candidatos.length === 1) return candidatos[0];
+        return candidatos.reduce(function(melhor, atual) {
+          var dAtual = Math.abs(new Date(atual.created_at).getTime() - refTime);
+          var dMelhor = Math.abs(new Date(melhor.created_at).getTime() - refTime);
+          return dAtual < dMelhor ? atual : melhor;
+        });
+      }
+
       var pedidos = orders.map(function(o) {
         var addr = o.shipping_address;
         var tel = (addr&&addr.phone)||(o.billing_address&&o.billing_address.phone)||(o.customer&&o.customer.phone)||'';
         var email = (o.customer&&o.customer.email)||o.email||'';
-        // Encontrar meOrderId pela tag (= id do pedido no Shopify, único por pedido).
-        // Antes casava pelo email do cliente, o que misturava etiquetas entre pedidos
-        // do mesmo cliente (ou entre pedidos manuais sem email preenchido).
-        var meOrder = meOrders.find(function(mo){
-          return String(mo.tag||'') === String(o.id);
-        }) || meOrders.find(function(mo){
-          return ((mo.to&&mo.to.email)||'').toLowerCase() === email.toLowerCase() && email;
-        });
+        var cpfMatch = (o.note||'').match(/CPF:\s*(\d{11})/i);
+        var cpf = cpfMatch ? cpfMatch[1] : null;
+        var telLast8 = last8(tel);
+        var refTime = new Date(o.created_at).getTime();
+
+        var meOrder = null;
+        if (telLast8) {
+          meOrder = melhorPorData(meOrders.filter(function(mo){ return last8((mo.to&&mo.to.phone)||'') === telLast8; }), refTime);
+        }
+        if (!meOrder && cpf) {
+          meOrder = melhorPorData(meOrders.filter(function(mo){ return ((mo.to&&mo.to.document)||'').replace(/\D/g,'') === cpf; }), refTime);
+        }
+        if (!meOrder && email) {
+          meOrder = melhorPorData(meOrders.filter(function(mo){ return ((mo.to&&mo.to.email)||'').toLowerCase() === email.toLowerCase(); }), refTime);
+        }
         return {
           id: o.id, numero: o.order_number,
           nome: o.customer?((o.customer.first_name||'')+' '+(o.customer.last_name||'')).trim():'Cliente',
