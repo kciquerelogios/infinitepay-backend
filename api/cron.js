@@ -1,3 +1,23 @@
+// Registra a mensagem no mesmo histórico que o bot.js usa, pra que, se o cliente
+// responder ao aviso de rastreio, a IA saiba que acabou de mandar isso e continue a
+// conversa com contexto, em vez de tratar como se fosse o início de um atendimento novo.
+async function salvarNoHistoricoBot(KV_URL, KV_TOKEN, phoneNormalizado, mensagem) {
+  try {
+    const histKey = `bot:hist:${phoneNormalizado}`;
+    const r = await fetch(`${KV_URL}/get/${histKey}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+    const d = await r.json();
+    let v = d.result;
+    while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+    const historico = Array.isArray(v) ? v : [];
+    historico.push({ role: 'assistant', content: mensagem });
+    await fetch(`${KV_URL}/set/${histKey}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(historico.slice(-100))
+    });
+  } catch(e) { console.error('Erro ao salvar historico bot (cron):', e.message); }
+}
+
 export default async function handler(req, res) {
   // Verificar se é chamada do Vercel Cron
   const authHeader = req.headers['authorization'];
@@ -140,6 +160,7 @@ Qualquer dúvida estamos aqui! 😊`;
               headers: { 'Content-Type': 'application/json; charset=utf-8', 'client-token': ZAPI_CLIENT_TOKEN },
               body: JSON.stringify({ phone: telefone, message: mensagem })
             }).catch(e => console.error('Erro WhatsApp rastreio:', e.message));
+            await salvarNoHistoricoBot(KV_URL, KV_TOKEN, telefone, mensagem);
             console.log('WhatsApp rastreio enviado:', telefone, tracking);
           }
 
