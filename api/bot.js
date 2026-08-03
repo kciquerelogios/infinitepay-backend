@@ -382,6 +382,14 @@ async function processarMensagem(phone, texto, midia) {
           role: 'user',
           content: `[SISTEMA: Cliente identificado via email ${emailMatch[0]}. Pedidos encontrados: ${pedResumido || 'nenhum'}. Responda com os dados reais agora.]`
         });
+      } else {
+        // Sem isso, a IA ficava "presa" dizendo que ainda estava buscando pra sempre,
+        // porque nada nunca informava que a busca terminou e não achou nada.
+        console.log(`BOT não encontrou pedido pro email ${emailMatch[0]}`);
+        historico.push({
+          role: 'user',
+          content: `[SISTEMA: Busca pelo email ${emailMatch[0]} concluída — nenhum pedido pago encontrado com esse email. Informe ao cliente que não encontrou e peça para conferir se o email está certo, ou perguntar se comprou com outro email ou telefone.]`
+        });
       }
     } else if (cpfMatch) {
       const etiquetaME = await buscarEtiquetaMEporCPF(cpfMatch);
@@ -402,6 +410,12 @@ async function processarMensagem(phone, texto, midia) {
         historico.push({
           role: 'user',
           content: `[SISTEMA: Cliente identificado via CPF. Status: ${statusMELabel(etiquetaME.status)} | Rastreio: ${etiquetaME.tracking || 'indisponivel'}. Responda com os dados reais agora.]`
+        });
+      } else {
+        console.log(`BOT não encontrou etiqueta ME pro CPF ${cpfMatch}`);
+        historico.push({
+          role: 'user',
+          content: `[SISTEMA: Busca pelo CPF informado concluída — nada encontrado no Melhor Envio. Informe ao cliente que não encontrou e peça o email cadastrado na loja em vez disso.]`
         });
       }
     }
@@ -725,6 +739,24 @@ export default async function handler(req, res) {
       else if (body.video) midia = { tipo: 'video', url: body.video.videoUrl || body.video.url || '' };
       else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
       else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || '' };
+
+      // Deduplicação: a Z-API pode reenviar o mesmo webhook (ex: se a resposta demorou
+      // demais e ela interpretou como falha), o que processava a MESMA mensagem várias
+      // vezes em paralelo — cada uma gerando uma resposta separada e um ticket separado,
+      // já que todas liam "sem ticket ainda" antes de qualquer uma delas criar o primeiro.
+      // Lock atômico via SET NX EX — só a primeira chamada pra este messageId processa.
+      const msgId = body.messageId || `${phone}_${body.momment || ''}_${texto}`;
+      const lockResp = await fetch(`${KV_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['SET', `bot:msg-lock:${msgId}`, '1', 'EX', '300', 'NX']])
+      });
+      const lockData = await lockResp.json();
+      const lockOk = Array.isArray(lockData) && lockData[0]?.result === 'OK';
+      if (!lockOk) {
+        console.log(`BOT mensagem duplicada ignorada (messageId=${msgId})`);
+        return res.status(200).json({ ok: true, duplicado: true });
+      }
 
       // Se um humano desativou a IA pra este número (assumindo a conversa manualmente),
       // não responde automaticamente — só ignora e deixa a mensagem passar direto.
