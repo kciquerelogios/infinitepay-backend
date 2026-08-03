@@ -3956,6 +3956,12 @@ function _attachTicketsActions() {
       atualizarTicket(this.getAttribute('data-tid'), this.getAttribute('data-tact'));
     });
   });
+  // Excluir ticket via data-tdel
+  ct().querySelectorAll('[data-tdel]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      excluirTicket(this.getAttribute('data-tdel'));
+    });
+  });
   // Abrir foto via data-foto
   ct().querySelectorAll('[data-foto]').forEach(function(img) {
     img.addEventListener('click', function() {
@@ -3998,8 +4004,9 @@ function _renderTicketsList(tickets, filtro) {
     html += '<td style="white-space:nowrap">';
     if (t.status!=='resolvido') {
       html += '<button data-tid="'+t.id+'" data-tact="em_atendimento" style="padding:4px 8px;background:#fef3c7;color:#92400e;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Atender</button>';
-      html += '<button data-tid="'+t.id+'" data-tact="resolvido" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer">Resolver</button>';
+      html += '<button data-tid="'+t.id+'" data-tact="resolvido" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">Resolver</button>';
     }
+    html += '<button data-tdel="'+t.id+'" style="padding:4px 8px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:5px;font-size:11px;cursor:pointer;margin-right:4px">🗑 Excluir</button>';
     if (t.telefone) {
       var wppMsg = encodeURIComponent('Olá '+( t.nome||'').split(' ')[0]+'! Aqui é da Kcique Relógios. Estamos analisando seu atendimento e já entramos em contato em breve! ⌚');
       html += ' <a href="https://wa.me/55'+t.telefone.replace(/\D/g,'')+"?text="+wppMsg+'" target="_blank" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none">💬</a>';
@@ -4022,6 +4029,15 @@ async function atualizarTicket(id, status) {
   await fetch(API+'/api/bot?action=atualizar-ticket&secret='+S, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({id, status})
+  });
+  renderAtendimento();
+}
+
+async function excluirTicket(id) {
+  if (!confirm('Excluir este chamado? Essa ação não pode ser desfeita.')) return;
+  await fetch(API+'/api/bot?action=deletar-ticket&secret='+S, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id})
   });
   renderAtendimento();
 }
