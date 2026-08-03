@@ -740,6 +740,13 @@ export default async function handler(req, res) {
       else if (body.document) midia = { tipo: 'document', url: body.document.documentUrl || body.document.url || '' };
       else if (body.audio) midia = { tipo: 'audio', url: body.audio.audioUrl || body.audio.url || '' };
 
+      // Ignorar reações (👍❤️ etc a uma mensagem) e outros eventos sem conteúdo real —
+      // sem isso, a IA recebia um "nada" e respondia com um genérico "como posso ajudar".
+      if (body.reaction || (!texto && !midia)) {
+        console.log(`BOT ignorando evento sem conteúdo/reação de ${phone}`);
+        return res.status(200).json({ ok: true, ignorado: 'sem-conteudo' });
+      }
+
       // Deduplicação: a Z-API pode reenviar o mesmo webhook (ex: se a resposta demorou
       // demais e ela interpretou como falha), o que processava a MESMA mensagem várias
       // vezes em paralelo — cada uma gerando uma resposta separada e um ticket separado,
@@ -766,9 +773,58 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ignorado: true });
       }
 
+      // Agrupar rajada de mensagens: quando o cliente manda várias mensagens seguidas
+      // rapidamente, cada uma virava uma chamada concorrente e independente da IA — que
+      // não sabia das outras — gerando várias respostas parecidas em poucos segundos.
+      // Agora toda mensagem entra numa fila por telefone; só a PRIMEIRA de uma rajada
+      // processa de verdade, esperando alguns segundos pra juntar o resto e responder
+      // uma única vez com o contexto completo.
+      const pendingKey = `bot:pending:${phone}`;
+      const burstLockKey = `bot:burst-lock:${phone}`;
+
+      await fetch(`${KV_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['RPUSH', pendingKey, JSON.stringify({ texto, midia })]])
+      });
+
+      const burstLockResp = await fetch(`${KV_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['SET', burstLockKey, '1', 'EX', '10', 'NX']])
+      });
+      const burstLockData = await burstLockResp.json();
+      const souDonoDaRajada = Array.isArray(burstLockData) && burstLockData[0]?.result === 'OK';
+
+      if (!souDonoDaRajada) {
+        // Já tem outra mensagem desta mesma rajada processando — só entra na fila e sai
+        console.log(`BOT mensagem ${phone} adicionada à rajada em andamento`);
+        return res.status(200).json({ ok: true, aguardandoRajada: true });
+      }
+
+      // Espera um pouco pra juntar mensagens que cheguem logo em seguida
+      await new Promise(r => setTimeout(r, 4000));
+
+      const pendResp = await fetch(`${KV_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['LRANGE', pendingKey, '0', '-1'], ['DEL', pendingKey]])
+      });
+      const pendData = await pendResp.json();
+      const mensagensPendentes = ((Array.isArray(pendData) && pendData[0] && pendData[0].result) || [])
+        .map(s => { try { return JSON.parse(s); } catch(e) { return null; } })
+        .filter(Boolean);
+
+      const textoFinal = mensagensPendentes.length
+        ? mensagensPendentes.map(m => m.texto).filter(Boolean).join('\n')
+        : texto;
+      const midiaFinal = mensagensPendentes.length
+        ? (mensagensPendentes.map(m => m.midia).filter(Boolean).slice(-1)[0] || null)
+        : midia;
+
       // Processar com IA
       try {
-        await processarMensagem(phone, texto, midia);
+        await processarMensagem(phone, textoFinal, midiaFinal);
       } catch(e) {
         console.error('BOT erro IA:', e.message);
         // Fallback em caso de erro da API
