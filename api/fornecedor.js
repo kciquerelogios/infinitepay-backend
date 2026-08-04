@@ -386,7 +386,14 @@ export default async function handler(req, res) {
           };})
         };
       });
-      return res.status(200).json({ pedidos:pedidos, data:ontemStr, total:pedidos.length });
+      var catalogo = prods.map(function(p){
+        return {
+          titulo: p.title,
+          imagem: p.image ? p.image.src : '',
+          variantes: (p.variants||[]).map(function(v){return v.title;}).filter(function(v){return v && v !== 'Default Title';})
+        };
+      });
+      return res.status(200).json({ pedidos:pedidos, data:ontemStr, total:pedidos.length, catalogo:catalogo });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
@@ -574,8 +581,12 @@ async function adicionarItem(orderId){
   var variante=varEl?varEl.value.trim():"";
   var qtdEl=document.getElementById("addqtd"+orderId);
   var qtd=qtdEl?(parseInt(qtdEl.value)||1):1;
+  var img="";
+  (window._catalogo||[]).forEach(function(c){
+    if(!img&&c.titulo&&c.titulo.toLowerCase()===nome.toLowerCase())img=c.imagem||"";
+  });
   p.itens=p.itens||[];
-  p.itens.push({nome:nome,variante:variante,quantidade:qtd,img:""});
+  p.itens.push({nome:nome,variante:variante,quantidade:qtd,img:img});
   var el=document.getElementById("itlist"+orderId);if(el)el.innerHTML=renderItensPedido(orderId,p.itens);
   if(nomeEl)nomeEl.value="";
   if(varEl)varEl.value="";
@@ -604,10 +615,22 @@ async function load(data){
   var ps=d.pedidos||[];
   window._pedidosMap={};
   ps.forEach(function(p){window._pedidosMap[p.id]=p;});
+  window._catalogo=d.catalogo||[];
   if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}
   if(!ps.length){app.innerHTML="<div class='vz'>Nenhum pedido ontem</div>";return;}
   var dataLabel=dt?dt.split("-").reverse().join("/"):"data selecionada";
   var h="<div class='st'><div class='sn'>"+ps.length+"</div><div class='sl'>pedido"+(ps.length!==1?"s":"")+" — "+dataLabel+"</div></div>";
+  h+="<datalist id='catalogo-relogios'>";
+  var coresVistas={};
+  var h2Cores="";
+  window._catalogo.forEach(function(c){
+    h+="<option value='"+c.titulo.replace(/'/g,"&#39;")+"'>";
+    (c.variantes||[]).forEach(function(v){
+      if(!coresVistas[v]){coresVistas[v]=true;h2Cores+="<option value='"+v.replace(/'/g,"&#39;")+"'>";}
+    });
+  });
+  h+="</datalist>";
+  h+="<datalist id='catalogo-cores'>"+h2Cores+"</datalist>";
   ps.forEach(function(p){
     var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";
     var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
@@ -624,8 +647,8 @@ async function load(data){
     if(p.itensEditados)h+="<div style='font-size:11px;color:#7c3aed;background:#f5f3ff;padding:6px 10px;border-radius:6px;margin-bottom:8px'>Itens editados manualmente nesta tela (pedido original na Shopify continua igual)</div>";
     h+="<div id='itlist"+p.id+"'>"+renderItensPedido(p.id,p.itens)+"</div>";
     h+="<div style='display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;align-items:center'>";
-    h+="<input placeholder='Nome do relogio' id='addnome"+p.id+"' style='flex:1;min-width:120px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
-    h+="<input placeholder='Cor (opcional)' id='addvar"+p.id+"' style='width:110px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input placeholder='Nome do relogio' id='addnome"+p.id+"' list='catalogo-relogios' style='flex:1;min-width:120px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input placeholder='Cor (opcional)' id='addvar"+p.id+"' list='catalogo-cores' style='width:110px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
     h+="<input type='number' min='1' value='1' id='addqtd"+p.id+"' style='width:55px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
     h+="<button onclick='adicionarItem("+p.id+")' style='padding:6px 12px;background:#111;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer'>+ Relogio</button>";
     h+="</div>";
