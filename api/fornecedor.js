@@ -131,6 +131,50 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
+  // ── EDITAR ITENS (só a exibição/separação neste painel — não toca no pedido
+  // real da Shopify nem no valor cobrado do cliente) ──────────────
+  if (action === 'editar-itens' && req.method === 'POST') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const orderId = (req.body && req.body.orderId) || '';
+    const itens = (req.body && req.body.itens) || [];
+    if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
+    if (!Array.isArray(itens)) return res.status(400).json({ erro: 'itens deve ser uma lista' });
+    await fetch(KV_URL + '/set/forn-itens-override-' + orderId, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify(itens)
+    }).catch(function(){});
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── ARQUIVAR / DESARQUIVAR PEDIDO (só some desta tela — o pedido continua
+  // normal na Shopify, faturado, no histórico) ─────────────────────
+  if (action === 'arquivar-pedido' && req.method === 'POST') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const orderId = (req.body && req.body.orderId) || '';
+    if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
+    await fetch(KV_URL + '/set/forn-arquivado-' + orderId, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify(true)
+    }).catch(function(){});
+    return res.status(200).json({ ok: true });
+  }
+
+  if (action === 'desarquivar-pedido' && req.method === 'POST') {
+    if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
+    const KV_URL = process.env.KV_REST_API_URL;
+    const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+    const orderId = (req.body && req.body.orderId) || '';
+    if (!orderId) return res.status(400).json({ erro: 'orderId obrigatorio' });
+    await fetch(KV_URL + '/del/forn-arquivado-' + orderId, { method: 'POST', headers: { Authorization: 'Bearer ' + KV_TOKEN } }).catch(function(){});
+    return res.status(200).json({ ok: true });
+  }
+
   // ── ETIQUETA: recebe meOrderId direto, sem busca ─────────────
   if (action === 'etiqueta') {
     if (senha !== SENHA_CORRETA) return res.status(401).json({ erro: 'Nao autorizado' });
@@ -260,6 +304,32 @@ export default async function handler(req, res) {
         });
       }
 
+      // Overrides do fornecedor: itens editados (add/remover relógio) e arquivamento.
+      // Isso NUNCA toca no pedido de verdade na Shopify — é só o que aparece nesta tela,
+      // pra separação/embalagem.
+      var arquivadoKeys = orders.map(function(o){return 'forn-arquivado-'+o.id;});
+      var itensKeys = orders.map(function(o){return 'forn-itens-override-'+o.id;});
+      var arquivadoMap = {}, itensOverrideMap = {};
+      if (orders.length > 0) {
+        var kvR2 = await fetch(KV_URL + '/pipeline', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + KV_TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify(arquivadoKeys.map(function(k){return ['GET',k];}).concat(itensKeys.map(function(k){return ['GET',k];})))
+        }).then(function(r){return r.json();}).catch(function(){return [];});
+        arquivadoKeys.forEach(function(k,i){
+          if(kvR2[i]&&kvR2[i].result) arquivadoMap[k] = true;
+        });
+        itensKeys.forEach(function(k,i){
+          var idx = arquivadoKeys.length + i;
+          if(kvR2[idx]&&kvR2[idx].result) {
+            var v = kvR2[idx].result;
+            while (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { break; } }
+            if (Array.isArray(v)) itensOverrideMap[k] = v;
+          }
+        });
+      }
+      orders = orders.filter(function(o){ return !arquivadoMap['forn-arquivado-'+o.id]; });
+
       // O campo "tag" que enviamos ao criar a etiqueta NÃO é devolvido pela API do
       // Melhor Envio nessas rotas (confirmado inspecionando a resposta crua — o que existe
       // é "tags", um status interno deles tipo "printed", sem relação com o nosso id).
@@ -309,7 +379,8 @@ export default async function handler(req, res) {
           status_forn: statusMap['forn-status-'+o.id] || 'nao_enviado',
 
           criado_em: o.created_at,
-          itens: (o.line_items||[]).map(function(i){return {
+          itensEditados: !!itensOverrideMap['forn-itens-override-'+o.id],
+          itens: itensOverrideMap['forn-itens-override-'+o.id] || (o.line_items||[]).map(function(i){return {
             nome:i.title, variante:i.variant_title||'', quantidade:i.quantity,
             img:(i.image&&i.image.src)||getImg(i.title)
           };})
@@ -464,6 +535,64 @@ async function excluirFoto(url,orderId,wrap){
     else{alert(d.erro||"Erro ao excluir");}
   }catch(e){alert("Erro: "+e.message);}
 }
+function renderItensPedido(orderId,itens){
+  var h="";
+  (itens||[]).forEach(function(it,idx){
+    h+="<div class='it'>";
+    h+=it.img?"<img src='"+it.img+"' onclick='af(this.src)'>":"<div class='ii'>&#8987;</div>";
+    h+="<div style='flex:1'><div class='in'>"+it.nome+"</div>";
+    if(it.variante&&it.variante!=="Default Title")h+="<div class='iv2'>"+it.variante+"</div>";
+    h+="<div class='iq'>Quantidade: <strong>"+it.quantidade+"</strong></div></div>";
+    h+="<button onclick='removerItem("+orderId+","+idx+")' style='background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;align-self:center;flex-shrink:0'>Remover</button>";
+    h+="</div>";
+  });
+  if(!itens||!itens.length)h+="<div style='color:#9ca3af;font-size:13px;padding:10px 0'>Nenhum item</div>";
+  return h;
+}
+async function salvarItensPedido(orderId){
+  var p=window._pedidosMap[orderId];if(!p)return;
+  try{
+    await fetch(A+"?senha="+encodeURIComponent(S)+"&action=editar-itens",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({orderId:String(orderId),itens:p.itens})
+    });
+  }catch(e){alert("Erro ao salvar itens: "+e.message);}
+}
+async function removerItem(orderId,idx){
+  var p=window._pedidosMap[orderId];if(!p)return;
+  if(!confirm("Remover este item da separacao? (nao mexe no pedido real da Shopify)"))return;
+  p.itens.splice(idx,1);
+  var el=document.getElementById("itlist"+orderId);if(el)el.innerHTML=renderItensPedido(orderId,p.itens);
+  await salvarItensPedido(orderId);
+}
+async function adicionarItem(orderId){
+  var p=window._pedidosMap[orderId];if(!p)return;
+  var nomeEl=document.getElementById("addnome"+orderId);
+  var nome=nomeEl?nomeEl.value.trim():"";
+  if(!nome){alert("Digite o nome do relogio");return;}
+  var varEl=document.getElementById("addvar"+orderId);
+  var variante=varEl?varEl.value.trim():"";
+  var qtdEl=document.getElementById("addqtd"+orderId);
+  var qtd=qtdEl?(parseInt(qtdEl.value)||1):1;
+  p.itens=p.itens||[];
+  p.itens.push({nome:nome,variante:variante,quantidade:qtd,img:""});
+  var el=document.getElementById("itlist"+orderId);if(el)el.innerHTML=renderItensPedido(orderId,p.itens);
+  if(nomeEl)nomeEl.value="";
+  if(varEl)varEl.value="";
+  if(qtdEl)qtdEl.value="1";
+  await salvarItensPedido(orderId);
+}
+async function excluirPedido(orderId){
+  if(!confirm("Excluir este pedido desta tela? Ele continua normal na Shopify (faturado, no historico) — so nao aparece mais aqui."))return;
+  try{
+    await fetch(A+"?senha="+encodeURIComponent(S)+"&action=arquivar-pedido",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({orderId:String(orderId)})
+    });
+    var el=document.querySelector("[data-pedido='"+orderId+"']");
+    if(el)el.remove();
+  }catch(e){alert("Erro: "+e.message);}
+}
 async function load(data){
   var dt=data||(document.getElementById("dt")?document.getElementById("dt").value:"");
   var app=document.getElementById("app");if(!S)return;
@@ -473,6 +602,8 @@ async function load(data){
   var d=await r.json();
   if(!r.ok||d.erro){app.innerHTML="<div class='vz'>Erro: "+(d.erro||"acesso negado")+"</div>";return;}
   var ps=d.pedidos||[];
+  window._pedidosMap={};
+  ps.forEach(function(p){window._pedidosMap[p.id]=p;});
   if(d.data){var pt=d.data.split("-");var dl=document.getElementById("dl");if(dl)dl.textContent="Pedidos de "+pt[2]+"/"+pt[1]+"/"+pt[0];var dti=document.getElementById("dt");if(dti&&!data)dti.value=d.data;}
   if(!ps.length){app.innerHTML="<div class='vz'>Nenhum pedido ontem</div>";return;}
   var dataLabel=dt?dt.split("-").reverse().join("/"):"data selecionada";
@@ -482,7 +613,7 @@ async function load(data){
     var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
     var bgCls=st==="enviado"?"bg bfn":st==="enviado_diferente"?"bg bd2":"bg bpd";
     var bgTxt=lbl2[st]||"Pendente";
-    h+="<div class='pd'>";
+    h+="<div class='pd' data-pedido='"+p.id+"'>";
     h+="<div class='ph' onclick='tp("+p.id+")'><span class='pn'>#"+p.numero+"</span><span id='bg"+p.id+"' class='"+bgCls+"'>"+( bgTxt)+"</span><span class='pm'>"+p.nome+"</span></div>";
     h+="<div class='pb' id='pb"+p.id+"'>";
     h+="<div class='ig'>";
@@ -490,14 +621,13 @@ async function load(data){
     h+="<div class='ic' style='grid-column:span 2'><div class='il'>Endereco</div><div class='iv'>"+(p.endereco||"nao informado")+"</div></div>";
     h+="</div>";
     if(p.tracking)h+="<div class='tk'>Rastreio: "+p.tracking+"</div>";
-    h+="<div>";
-    (p.itens||[]).forEach(function(it){
-      h+="<div class='it'>";
-      h+=it.img?"<img src='"+it.img+"' onclick='af(this.src)'>":"<div class='ii'>&#8987;</div>";
-      h+="<div style='flex:1'><div class='in'>"+it.nome+"</div>";
-      if(it.variante&&it.variante!=="Default Title")h+="<div class='iv2'>"+it.variante+"</div>";
-      h+="<div class='iq'>Quantidade: <strong>"+it.quantidade+"</strong></div></div></div>";
-    });
+    if(p.itensEditados)h+="<div style='font-size:11px;color:#7c3aed;background:#f5f3ff;padding:6px 10px;border-radius:6px;margin-bottom:8px'>Itens editados manualmente nesta tela (pedido original na Shopify continua igual)</div>";
+    h+="<div id='itlist"+p.id+"'>"+renderItensPedido(p.id,p.itens)+"</div>";
+    h+="<div style='display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;align-items:center'>";
+    h+="<input placeholder='Nome do relogio' id='addnome"+p.id+"' style='flex:1;min-width:120px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input placeholder='Cor (opcional)' id='addvar"+p.id+"' style='width:110px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input type='number' min='1' value='1' id='addqtd"+p.id+"' style='width:55px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<button onclick='adicionarItem("+p.id+")' style='padding:6px 12px;background:#111;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer'>+ Relogio</button>";
     h+="</div>";
     h+="<div class='br'>";
     h+="<button class='be' onclick='baixar(this,"+JSON.stringify(p.meOrderId||"")+","+JSON.stringify(p.tracking||"")+")'>"+(p.meOrderId?"Baixar Etiqueta":"Sem etiqueta no ME")+"</button>";
@@ -508,6 +638,7 @@ async function load(data){
     h+="<button class='bp"+(st==="pendente"||st==="nao_enviado"?" dn":"")+"'  data-id='"+p.id+"' data-s='pendente'  onclick='ss(this)'>Pendente</button>";
     h+="<input type='file' accept='image/*' capture='environment' id='fi"+p.id+"' style='display:none' data-oid='"+(p.id)+"' onchange='uFoto(this)'>";
     h+="<button class='foto-btn' data-fid='"+(p.id)+"'>Foto do Pacote</button>";
+    h+="<button onclick='excluirPedido("+p.id+")' style='padding:11px 18px;background:#fff;color:#dc2626;border:2px solid #dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer'>Excluir pedido</button>";
     h+="</div>";
     h+="<div class='fotos-grid' id='fg"+p.id+"'></div>";
     h+="</div></div></div>";
