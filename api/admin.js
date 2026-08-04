@@ -3956,18 +3956,30 @@ async function renderAtendimento() {
     html += '</div>';
 
     // Filtros
-    html += '<div id="ticket-filtros" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+    html += '<div id="ticket-filtros" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">';
     html += '<button class="btn btn-ghost btn-sm" style="background:#1a1a2e;color:#fff" data-f="todos">Todos</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="aberto">🔴 Abertos</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="em_atendimento">🔄 Em Atendimento</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="problema">⚠️ Problemas</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="troca">🔁 Trocas</button>';
     html += '<button class="btn btn-ghost btn-sm" data-f="resolvido">✅ Resolvidos</button>';
+    html += '<button class="btn btn-primary btn-sm" id="btn-novo-chamado" style="margin-left:auto">+ Novo chamado</button>';
+    html += '</div>';
+
+    html += '<div class="form-card" id="form-novo-chamado" style="display:none;margin-bottom:16px">';
+    html += '<div class="form-title">🎧 Abrir chamado manualmente</div>';
+    html += '<div class="row-3"><div class="field"><label>Telefone (com DDD)</label><input id="nc-telefone" placeholder="11987654321"></div>';
+    html += '<div class="field"><label>Nome (opcional)</label><input id="nc-nome" placeholder="Nome do cliente"></div>';
+    html += '<div class="field"><label>Tipo</label><select id="nc-tipo"><option value="problema">⚠️ Problema</option><option value="troca">🔁 Troca</option></select></div></div>';
+    html += '<div class="field"><label>Pedido (opcional)</label><input id="nc-pedido" placeholder="#1234"></div>';
+    html += '<div class="field"><label>Descrição</label><textarea id="nc-descricao" placeholder="Resumo do que aconteceu"></textarea></div>';
+    html += '<div style="display:flex;align-items:center;gap:10px"><button class="btn btn-primary" id="btn-salvar-chamado">💾 Criar chamado</button><span id="nc-msg" style="font-size:13px"></span></div>';
     html += '</div>';
 
     if (!tickets.length) {
       html += '<div class="vazio">Nenhum ticket de atendimento ainda</div>';
       ct().innerHTML = html;
+      _attachNovoChamado();
       return;
     }
 
@@ -3997,6 +4009,32 @@ function _attachAtendimento() {
     _attachTicketsActions();
   });
   _attachTicketsActions();
+  _attachNovoChamado();
+}
+
+function _attachNovoChamado() {
+  var btnToggle = get('btn-novo-chamado');
+  if (btnToggle) btnToggle.addEventListener('click', function(){
+    var form = get('form-novo-chamado');
+    if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  });
+  var btnSalvar = get('btn-salvar-chamado');
+  if (btnSalvar) btnSalvar.addEventListener('click', async function(){
+    var telefone = val('nc-telefone').replace(/\\D/g,'');
+    var descricao = val('nc-descricao').trim();
+    var msg = get('nc-msg');
+    if (!telefone || !descricao) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '⚠️ Preencha telefone e descrição'; } return; }
+    btnSalvar.disabled = true; btnSalvar.textContent = 'Criando...';
+    try {
+      var d = await fetch(API+'/api/bot?action=criar-ticket-manual&secret='+S, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ telefone: telefone, nome: val('nc-nome').trim(), tipo: val('nc-tipo'), pedido: val('nc-pedido').trim(), descricao: descricao })
+      }).then(function(r){return r.json();});
+      if (d.ok) { if (msg) { msg.style.color = '#16a34a'; msg.textContent = '✅ Chamado criado!'; } setTimeout(function(){ renderAtendimento(); }, 800); }
+      else { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ ' + (d.erro || 'Erro'); } }
+    } catch(e) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ ' + e.message; } }
+    btnSalvar.disabled = false; btnSalvar.textContent = '💾 Criar chamado';
+  });
 }
 
 function _attachTicketsActions() {
