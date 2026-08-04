@@ -75,15 +75,28 @@ async function buscarPedidoPorEmail(email) {
   console.log(`BOT buscarPedidoPorEmail: ${emailLow}`);
 
   // Buscar direto nos orders — funciona para guest checkout e clientes cadastrados
-  const pages = await Promise.all([1,2,3,4,5].map(p =>
-    fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=50&financial_status=paid&page=${p}`,
-      { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } }
-    ).then(r => r.json()).catch(() => ({ orders: [] }))
-  ));
-  const allOrders = pages.flatMap(p => p.orders || []);
+  // Paginação por cursor (page_info): o parâmetro "page" não é mais suportado pela API da Shopify
+  // e era ignorado, fazendo a busca enxergar sempre os mesmos ~50 pedidos mais recentes da loja.
+  let allOrders = [];
+  let pageInfo = null;
+  let pages = 0;
+  while (pages < 10) {
+    const url = pageInfo
+      ? `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?limit=250&page_info=${pageInfo}`
+      : `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json?status=any&limit=250&financial_status=paid`;
+    const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
+    const d = await r.json().catch(() => ({ orders: [] }));
+    allOrders = allOrders.concat(d.orders || []);
+    const link = r.headers.get('link') || '';
+    const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+    pageInfo = m ? m[1] : null;
+    pages++;
+    if (!pageInfo) break;
+  }
   console.log(`BOT buscarPedidoPorEmail: total orders carregados=${allOrders.length}`);
 
-  const encontrados = allOrders.filter(o => (o.email || '').toLowerCase() === emailLow);
+  const encontrados = allOrders
+    .filter(o => (o.email || '').toLowerCase() === emailLow && o.financial_status === 'paid');
   console.log(`BOT buscarPedidoPorEmail: pedidos com esse email=${encontrados.length}`);
 
   if (!encontrados.length) return null;
@@ -536,10 +549,17 @@ ${ticketAberto ? `\nJÁ EXISTE UM CHAMADO ABERTO pra este cliente (tipo: ${ticke
 
   {
     const linhas = resposta.split('\n');
-    const idxMarcador = linhas.findIndex(l => /^(ABRIR_TICKET\s*\|\s*)?(problema|troca)$/i.test(l.trim()));
+    // Tolerante ao que vem depois do "|": o modelo às vezes escreve uma frase livre
+    // (ex: "ABRIR_TICKET|cancelamento compra direta com vendedor") em vez de só
+    // "problema" ou "troca" como instruído — isso fazia a linha nem ser detectada,
+    // vazando pro cliente E não abrindo ticket nenhum. Agora casa qualquer linha que
+    // comece com ABRIR_TICKET, e classifica o tipo pelo texto livre (ou pelo formato
+    // antigo, só "problema"/"troca" sozinho).
+    const idxMarcador = linhas.findIndex(l => /^ABRIR_TICKET\b/i.test(l.trim()) || /^(problema|troca)$/i.test(l.trim()));
     if (idxMarcador !== -1 && !ticketAberto) {
-      const m = linhas[idxMarcador].trim().match(/(problema|troca)$/i);
-      abrirTicket = m ? m[1].toLowerCase() : 'problema';
+      const linhaRaw = linhas[idxMarcador].trim();
+      const depoisPipe = linhaRaw.includes('|') ? linhaRaw.split('|').slice(1).join('|').trim() : linhaRaw;
+      abrirTicket = /troca/i.test(depoisPipe) ? 'troca' : 'problema';
       respostaFinal = linhas.filter((_, i) => i !== idxMarcador).join('\n').trim();
     } else if (idxMarcador !== -1) {
       // Já existe ticket aberto — só remove a linha vazada, sem criar outro
@@ -686,6 +706,26 @@ export default async function handler(req, res) {
       ticket.atualizado_em = new Date().toISOString();
       await kvSet(id, ticket);
       return res.status(200).json({ ok: true });
+    } catch(e) { return res.status(500).json({ erro: e.message }); }
+  }
+
+  // Criar chamado manualmente pelo painel — pra casos onde a IA não abriu ticket
+  // automaticamente (ex: bug já corrigido, ou o atendimento aconteceu fora do WhatsApp).
+  if (req.method === 'POST' && req.query.action === 'criar-ticket-manual') {
+    const secret = req.query.secret || '';
+    if (secret !== SECRET) return res.status(401).json({ erro: 'Não autorizado' });
+    try {
+      const { telefone, nome, tipo, descricao, pedido } = req.body || {};
+      if (!telefone || !descricao) return res.status(400).json({ erro: 'telefone e descricao obrigatórios' });
+      const ticket = await criarTicket({
+        tipo: tipo === 'troca' ? 'troca' : 'problema',
+        telefone,
+        nome: nome || telefone,
+        pedido: pedido || '—',
+        descricao,
+        midias: []
+      });
+      return res.status(200).json({ ok: true, ticket });
     } catch(e) { return res.status(500).json({ erro: e.message }); }
   }
 
