@@ -576,6 +576,21 @@ async function removerItem(orderId,idx){
   var el=document.getElementById("itlist"+orderId);if(el)el.innerHTML=renderItensPedido(orderId,p.itens);
   await salvarItensPedido(orderId);
 }
+function atualizarCoresPedido(orderId){
+  var nomeEl=document.getElementById("addnome"+orderId);
+  var dl=document.getElementById("catalogo-cores"+orderId);
+  if(!nomeEl||!dl)return;
+  var nome=nomeEl.value.trim().toLowerCase();
+  var h="";
+  (window._catalogo||[]).forEach(function(c){
+    if(c.titulo&&c.titulo.toLowerCase()===nome){
+      (c.variantes||[]).forEach(function(v){
+        if(v.nome)h+="<option value='"+v.nome.replace(/'/g,"&#39;")+"'>";
+      });
+    }
+  });
+  dl.innerHTML=h;
+}
 async function adicionarItem(orderId){
   var p=window._pedidosMap[orderId];if(!p)return;
   var nomeEl=document.getElementById("addnome"+orderId);
@@ -632,16 +647,10 @@ async function load(data){
   var dataLabel=dt?dt.split("-").reverse().join("/"):"data selecionada";
   var h="<div class='st'><div class='sn'>"+ps.length+"</div><div class='sl'>pedido"+(ps.length!==1?"s":"")+" — "+dataLabel+"</div></div>";
   h+="<datalist id='catalogo-relogios'>";
-  var coresVistas={};
-  var h2Cores="";
   window._catalogo.forEach(function(c){
     h+="<option value='"+c.titulo.replace(/'/g,"&#39;")+"'>";
-    (c.variantes||[]).forEach(function(v){
-      if(v.nome&&!coresVistas[v.nome]){coresVistas[v.nome]=true;h2Cores+="<option value='"+v.nome.replace(/'/g,"&#39;")+"'>";}
-    });
   });
   h+="</datalist>";
-  h+="<datalist id='catalogo-cores'>"+h2Cores+"</datalist>";
   ps.forEach(function(p){
     var st=p.status_forn||"nao_enviado";var env=st==="enviado"||p.fulfillment==="fulfilled";
     var lbl2={enviado:"Enviado",nao_enviado:"Nao Enviado",enviado_diferente:"Enviado Diferente",pendente:"Pendente"};
@@ -658,8 +667,9 @@ async function load(data){
     if(p.itensEditados)h+="<div style='font-size:11px;color:#7c3aed;background:#f5f3ff;padding:6px 10px;border-radius:6px;margin-bottom:8px'>Itens editados manualmente nesta tela (pedido original na Shopify continua igual)</div>";
     h+="<div id='itlist"+p.id+"'>"+renderItensPedido(p.id,p.itens)+"</div>";
     h+="<div style='display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;align-items:center'>";
-    h+="<input placeholder='Nome do relogio' id='addnome"+p.id+"' list='catalogo-relogios' style='flex:1;min-width:120px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
-    h+="<input placeholder='Cor (opcional)' id='addvar"+p.id+"' list='catalogo-cores' style='width:110px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input placeholder='Nome do relogio' id='addnome"+p.id+"' list='catalogo-relogios' oninput='atualizarCoresPedido("+p.id+")' style='flex:1;min-width:120px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<input placeholder='Cor (opcional)' id='addvar"+p.id+"' list='catalogo-cores"+p.id+"' style='width:110px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
+    h+="<datalist id='catalogo-cores"+p.id+"'></datalist>";
     h+="<input type='number' min='1' value='1' id='addqtd"+p.id+"' style='width:55px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px'>";
     h+="<button onclick='adicionarItem("+p.id+")' style='padding:6px 12px;background:#111;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer'>+ Relogio</button>";
     h+="</div>";
