@@ -95,8 +95,14 @@ async function buscarPedidoPorEmail(email) {
   }
   console.log(`BOT buscarPedidoPorEmail: total orders carregados=${allOrders.length}`);
 
-  const encontrados = allOrders
-    .filter(o => (o.email || '').toLowerCase() === emailLow && o.financial_status === 'paid');
+  // Pedidos criados pela nossa API (site, manual, reprocessado) muitas vezes não têm o campo
+  // "email" do pedido preenchido pela Shopify — só o e-mail dentro de customer/contact_email.
+  // Checar as três fontes evita não achar pedido de cliente com e-mail certo.
+  const encontrados = allOrders.filter(o => {
+    if (o.financial_status !== 'paid') return false;
+    const emails = [o.email, o.contact_email, o.customer?.email].filter(Boolean).map(e => e.toLowerCase());
+    return emails.includes(emailLow);
+  });
   console.log(`BOT buscarPedidoPorEmail: pedidos com esse email=${encontrados.length}`);
 
   if (!encontrados.length) return null;
