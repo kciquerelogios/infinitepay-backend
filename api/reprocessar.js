@@ -61,6 +61,7 @@ export default async function handler(req, res) {
 
     const orderData = {
       order: {
+        email: cliente.email || '',
         line_items: [{
           title: dadosPedido.descricao,
           quantity: 1,
