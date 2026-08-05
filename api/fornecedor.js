@@ -387,10 +387,14 @@ export default async function handler(req, res) {
         };
       });
       var catalogo = prods.map(function(p){
+        var imgById = {};
+        (p.images||[]).forEach(function(im){ imgById[im.id] = im.src; });
         return {
           titulo: p.title,
           imagem: p.image ? p.image.src : '',
-          variantes: (p.variants||[]).map(function(v){return v.title;}).filter(function(v){return v && v !== 'Default Title';})
+          variantes: (p.variants||[])
+            .filter(function(v){ return v.title && v.title !== 'Default Title'; })
+            .map(function(v){ return { nome: v.title, imagem: (v.image_id && imgById[v.image_id]) || (p.image ? p.image.src : '') }; })
         };
       });
       return res.status(200).json({ pedidos:pedidos, data:ontemStr, total:pedidos.length, catalogo:catalogo });
@@ -583,7 +587,14 @@ async function adicionarItem(orderId){
   var qtd=qtdEl?(parseInt(qtdEl.value)||1):1;
   var img="";
   (window._catalogo||[]).forEach(function(c){
-    if(!img&&c.titulo&&c.titulo.toLowerCase()===nome.toLowerCase())img=c.imagem||"";
+    if(c.titulo&&c.titulo.toLowerCase()===nome.toLowerCase()){
+      if(variante){
+        (c.variantes||[]).forEach(function(v){
+          if(!img&&v.nome&&v.nome.toLowerCase()===variante.toLowerCase())img=v.imagem||"";
+        });
+      }
+      if(!img)img=c.imagem||"";
+    }
   });
   p.itens=p.itens||[];
   p.itens.push({nome:nome,variante:variante,quantidade:qtd,img:img});
@@ -626,7 +637,7 @@ async function load(data){
   window._catalogo.forEach(function(c){
     h+="<option value='"+c.titulo.replace(/'/g,"&#39;")+"'>";
     (c.variantes||[]).forEach(function(v){
-      if(!coresVistas[v]){coresVistas[v]=true;h2Cores+="<option value='"+v.replace(/'/g,"&#39;")+"'>";}
+      if(v.nome&&!coresVistas[v.nome]){coresVistas[v.nome]=true;h2Cores+="<option value='"+v.nome.replace(/'/g,"&#39;")+"'>";}
     });
   });
   h+="</datalist>";
