@@ -542,7 +542,8 @@ ${ticketAberto ? `\nJÁ EXISTE UM CHAMADO ABERTO pra este cliente (tipo: ${ticke
 6. Nunca invente informações de rastreio ou pedido
 7. Não temos loja física — somente loja online
 8. Formate as mensagens para WhatsApp usando *negrito* quando necessário
-9. Seja concisa — evite mensagens muito longas`;
+9. Seja concisa — evite mensagens muito longas
+${!leadCarrinho ? `10. Se o cliente demonstrar interesse em COMPRAR um relógio (perguntar sobre produto, modelo, preço, disponibilidade, formas de pagamento etc.) — e NÃO for problema com relógio já comprado nem rastreio de pedido — não tente fechar a venda você mesma. Explique rapidamente o que ele quiser saber se for algo simples do catálogo, e diga que a atendente Luana pode ajudar melhor com a compra, passando o número dela: *+55 11 95592-5365*. Só faça isso quando identificar um possível comprador — não use essa regra para clientes com problema ou rastreio.` : ''}`;
 
   // Chamar Claude
   const resposta = await chamarClaude(historico.slice(-30), systemPrompt); // últimas 30 msgs
