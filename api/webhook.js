@@ -42,6 +42,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: 'Payload inválido' });
     }
 
+    // Lock atômico via SET NX EX — a InfinitePay reenvia o webhook quando não recebe 200 rápido,
+    // e sem isso cada reenvio criava um pedido novo no Shopify pra mesma compra.
+    if (payload.order_nsu && process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      const lockResp = await fetch(`${process.env.KV_REST_API_URL}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['SET', `webhook:pedido-lock:${payload.order_nsu}`, '1', 'EX', '600', 'NX']])
+      });
+      const lockData = await lockResp.json().catch(() => null);
+      const lockOk = Array.isArray(lockData) && lockData[0]?.result === 'OK';
+      if (!lockOk) {
+        console.log(`Webhook duplicado ignorado — order_nsu já processado: ${payload.order_nsu}`);
+        return res.status(200).json({ success: true, message: 'Já processado (duplicado ignorado)' });
+      }
+    }
+
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
     const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
     const MELHORENVIO_TOKEN = process.env.MELHORENVIO_TOKEN;
@@ -134,6 +150,8 @@ export default async function handler(req, res) {
       const sobrenome = partesNome.length > 1 ? partesNome.slice(1).join(' ') : primeiroNome;
 
       // Buscar cliente existente pelo email
+      orderData.order.email = cliente.email || '';
+
       try {
         const clienteResp = await fetch(
           `https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(cliente.email)}`,
