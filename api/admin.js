@@ -1075,6 +1075,7 @@ input:focus{border-color:#25d366}button{width:100%;padding:12px;background:#25d3
       orderData.order.billing_address = orderData.order.shipping_address;
 
       if (cliente.email) {
+        orderData.order.email = cliente.email;
         try {
           const cResp = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/customers/search.json?query=email:${encodeURIComponent(cliente.email)}`, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN } });
           const cData = await cResp.json();
