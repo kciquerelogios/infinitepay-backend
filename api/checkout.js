@@ -1,7 +1,49 @@
+const ORIGENS_PERMITIDAS = ['https://kcique.com.br', 'https://www.kcique.com.br'];
+
+function origemPermitida(origin) {
+  if (!origin) return false;
+  if (ORIGENS_PERMITIDAS.includes(origin)) return true;
+  try { return new URL(origin).hostname.endsWith('.myshopify.com'); } catch (e) { return false; }
+}
+
+// Busca o preço real de cada produto no Shopify — nunca confiar no preço que o cliente manda.
+// Retorna null se qualquer item não puder ser validado (checkout deve ser recusado nesse caso).
+async function validarCarrinho(carrinho) {
+  const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
+  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+  if (!SHOPIFY_STORE || !SHOPIFY_TOKEN) return null;
+
+  const idsUnicos = [...new Set(carrinho.map(i => i.id))];
+  const produtosMap = {};
+  await Promise.all(idsUnicos.map(async id => {
+    try {
+      const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products/${id}.json`, {
+        headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await r.json();
+      if (d.product) produtosMap[id] = d.product;
+    } catch (e) { /* produto fica de fora do map — tratado abaixo como inválido */ }
+  }));
+
+  const carrinhoValidado = carrinho.map(item => {
+    const produto = produtosMap[item.id];
+    if (!produto || !produto.variants || !produto.variants.length) return null;
+    let variante = produto.variants.find(v => v.title === item.cor);
+    if (!variante) variante = produto.variants[0];
+    return { ...item, preco: Math.round(parseFloat(variante.price) * 100), nome: item.nome || produto.title };
+  });
+
+  if (carrinhoValidado.some(i => i === null)) return null;
+  return carrinhoValidado;
+}
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  res.setHeader('Access-Control-Allow-Origin', origemPermitida(origin) ? origin : ORIGENS_PERMITIDAS[0]);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const KV_URL = process.env.KV_REST_API_URL;
@@ -111,10 +153,6 @@ export default async function handler(req, res) {
     }
   }
 
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -125,7 +163,34 @@ export default async function handler(req, res) {
     return res.status(400).json({ erro: 'Carrinho vazio' });
   }
 
+  // ===== RATE LIMIT (proteção contra abuso/bot) =====
+  if (KV_URL && KV_TOKEN) {
+    try {
+      const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'desconhecido';
+      const rlKey = `ratelimit:checkout:${ip}`;
+      const rlResp = await fetch(`${KV_URL}/incr/${rlKey}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const rlData = await rlResp.json();
+      if (rlData.result === 1) {
+        await fetch(`${KV_URL}/expire/${rlKey}/60`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      }
+      if (rlData.result > 20) {
+        return res.status(429).json({ erro: 'Muitas tentativas. Aguarde um instante e tente novamente.' });
+      }
+    } catch (e) { /* Redis fora do ar não pode travar o checkout */ }
+  }
+
+  // ===== VALIDAR PREÇOS REAIS NO SHOPIFY =====
+  // O carrinho enviado pelo cliente NUNCA é confiável — preço e nome vêm sempre do Shopify a partir daqui.
+  const carrinhoValidado = await validarCarrinho(carrinho);
+  if (!carrinhoValidado) {
+    return res.status(400).json({ erro: 'Não foi possível validar os produtos do carrinho. Atualize a página e tente novamente.' });
+  }
+
+  const ehPACfrete = frete && frete.nome && frete.nome.toLowerCase().indexOf('pac') !== -1;
+  const totalItensCarrinho = carrinhoValidado.reduce((s, i) => s + (i.quantidade || 1), 0);
   let precoFrete = frete ? Math.round(frete.preco * 100) : 0;
+  // Frete grátis PAC para 2+ itens é decidido aqui, no servidor — nunca confiar no preço que o front manda
+  if (ehPACfrete && totalItensCarrinho >= 2) precoFrete = 0;
 
   // Aplicar desconto do cupom
   let descontoTotal = 0;
@@ -135,13 +200,28 @@ export default async function handler(req, res) {
       const cupomResp = await fetch(`https://infinitepay-backend.vercel.app/api/cupons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'validar', codigo: cupom.codigo, carrinho })
+        body: JSON.stringify({ action: 'validar', codigo: cupom.codigo, carrinho: carrinhoValidado })
       });
       const cupomData = await cupomResp.json();
+
       if (cupomData.ok) {
         cupomValido = cupomData.cupom;
-        // Recalcular desconto com base no carrinho atual
-        const subtotalParaCupom = carrinho.reduce((s, i) => s + (i.preco * (i.quantidade || 1)), 0);
+
+        // Trava atômica de limite de uso — evita corrida entre checkouts simultâneos estourando o limite
+        if (cupomValido.limiteUsos && KV_URL && KV_TOKEN) {
+          const contadorKey = `cupom_usos_count:${cupom.codigo.toUpperCase()}`;
+          const incrResp = await fetch(`${KV_URL}/incr/${contadorKey}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+          const incrData = await incrResp.json();
+          if (incrData.result > cupomValido.limiteUsos) {
+            await fetch(`${KV_URL}/decr/${contadorKey}`, { method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+            cupomValido = null;
+          }
+        }
+      }
+
+      if (cupomValido) {
+        // Recalcular desconto com base no carrinho validado (preços reais)
+        const subtotalParaCupom = carrinhoValidado.reduce((s, i) => s + (i.preco * (i.quantidade || 1)), 0);
         if (cupomValido.tipo === 'percentual' || cupomValido.tipo === 'percentual_frete' || cupomValido.tipo === 'percentual_mais_frete') {
           descontoTotal = Math.round(subtotalParaCupom * cupomValido.valor / 100);
         } else if (cupomValido.tipo === 'fixo') {
@@ -149,20 +229,19 @@ export default async function handler(req, res) {
         } else {
           descontoTotal = cupomValido.desconto || 0;
         }
-        // Frete grátis aplica SOMENTE no PAC
-        const ehPACfrete = frete && frete.nome && frete.nome.toLowerCase().indexOf('pac') !== -1;
+        // Frete grátis do cupom aplica SOMENTE no PAC
         if (cupomValido.freteGratis && ehPACfrete) precoFrete = 0;
-        // Incrementar uso do cupom
-        await fetch(`${process.env.KV_REST_API_URL}/get/cupom_${cupom.codigo.toUpperCase()}`, { headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` } })
+        // Atualizar contador salvo no cupom (best-effort, só para exibição no admin)
+        await fetch(`${KV_URL}/get/cupom_${cupom.codigo.toUpperCase()}`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } })
           .then(r => r.json())
           .then(async d => {
             let c = d.result;
             while (typeof c === 'string') { try { c = JSON.parse(c); } catch(e) { break; } }
             if (c) {
               c.usosAtuais = (c.usosAtuais || 0) + 1;
-              await fetch(`${process.env.KV_REST_API_URL}/set/cupom_${cupom.codigo.toUpperCase()}`, {
+              await fetch(`${KV_URL}/set/cupom_${cupom.codigo.toUpperCase()}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+                headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ value: JSON.stringify(c) })
               });
             }
@@ -172,10 +251,10 @@ export default async function handler(req, res) {
   }
 
   // Calcular subtotal e aplicar desconto proporcional
-  const subtotalBruto = carrinho.reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
+  const subtotalBruto = carrinhoValidado.reduce((s, i) => s + (i.preco * (i.quantidade||1)), 0);
 
   // Montar items para InfinitePay
-  let items = carrinho.map(item => ({
+  let items = carrinhoValidado.map(item => ({
     quantity: item.quantidade || 1,
     price: item.preco,
     description: item.nome + (item.cor && item.cor !== 'Default Title' ? ' - Cor: ' + item.cor : '')
@@ -199,17 +278,20 @@ export default async function handler(req, res) {
     });
   }
 
-  const orderNsu = `pedido-${Date.now()}`;
+  const orderNsu = `pedido-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const body = {
     handle: HANDLE,
     redirect_url: process.env.REDIRECT_URL || process.env.URL_REDIRECIONADA || 'https://kcique.com.br/pages/obrigado',
-    webhook_url: 'https://infinitepay-backend.vercel.app/api/webhook',
+    webhook_url: process.env.WEBHOOK_URL || 'https://infinitepay-backend.vercel.app/api/webhook',
     order_nsu: orderNsu,
     items
   };
 
   if (cliente) {
+    if (!cliente.cep || !cliente.rua || !cliente.numero || !cliente.bairro || !cliente.cidade || !cliente.estado) {
+      return res.status(400).json({ erro: 'Endereço incompleto' });
+    }
     body.customer = {
       name: cliente.nome,
       email: cliente.email,
@@ -221,7 +303,7 @@ export default async function handler(req, res) {
         if (nums.length === 11) nums = '55' + nums;
         return '+' + nums;
       })(cliente.telefone),
-      document: cliente.cpf
+      document: (cliente.cpf || '').replace(/\D/g, '')
     };
     body.address = {
       cep: cliente.cep.replace(/\D/g, ''),
@@ -241,7 +323,7 @@ export default async function handler(req, res) {
       const dadosPedido = {
         cliente,
         frete,
-        carrinho,
+        carrinho: carrinhoValidado,
         order_nsu: orderNsu,
         ref: ref || 'direto',
         cupom: cupomValido || null,
@@ -298,10 +380,10 @@ export default async function handler(req, res) {
       res.status(200).json({ url: data.url });
     } else {
       console.log('InfinitePay erro final:', JSON.stringify(data));
-      res.status(500).json({ erro: 'Falha ao gerar link. Tente novamente em alguns instantes.', detalhe: data });
+      res.status(500).json({ erro: 'Falha ao gerar link. Tente novamente em alguns instantes.', ref: orderNsu });
     }
   } catch (error) {
     console.log('Checkout erro geral:', error.message);
-    res.status(500).json({ erro: error.message });
+    res.status(500).json({ erro: 'Erro ao processar pagamento. Tente novamente.', ref: orderNsu });
   }
 }
