@@ -7,14 +7,17 @@ function origemPermitida(origin) {
 }
 
 // Busca o preço real de cada produto no Shopify — nunca confiar no preço que o cliente manda.
-// Retorna null se qualquer item não puder ser validado (checkout deve ser recusado nesse caso).
+// Retorna { carrinho } em caso de sucesso, ou { erroDebug } com o motivo exato da falha (pra diagnosticar sem depender de log da Vercel).
 async function validarCarrinho(carrinho) {
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
   const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
-  if (!SHOPIFY_STORE || !SHOPIFY_TOKEN) return null;
+  if (!SHOPIFY_STORE || !SHOPIFY_TOKEN) {
+    return { erroDebug: 'SHOPIFY_STORE ou SHOPIFY_TOKEN não configurados no ambiente' };
+  }
 
   const idsUnicos = [...new Set(carrinho.map(i => i.id))];
   const produtosMap = {};
+  const falhasBusca = [];
   await Promise.all(idsUnicos.map(async id => {
     try {
       const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products/${id}.json`, {
@@ -23,19 +26,26 @@ async function validarCarrinho(carrinho) {
       });
       const d = await r.json();
       if (d.product) produtosMap[id] = d.product;
-    } catch (e) { /* produto fica de fora do map — tratado abaixo como inválido */ }
+      else falhasBusca.push({ id, status: r.status, resposta: d });
+    } catch (e) { falhasBusca.push({ id, erro: e.message }); }
   }));
 
+  const itensInvalidos = [];
   const carrinhoValidado = carrinho.map(item => {
     const produto = produtosMap[item.id];
-    if (!produto || !produto.variants || !produto.variants.length) return null;
+    if (!produto || !produto.variants || !produto.variants.length) {
+      itensInvalidos.push({ id: item.id, nome: item.nome, cor: item.cor, motivo: 'produto não encontrado no Shopify para esse id' });
+      return null;
+    }
     let variante = produto.variants.find(v => v.title === item.cor);
     if (!variante) variante = produto.variants[0];
     return { ...item, preco: Math.round(parseFloat(variante.price) * 100), nome: item.nome || produto.title };
   });
 
-  if (carrinhoValidado.some(i => i === null)) return null;
-  return carrinhoValidado;
+  if (itensInvalidos.length > 0) {
+    return { erroDebug: 'itens do carrinho não encontrados no Shopify', itensInvalidos, falhasBusca };
+  }
+  return { carrinho: carrinhoValidado };
 }
 
 export default async function handler(req, res) {
@@ -181,10 +191,15 @@ export default async function handler(req, res) {
 
   // ===== VALIDAR PREÇOS REAIS NO SHOPIFY =====
   // O carrinho enviado pelo cliente NUNCA é confiável — preço e nome vêm sempre do Shopify a partir daqui.
-  const carrinhoValidado = await validarCarrinho(carrinho);
-  if (!carrinhoValidado) {
-    return res.status(400).json({ erro: 'Não foi possível validar os produtos do carrinho. Atualize a página e tente novamente.' });
+  const validacaoCarrinho = await validarCarrinho(carrinho);
+  if (!validacaoCarrinho.carrinho) {
+    console.log('Validação de carrinho falhou:', JSON.stringify(validacaoCarrinho));
+    return res.status(400).json({
+      erro: 'Não foi possível validar os produtos do carrinho. Atualize a página e tente novamente.',
+      debug: validacaoCarrinho
+    });
   }
+  const carrinhoValidado = validacaoCarrinho.carrinho;
 
   const ehPACfrete = frete && frete.nome && frete.nome.toLowerCase().indexOf('pac') !== -1;
   const totalItensCarrinho = carrinhoValidado.reduce((s, i) => s + (i.quantidade || 1), 0);
