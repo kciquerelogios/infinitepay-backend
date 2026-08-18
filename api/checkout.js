@@ -6,8 +6,70 @@ function origemPermitida(origin) {
   try { return new URL(origin).hostname.endsWith('.myshopify.com'); } catch (e) { return false; }
 }
 
+function normalizarNome(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/ +/g, ' ').trim();
+}
+
+// item.id no carrinho é só uma chave gerada no front (timestamp), sem relação com o Shopify —
+// então o cruzamento com o catálogo real só pode ser feito pelo NOME do produto (mesmo padrão já usado em recuperacao.js).
+function buscarProdutoPorNome(produtos, nomeAlvo) {
+  const alvo = normalizarNome(nomeAlvo);
+  if (!alvo) return { produto: null, motivo: 'sem nome pra buscar' };
+  const exatos = produtos.filter(p => normalizarNome(p.title) === alvo);
+  if (exatos.length === 1) return { produto: exatos[0] };
+  if (exatos.length > 1) return { produto: null, motivo: `${exatos.length} produtos com o mesmo nome no Shopify (ambíguo)` };
+  const parciais = produtos.filter(p => {
+    const pt = normalizarNome(p.title);
+    return pt.includes(alvo) || alvo.includes(pt);
+  });
+  if (parciais.length === 1) return { produto: parciais[0] };
+  return { produto: null, motivo: parciais.length === 0 ? 'nenhum produto com nome parecido' : `${parciais.length} produtos com nome parecido (ambíguo)` };
+}
+
+// Busca o catálogo inteiro (paginado) no Shopify, com cache curto no Redis pra não bater na API a cada checkout.
+async function buscarCatalogoShopify() {
+  const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
+  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+  const KV_URL = process.env.KV_REST_API_URL;
+  const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+
+  if (KV_URL && KV_TOKEN) {
+    try {
+      const cResp = await fetch(`${KV_URL}/get/shopify_produtos_cache`, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
+      const cData = await cResp.json();
+      let produtos = cData.result;
+      while (typeof produtos === 'string') { try { produtos = JSON.parse(produtos); } catch (e) { break; } }
+      if (Array.isArray(produtos) && produtos.length) return produtos;
+    } catch (e) { /* cache indisponível, busca direto no Shopify */ }
+  }
+
+  let produtos = [], pageInfo = null, pages = 0;
+  while (pages < 5) {
+    const url = pageInfo
+      ? `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,variants&page_info=${pageInfo}`
+      : `https://${SHOPIFY_STORE}/admin/api/2026-04/products.json?limit=250&fields=id,title,variants`;
+    const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN }, signal: AbortSignal.timeout(10000) });
+    const d = await r.json().catch(() => ({ products: [] }));
+    produtos = produtos.concat(d.products || []);
+    const link = r.headers.get('link') || '';
+    const m = link.match(/<[^>]*page_info=([^&>]*)[^>]*>;\s*rel="next"/);
+    pageInfo = m ? m[1] : null;
+    pages++;
+    if (!pageInfo) break;
+  }
+
+  if (KV_URL && KV_TOKEN && produtos.length) {
+    fetch(`${KV_URL}/set/shopify_produtos_cache`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(produtos), ex: 300 })
+    }).catch(() => {});
+  }
+
+  return produtos;
+}
+
 // Busca o preço real de cada item no Shopify — nunca confiar no preço que o cliente manda.
-// item.id no carrinho é o ID da VARIANTE (não do produto), então busca direto por variante.
 // Retorna { carrinho } em caso de sucesso, ou { erroDebug } com o motivo exato da falha (pra diagnosticar sem depender de log da Vercel).
 async function validarCarrinho(carrinho) {
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
@@ -16,28 +78,26 @@ async function validarCarrinho(carrinho) {
     return { erroDebug: 'SHOPIFY_STORE ou SHOPIFY_TOKEN não configurados no ambiente' };
   }
 
-  const idsUnicos = [...new Set(carrinho.map(i => i.id))];
-  const variantesMap = {};
-  const falhasBusca = [];
-  await Promise.all(idsUnicos.map(async id => {
-    try {
-      const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/variants/${id}.json`, {
-        headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
-        signal: AbortSignal.timeout(8000)
-      });
-      const d = await r.json();
-      if (d.variant) variantesMap[id] = d.variant;
-      else falhasBusca.push({ id, status: r.status, resposta: d });
-    } catch (e) { falhasBusca.push({ id, erro: e.message }); }
-  }));
+  let produtos;
+  try {
+    produtos = await buscarCatalogoShopify();
+  } catch (e) {
+    return { erroDebug: 'Falha ao buscar catálogo no Shopify: ' + e.message };
+  }
+  if (!produtos.length) {
+    return { erroDebug: 'Catálogo Shopify retornou vazio' };
+  }
 
   const itensInvalidos = [];
   const carrinhoValidado = carrinho.map(item => {
-    const variante = variantesMap[item.id];
-    if (!variante) {
-      itensInvalidos.push({ id: item.id, nome: item.nome, cor: item.cor, motivo: 'variante não encontrada no Shopify para esse id' });
+    const { produto, motivo } = buscarProdutoPorNome(produtos, item.nome);
+    if (!produto || !produto.variants || !produto.variants.length) {
+      itensInvalidos.push({ id: item.id, nome: item.nome, cor: item.cor, motivo: motivo || 'produto sem variantes' });
       return null;
     }
+    const corAlvo = normalizarNome(item.cor);
+    let variante = produto.variants.find(v => normalizarNome(v.title) === corAlvo);
+    if (!variante) variante = produto.variants[0];
     return { ...item, preco: Math.round(parseFloat(variante.price) * 100) };
   });
 
