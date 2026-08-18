@@ -6,7 +6,8 @@ function origemPermitida(origin) {
   try { return new URL(origin).hostname.endsWith('.myshopify.com'); } catch (e) { return false; }
 }
 
-// Busca o preço real de cada produto no Shopify — nunca confiar no preço que o cliente manda.
+// Busca o preço real de cada item no Shopify — nunca confiar no preço que o cliente manda.
+// item.id no carrinho é o ID da VARIANTE (não do produto), então busca direto por variante.
 // Retorna { carrinho } em caso de sucesso, ou { erroDebug } com o motivo exato da falha (pra diagnosticar sem depender de log da Vercel).
 async function validarCarrinho(carrinho) {
   const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
@@ -16,30 +17,28 @@ async function validarCarrinho(carrinho) {
   }
 
   const idsUnicos = [...new Set(carrinho.map(i => i.id))];
-  const produtosMap = {};
+  const variantesMap = {};
   const falhasBusca = [];
   await Promise.all(idsUnicos.map(async id => {
     try {
-      const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/products/${id}.json`, {
+      const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2026-04/variants/${id}.json`, {
         headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN },
         signal: AbortSignal.timeout(8000)
       });
       const d = await r.json();
-      if (d.product) produtosMap[id] = d.product;
+      if (d.variant) variantesMap[id] = d.variant;
       else falhasBusca.push({ id, status: r.status, resposta: d });
     } catch (e) { falhasBusca.push({ id, erro: e.message }); }
   }));
 
   const itensInvalidos = [];
   const carrinhoValidado = carrinho.map(item => {
-    const produto = produtosMap[item.id];
-    if (!produto || !produto.variants || !produto.variants.length) {
-      itensInvalidos.push({ id: item.id, nome: item.nome, cor: item.cor, motivo: 'produto não encontrado no Shopify para esse id' });
+    const variante = variantesMap[item.id];
+    if (!variante) {
+      itensInvalidos.push({ id: item.id, nome: item.nome, cor: item.cor, motivo: 'variante não encontrada no Shopify para esse id' });
       return null;
     }
-    let variante = produto.variants.find(v => v.title === item.cor);
-    if (!variante) variante = produto.variants[0];
-    return { ...item, preco: Math.round(parseFloat(variante.price) * 100), nome: item.nome || produto.title };
+    return { ...item, preco: Math.round(parseFloat(variante.price) * 100) };
   });
 
   if (itensInvalidos.length > 0) {
